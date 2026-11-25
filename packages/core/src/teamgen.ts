@@ -69,7 +69,7 @@ export function generateTeam(seed: number, schoolId: string, meta: TeamMeta, cou
 
 /** Placeholder exhibition teams. Names and colours are stand-ins until art direction is approved (D11). */
 export const EXHIBITION_TEAMS: readonly TeamMeta[] = [
-  { name: 'Marlow Creek', mascot: 'Kingfishers', abbr: 'MCK', strength: 58, colors: { jersey: 0x13806f, helmet: 0xf28c28, pants: 0xf2f2e9, trim: 0xf28c28 } },
+  { name: 'Marlow Creek', mascot: 'Wildcats', abbr: 'MCW', strength: 58, colors: { jersey: 0x27307f, helmet: 0x27307f, pants: 0xf2f2f2, trim: 0xd8262c } },
   { name: 'Dunmore Ridge', mascot: 'Stags', abbr: 'DRS', strength: 58, colors: { jersey: 0x7a1f2b, helmet: 0xe8c547, pants: 0xe8c547, trim: 0xf2f2e9 } },
 ];
 

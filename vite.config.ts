@@ -14,6 +14,6 @@ export default defineConfig({
       '@fnd/match-sim': r('./packages/match-sim/src/index.ts'),
     },
   },
-  build: { outDir: '../../dist', emptyOutDir: true, chunkSizeWarningLimit: 4000 },
+  build: { outDir: '../../dist', emptyOutDir: true, chunkSizeWarningLimit: 4000, assetsInlineLimit: 100000000 },
   test: { root: '.', include: ['tests/**/*.test.ts'], testTimeout: 60000 },
 });

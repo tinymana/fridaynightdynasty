@@ -53,6 +53,7 @@ export class Game {
   private instant = false;
   private twoPoint = false;
   private calls: { off?: string; def?: string } = {};
+  private lastSnap: { offense: 0 | 1; los: number; n: number } | null = null;
 
   constructor(readonly seed: number, readonly teams: readonly [Team, Team]) {
     const receiver = Rng.stream(seed, 'toss').int(0, 1) as 0 | 1;
@@ -138,12 +139,25 @@ export class Game {
     if (off.kind !== 'play') throw new Error(`invalid offensive decision ${off.kind}`);
     if (!def) throw new Error('defense decision required');
     this.calls = { off: off.playId, def: def.callId };
+    this.lastSnap = { offense: offTeam, los: this.twoPoint ? RULES.twoPointFrom : s.yardLine, n };
     this.live = new PlaySim({
       offense: this.teams[offTeam], defense: this.teams[other(offTeam)],
       play: playById(off.playId), call: callById(def.callId),
       los: this.twoPoint ? RULES.twoPointFrom : s.yardLine,
       rng: Rng.stream(this.seed, `play:${n}`),
     });
+  }
+
+  /** A fresh copy of the most recent scrimmage play, for instant replay. It reproduces the play exactly. */
+  replayLast(): { sim: PlaySim; offense: 0 | 1 } | null {
+    const snap = this.lastSnap;
+    if (!snap || !this.calls.off || !this.calls.def) return null;
+    const sim = new PlaySim({
+      offense: this.teams[snap.offense], defense: this.teams[other(snap.offense)],
+      play: playById(this.calls.off), call: callById(this.calls.def), los: snap.los,
+      rng: Rng.stream(this.seed, `play:${snap.n}`),
+    });
+    return { sim, offense: snap.offense };
   }
 
   /** Advances the current play one step. Returns true when the play is over and the state is updated. */
