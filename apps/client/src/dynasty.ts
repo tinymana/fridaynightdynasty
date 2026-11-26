@@ -1,7 +1,7 @@
-import { WEATHER, type GameSetup, type Team } from '@fnd/core';
+import { GROUPS, WEATHER, overall, type GameSetup, type Team } from '@fnd/core';
 import {
-  REGULAR_WEEKS, STATES, career, createDynasty, createLeague, editSchool, gameSeed, gameSetup, loadDynasty, nextSeason, playWeek, standings, stateByCode, teamFor, userGame, weekGames, winnerOf,
-  type Dynasty, type GameResult,
+  CLASS_NAMES, CLASS_SHORT, MAX_CALL_UPS, REGULAR_WEEKS, STATES, career, incomingOf, programOf, recordOf, setCallUp, createDynasty, createLeague, editSchool, gameSeed, gameSetup, loadDynasty, nextSeason, playWeek, standings, stateByCode, teamFor, userGame, weekGames, winnerOf,
+  type Dynasty, type GameResult, type ProgramPlayer,
 } from '@fnd/league';
 import { bindSchoolForm, schoolFormHtml } from './school-form';
 
@@ -41,6 +41,8 @@ export class DynastyScreen {
   private pickSeed = 1;
   private busy = false;
   private editing = -1;
+  /** Which page of the dynasty is showing: the season, or the program (varsity, junior varsity, classes). */
+  private view: 'season' | 'program' = 'season';
 
   constructor(private readonly root: HTMLElement, private readonly title: HTMLElement, private readonly host: DynastyHost, newSeed: () => number) {
     this.d = loadDynasty(host.load());
@@ -63,7 +65,8 @@ export class DynastyScreen {
   }
 
   render(): void {
-    if (this.d) this.renderSeason(this.d);
+    if (this.d && this.view === 'program') this.renderProgram(this.d);
+    else if (this.d) this.renderSeason(this.d);
     else this.renderNew();
   }
 
@@ -99,6 +102,57 @@ export class DynastyScreen {
       this.host.save(this.d);
       this.render();
     }));
+  }
+
+  /** The program page: who is on the varsity, who is on the junior varsity, and who is coming. */
+  private renderProgram(d: Dynasty): void {
+    const schools = d.league.schools;
+    const me = schools[d.user];
+    const over = d.week > REGULAR_WEEKS;
+    this.title.textContent = `${me.name} ${me.mascot} · the program`;
+    const all = programOf(d, d.user);
+    const varsity = all.filter((p) => p.squad === 'varsity');
+    const jv = all.filter((p) => p.squad === 'jv');
+    const ups = d.callUps ?? [];
+    const order = (a: ProgramPlayer, b: ProgramPlayer): number => GROUPS.indexOf(a.pos) - GROUPS.indexOf(b.pos) || overall(b) - overall(a);
+    const cls = (p: ProgramPlayer): string => `<span class="cls c${p.year}" title="${CLASS_NAMES[p.year - 1]}">${CLASS_SHORT[p.year - 1]}</span>`;
+    const row = (p: ProgramPlayer, action: string): string => `<tr><td>${p.pos}</td><td>${esc(p.name)}${p.calledUp ? ' <span class="tag-up">called up</span>' : ''}</td><td>${cls(p)}</td><td><b>${overall(p)}</b></td><td>${p.year < 4 ? p.ceiling : ''}</td><td>${action}</td></tr>`;
+    const head = '<tr><th>Pos</th><th>Player</th><th>Class</th><th>Now</th><th title="His rating as a senior if he keeps developing">Senior</th><th></th></tr>';
+    const full = ups.length >= MAX_CALL_UPS;
+    const count = (list: ProgramPlayer[]): string => [4, 3, 2, 1].map((y) => `${list.filter((p) => p.year === y).length} ${CLASS_SHORT[y - 1]}`).join(' · ');
+    const jvRec = recordOf((d.jv ?? []).map((g) => ({ ...g, week: Math.min(g.week, REGULAR_WEEKS - 1) })), d.user);
+    const jvLast = (d.jv ?? []).filter((g) => g.home === d.user || g.away === d.user).slice(-1)[0];
+    const jvLine = jvLast ? ` Last time out: ${jvLast.home === d.user ? 'home to' : 'away at'} ${esc(schools[jvLast.home === d.user ? jvLast.away : jvLast.home].name)}, ${jvLast.home === d.user ? `${jvLast.score[0]}–${jvLast.score[1]}` : `${jvLast.score[1]}–${jvLast.score[0]}`}.` : '';
+    let turnover = '';
+    if (over) {
+      const seniors = all.filter((p) => p.year === 4).sort((a, b) => overall(b) - overall(a));
+      const frosh = incomingOf(d, d.user).sort((a, b) => b.ceiling - a.ceiling);
+      const names = (list: ProgramPlayer[], f: (p: ProgramPlayer) => number): string => list.slice(0, 5).map((p) => `${esc(p.name)} (${p.pos}, ${f(p)})`).join(', ');
+      turnover = `<div class="dy-next"><div class="big">${seniors.length} seniors graduate. ${frosh.length} freshmen arrive.</div>
+        <div><b>Leaving:</b> ${names(seniors, overall)}.</div><div><b>Freshmen to watch:</b> ${names(frosh, (p) => p.ceiling)} as seniors.</div></div>`;
+    }
+    this.root.innerHTML = `<p>You coach the varsity on Friday night. Everyone else plays junior varsity on Thursday. Players move up a class every year and seniors graduate.
+      Call a junior varsity player up and the weakest varsity player at his position goes down in his place.</p>
+      ${turnover}
+      <div class="orow center"><button class="seg on" id="pgBack">Back to the season</button></div>
+      <div class="dy-cols prog"><div><h3>Varsity <small>${varsity.length} players · ${count(varsity)}</small></h3>
+        <table>${head}${[...varsity].sort(order).map((p) => row(p, p.calledUp ? `<button class="seg mini" data-down="${p.id}">Send down</button>` : '')).join('')}</table></div>
+      <div><h3>Junior varsity <small>${jv.length} players · ${count(jv)}</small></h3>
+        <p class="sl-note">JV record ${jvRec[0]}-${jvRec[1]}${jvRec[2] ? `-${jvRec[2]}` : ''}.${jvLine} Call-ups used: ${ups.length} of ${MAX_CALL_UPS}.</p>
+        <table>${head}${[...jv].sort(order).map((p) => row(p, `<button class="seg mini" data-up="${p.id}"${full ? ' disabled' : ''}>Call up</button>`)).join('')}</table></div></div>
+      <div id="dyMsg" class="sl-note" role="status" aria-live="polite" style="text-align:center"></div>`;
+    (this.root.querySelector('#pgBack') as HTMLElement).addEventListener('click', () => { this.view = 'season'; this.render(); });
+    const move = (id: string, up: boolean): void => {
+      try {
+        this.d = setCallUp(d, id, up);
+        this.host.save(this.d);
+        this.render();
+      } catch (e) {
+        (this.root.querySelector('#dyMsg') as HTMLElement).textContent = e instanceof Error ? e.message : String(e);
+      }
+    };
+    this.root.querySelectorAll<HTMLElement>('[data-up]').forEach((el) => el.addEventListener('click', () => move(el.dataset.up!, true)));
+    this.root.querySelectorAll<HTMLElement>('[data-down]').forEach((el) => el.addEventListener('click', () => move(el.dataset.down!, false)));
   }
 
   private renderSeason(d: Dynasty): void {
@@ -144,10 +198,11 @@ export class DynastyScreen {
       <div class="dy-cols"><div><h3>Standings</h3><table><tr><th>#</th><th>School</th><th>Record</th><th>PF</th><th>PA</th></tr>${rows}</table></div>
       <div>${upcoming}${last.length ? `<h3>${weekName(lastWeek)} results</h3>${last.map(line).join('')}` : ''}${past}</div></div>
       ${this.editing >= 0 ? schoolFormHtml(schools[this.editing]) : `<div class="orow center" style="margin-top:12px"><label class="pick">Rename a school <select id="dyEdit"><option value="">Choose\u2026</option>${schools.map((s, i) => `<option value="${i}">${esc(s.name)} ${esc(s.mascot)}</option>`).join('')}</select></label></div>`}
-      <div class="orow center" style="margin-top:14px"><button class="seg" id="dyBack">Main menu</button><button class="seg" id="dyQuit">Abandon this dynasty</button></div>
+      <div class="orow center" style="margin-top:14px"><button class="seg on" id="dyProgram">Your program: varsity and JV</button><button class="seg" id="dyBack">Main menu</button><button class="seg" id="dyQuit">Abandon this dynasty</button></div>
       <div id="dyMsg" class="sl-note" role="status" aria-live="polite" style="text-align:center"></div>`;
     const q = (id: string): HTMLElement | null => this.root.querySelector(`#${id}`);
     q('dyBack')!.addEventListener('click', () => this.host.back());
+    q('dyProgram')!.addEventListener('click', () => { this.view = 'program'; this.render(); });
     q('dyEdit')?.addEventListener('change', (e) => {
       const i = (e.target as HTMLSelectElement).value;
       if (i === '') return;
@@ -171,6 +226,7 @@ export class DynastyScreen {
         return;
       }
       this.d = null;
+      this.view = 'season';
       this.host.save(null);
       this.pickSeed = this.newSeed();
       this.render();

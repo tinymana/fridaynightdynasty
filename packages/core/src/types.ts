@@ -14,6 +14,8 @@ export interface Player {
   number: number;
   pos: Group;
   ratings: Ratings;
+  /** Class year in a dynasty: 1 freshman to 4 senior. Absent on exhibition teams. */
+  year?: number;
 }
 
 export interface TeamColors {

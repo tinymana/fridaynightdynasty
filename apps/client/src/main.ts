@@ -994,7 +994,7 @@ function renderSideline(): void {
   const rows = ids.map((id, i) => {
     const p = game.player(id);
     const e = Math.round(game.energy[id]);
-    return `<div class="sl-row${i < STARTERS[sidelineGroup] ? ' start' : ''}"><span class="rk">${i + 1}</span><span>#${p.number} ${p.name}</span><span>${overall(p)}</span>`
+    return `<div class="sl-row${i < STARTERS[sidelineGroup] ? ' start' : ''}"><span class="rk">${i + 1}</span><span>#${p.number} ${p.name}${p.year ? ` <span class="cls c${p.year}">${['Fr', 'So', 'Jr', 'Sr'][p.year - 1]}</span>` : ''}</span><span>${overall(p)}</span>`
       + `<span class="bar${e < 40 ? ' low' : e < 65 ? ' mid' : ''}" title="${e}% energy"><i style="width:${e}%"></i></span>`
       + `<span class="mv"><button data-mv="${i}:-1" ${i === 0 ? 'disabled' : ''} aria-label="Move up">▲</button><button data-mv="${i}:1" ${i === ids.length - 1 ? 'disabled' : ''} aria-label="Move down">▼</button></span></div>`;
   }).join('');

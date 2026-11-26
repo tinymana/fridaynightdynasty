@@ -53,6 +53,18 @@ try {
   await sleep(100);
   check('the renamed school shows in the standings', (await text('#dyBody table')).includes('Tiny Mana Prep Wizards'));
 
+  // The program: varsity, junior varsity and a call-up.
+  await page.click('#dyProgram');
+  await sleep(100);
+  check('the program page lists a 39-man varsity and a 49-man junior varsity', (await page.$$('#dyBody .prog table')).length === 2 && (await page.$$('#dyBody [data-up]')).length === 49 && (await text('#dyBody')).includes('39 players'));
+  const kid = await page.$eval('#dyBody [data-up]', (e) => e.dataset.up);
+  await page.click(`#dyBody [data-up="${kid}"]`);
+  await sleep(100);
+  check('a called-up player moves to the varsity and can be sent down', (await page.$$(`#dyBody [data-down="${kid}"]`)).length === 1 && (await page.$$('#dyBody [data-up]')).length === 49 && (await text('#dyBody')).includes('Call-ups used: 1 of 6'));
+  await page.screenshot({ path: `${out}/dynasty-program.png`, fullPage: true });
+  await page.click('#pgBack');
+  await sleep(100);
+
   // Coach week 1.
   await page.click('#dyPlay');
   await page.evaluate(() => { window.__fnd.setSpeed(0); window.__fnd.setPlayClock(false); });

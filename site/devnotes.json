@@ -2,6 +2,45 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.11.0",
+      "date": "2026-11-26",
+      "title": "Freshmen, JV and varsity",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Every school now has a real program: four classes of 22, freshman to senior. The same players come back a year older and better each season, seniors graduate, and a new freshman class arrives."
+        },
+        {
+          "tag": "new",
+          "text": "Varsity and junior varsity. You coach the 39-man varsity on Friday. The other 49 play JV on Thursday against the same opponent, and you see their score and record."
+        },
+        {
+          "tag": "new",
+          "text": "Call-ups. Open Your program in a dynasty and call up to six JV players to the varsity. The weakest varsity player at that position goes down in his place. Send a call-up back down any time."
+        },
+        {
+          "tag": "new",
+          "text": "Each player shows his rating now and what he should be as a senior, so you can spot the freshman worth waiting for. Class years also show on the sideline depth chart."
+        },
+        {
+          "tag": "new",
+          "text": "When a season ends the program page lists the seniors you are losing and the freshmen to watch."
+        },
+        {
+          "tag": "tune",
+          "text": "Varsity teams are built to the same strength as before, so dynasty scores have not moved. Underclassmen have to be clearly better to take an upperclassman's place: about nine varsity players in ten are juniors or seniors."
+        },
+        {
+          "tag": "note",
+          "text": "Call-ups are in solo dynasty for now. Leagues with friends use the same aging rosters, with the varsity picked on merit."
+        },
+        {
+          "tag": "note",
+          "text": "A dynasty saved before this update keeps its record and schedule but gets new rosters."
+        }
+      ]
+    },
+    {
       "version": "0.10.0",
       "date": "2026-11-26",
       "title": "Audibles and ball-carrier moves",
@@ -538,9 +577,9 @@
       "text": "Change the play at the line after you see the defensive front, solo and online. Playable now."
     },
     {
-      "status": "next",
+      "status": "testing",
       "title": "Freshmen, JV and varsity",
-      "text": "Players who age from freshman to senior, a JV squad that plays its own schedule, and call-ups to varsity."
+      "text": "Players who age from freshman to senior, a JV squad that plays its own schedule, and call-ups to the varsity. Playable now in solo dynasty."
     },
     {
       "status": "planned",

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.11.0 — 2026-11-26
+
+Freshmen, JV and varsity.
+
+### Added
+- `packages/league/src/program.ts`: a school's program is four classes of 22 generated from the league seed, the
+  school and the year the class enrolled. Nothing is stored: a player's ratings are his senior ratings less his
+  growth for each year still to come, lifted or dragged by the school's prestige. `programFor` sorts everyone into
+  a 39-man varsity (best at each position, upperclassmen favoured) and a 49-man junior varsity.
+- `teamFor` now returns that varsity; `jvTeamFor`, `programOf`, `incomingOf`, `setCallUp`, `simulateJv`.
+- `Dynasty.callUps` (at most `MAX_CALL_UPS`, checked on load and at each new season) and `Dynasty.jv` (JV scores,
+  played by `playWeek` through the regular season).
+- `Player.year`; `rollRatings`, `rollName`, `numberRange` in core.
+- Client: the program page in a solo dynasty (varsity, JV, call up, send down, graduating seniors, incoming
+  freshmen), class tags on the sideline depth chart.
+- `tests/program.test.ts`; the dynasty browser check covers the program page.
+
+### Changed
+- Varsity strength is calibrated to the old generated teams (starters average 63.6 before and after).
+
 ## 0.10.0 — 2026-11-26
 
 Audibles and ball-carrier moves.
