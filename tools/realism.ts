@@ -1,0 +1,10 @@
+/** Measures AI-versus-AI football over many games, for comparing with real high school numbers. Usage: npx tsx tools/realism.ts */
+import { exhibitionTeams } from '@fnd/core';
+import { simulateGame } from '@fnd/match-sim';
+const N = 120; const t = { plays: 0, rushAtt: 0, rushYds: 0, att: 0, comp: 0, passYds: 0, sacks: 0, ints: 0, fum: 0, punts: 0, fga: 0, fgm: 0, pts: 0, td: 0, first: 0, big: 0, ot: 0, fourthGo: 0, margins: [] as number[] };
+for (let s = 1; s <= N; s++) { const g = simulateGame(s, exhibitionTeams(s)); t.pts += g.state.score[0] + g.state.score[1]; if (g.overtime) t.ot++; t.margins.push(Math.abs(g.state.score[0] - g.state.score[1]));
+  for (const e of g.events) { if (e.type === 'run') { t.plays++; t.rushAtt++; t.rushYds += e.yards; } if (e.type === 'pass') { t.plays++; if (e.flags.sack) t.sacks++; else { t.att++; if (e.flags.complete) { t.comp++; t.passYds += e.yards; } } if (e.flags.interception) t.ints++; } if (e.flags.fumbleLost) t.fum++; if (e.type === 'punt') t.punts++; if (e.type === 'fieldGoal') { t.fga++; if (e.flags.good) t.fgm++; } if (e.flags.touchdown) t.td++; if (e.flags.firstDown) t.first++; if ((e.type === 'run' || e.type === 'pass') && e.yards >= 20) t.big++; if ((e.type === 'run' || e.type === 'pass') && e.down === 4) t.fourthGo++; } }
+const per = (x: number) => (x / N / 2).toFixed(1);
+t.margins.sort((a, b) => a - b);
+console.log(`per team per game: points ${per(t.pts)}, plays ${per(t.plays)}, rushes ${per(t.rushAtt)} for ${(t.rushYds / t.rushAtt).toFixed(1)} a carry, passes ${per(t.att)} at ${Math.round(100 * t.comp / t.att)}% for ${(t.passYds / t.comp).toFixed(1)} a catch, sacks ${per(t.sacks)}, interceptions ${per(t.ints)}, fumbles lost ${per(t.fum)}, punts ${per(t.punts)}, field goals ${per(t.fgm)}/${per(t.fga)}, touchdowns ${per(t.td)}, first downs ${per(t.first)}, 20+ yard plays ${per(t.big)}, fourth-down tries ${per(t.fourthGo)}`);
+console.log(`run share ${Math.round(100 * t.rushAtt / t.plays)}%, overtime games ${t.ot}/${N}, median margin ${t.margins[N >> 1]}, games within 8 points ${t.margins.filter((m) => m <= 8).length}/${N}, blowouts 28+ ${t.margins.filter((m) => m >= 28).length}/${N}`);
