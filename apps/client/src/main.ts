@@ -1,5 +1,5 @@
 import {
-  BOOK_SIZE, CUSTOM_FRONT, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, FORMATIONS, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, OFFENSE_PLAYS, RULES, U,
+  BOOK_MIN, BOOK_SIZE, CUSTOM_FRONT, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, FORMATIONS, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, OFFENSE_PLAYS, RULES, U,
   defAssignment, draftFromDefense, draftFromFront, draftFromPlay, exhibitionTeams, formationOf, frontById, newDesignId, overall, playById, schemeById,
   toFront, toScheme, validateBook, validateDefPlay, validateOffPlay,
   type DefDecision, type DefFront, type DefPlay, type DefScheme, type Group, type ManageAction, type OffAssign, type OffDecision, type OffPlay, type PlayEvent, type Team,
@@ -97,13 +97,15 @@ let myDefs: DefPlay[] = loadDesigns('fnd.defs.v1', MAX_CUSTOM_DEFENSES, validate
 /** A play by id outside a game: one of this coach's designs, or a library play. */
 const myPlay = (id: string): OffPlay => myPlays.find((p) => p.id === id) ?? playById(id);
 let book: string[] = (() => {
-  const saved = store.get<string[]>('fnd.book.v1', [...DEFAULT_BOOK]);
+  const saved = store.get<string[]>('fnd.book.v2', [...DEFAULT_BOOK]);
   return Array.isArray(saved) && validateBook(saved, myPlays) === null ? saved : [...DEFAULT_BOOK];
 })();
 /** A practice run being watched from the designer. */
 let practiceRun: { make: (seed: number) => PlaySim; n: number; pause: number; told: boolean } | null = null;
 let career: Career | null = null;
 let bookDraft: string[] = [];
+/** The formation tab open on the offense panel. */
+let offTab = FORMATIONS[0].id;
 let frontId: string = DEFENSE_FRONTS[0].id;
 let useClock = store.get<boolean>('fnd.clock.v1', true);
 let clockLeft = 0;
@@ -588,8 +590,14 @@ function showOffensePanel(twoPointPick = false): void {
     return;
   }
   $('prompt').textContent = s.phase === 'conversion' ? 'Two-point play' : s.down === 4 ? '4th down: go, punt or kick' : 'Call your play';
-  const plays = game.bookPlays(user);
-  let html = plays.map((p, i) => playCard(p, `p:${p.id}`, ` <kbd>[${i + 1}]</kbd>`)).join('');
+  // A big book is called by formation: pick the formation, then the play.
+  const all = game.bookPlays(user);
+  const tabKeys = ['Z', 'X', 'C', 'V', 'B', 'N'];
+  const tabs = [...FORMATIONS.map((f) => ({ id: f.id, name: f.name, plays: all.filter((p) => !p.slots && p.formation === f.id) })), { id: '@mine', name: 'Mine', plays: all.filter((p) => !!p.slots) }].filter((t) => t.plays.length);
+  if (!tabs.some((t) => t.id === offTab)) offTab = tabs[0].id;
+  const plays = tabs.find((t) => t.id === offTab)!.plays;
+  let html = (tabs.length > 1 ? `<div class="fronts"><span class="lbl">Formation</span>${tabs.map((t, i) => `<button class="act${t.id === offTab ? ' on' : ''}" data-act="tab:${t.id}">${t.name} <kbd>[${tabKeys[i]}]</kbd><small>${t.plays.length} ${t.plays.length === 1 ? 'play' : 'plays'}</small></button>`).join('')}</div>` : '')
+    + plays.map((p, i) => playCard(p, `p:${p.id}`, i < 9 ? ` <kbd>[${i + 1}]</kbd>` : '')).join('');
   if (s.phase === 'scrimmage') {
     const fg = fieldGoalDistance(s.yardLine);
     const canKneel = (s.quarter === 2 || s.quarter === 4) && s.down < 4;
@@ -603,9 +611,12 @@ function showOffensePanel(twoPointPick = false): void {
     timeout: () => { wantTimeout = !wantTimeout; showOffensePanel(twoPointPick); },
   };
   for (const p of plays) acts[`p:${p.id}`] = () => submitOff({ kind: 'play', playId: p.id, timeout: wantTimeout });
+  for (const t of tabs) acts[`tab:${t.id}`] = () => { offTab = t.id; showOffensePanel(twoPointPick); };
   bind(acts, (k) => {
     const n = Number(k);
-    if (n >= 1 && n <= plays.length) return `p:${plays[n - 1].id}`;
+    if (n >= 1 && n <= Math.min(9, plays.length)) return `p:${plays[n - 1].id}`;
+    const ti = tabKeys.indexOf(k.toUpperCase());
+    if (ti >= 0 && ti < tabs.length) return `tab:${tabs[ti].id}`;
     return k === 'p' ? 'punt' : k === 'f' ? 'fg' : k === 'k' ? 'kneel' : k === 't' ? 'timeout' : null;
   });
 }
@@ -759,7 +770,7 @@ function showBookScreen(): void {
 
 function renderBook(): void {
   const problem = validateBook(bookDraft, myPlays);
-  $('bookCount').textContent = `${bookDraft.length} of ${BOOK_SIZE}${problem && bookDraft.length === BOOK_SIZE ? ` \u00b7 ${problem}` : ''}`;
+  $('bookCount').textContent = `${bookDraft.length} plays${problem ? ` \u00b7 ${problem}` : ` (${BOOK_MIN} to ${BOOK_SIZE})`}`;
   ($('bookSave') as HTMLButtonElement).disabled = problem !== null;
   $('bookSave').style.opacity = problem ? '0.4' : '1';
   const tools = (kind: 'p' | 'd', id: string): string => `<div class="mine-tools"><button class="seg" data-edit="${kind}:${id}">Edit</button><button class="seg" data-del="${kind}:${id}">Delete</button></div>`;
@@ -812,7 +823,7 @@ function renderBook(): void {
 function settleBook(): void {
   if (validateBook(book, myPlays) === null) return;
   book = [...DEFAULT_BOOK];
-  store.set('fnd.book.v1', book);
+  store.set('fnd.book.v2', book);
 }
 
 const designerHost: DesignerHost = {
@@ -858,8 +869,9 @@ function designDefense(id: string | null): void {
 
 function bookSummary(): void {
   const runs = book.filter((id) => myPlay(id).kind === 'run').length;
+  const starter = book.length === DEFAULT_BOOK.length && DEFAULT_BOOK.every((id) => book.includes(id));
   const own = book.filter((id) => myPlays.some((p) => p.id === id)).length;
-  $('bookSummary').textContent = `${runs} runs, ${book.length - runs} passes${book.join() === DEFAULT_BOOK.join() ? ' (starter book)' : ''}${own ? `, ${own} of your own` : ''}${myDefs.length ? ` \u00b7 ${myDefs.length} designed ${myDefs.length === 1 ? 'defense' : 'defenses'}` : ''}`;
+  $('bookSummary').textContent = `${runs} runs, ${book.length - runs} passes${starter ? ' (starter book)' : ''}${own ? `, ${own} of your own` : ''}${myDefs.length ? ` \u00b7 ${myDefs.length} designed ${myDefs.length === 1 ? 'defense' : 'defenses'}` : ''}`;
 }
 
 // --------------------------------------------------------------- screens
@@ -1277,7 +1289,7 @@ $('bookReset').addEventListener('click', () => { bookDraft = [...DEFAULT_BOOK]; 
 $('bookSave').addEventListener('click', () => {
   if (validateBook(bookDraft, myPlays) !== null) return;
   book = [...bookDraft];
-  store.set('fnd.book.v1', book);
+  store.set('fnd.book.v2', book);
   showSetup(false);
 });
 $('clockToggle').addEventListener('change', (ev) => {

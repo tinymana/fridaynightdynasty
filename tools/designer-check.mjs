@@ -112,7 +112,8 @@ try {
     const s = await st();
     if (s.mode === 'final') break;
     if (s.mode !== 'choose') { await sleep(20); continue; }
-    const acts = await page.$$eval('#panel [data-act]', (els) => els.map((e) => e.dataset.act));
+    let acts = await page.$$eval('#panel [data-act]', (els) => els.map((e) => e.dataset.act));
+    if (acts.includes('tab:@mine') && !acts.includes(`p:${id.slice(2)}`)) { await page.click('#panel [data-act="tab:@mine"]'); acts = await page.$$eval('#panel [data-act]', (els) => els.map((e) => e.dataset.act)); }
     const pick = acts.includes(`p:${id.slice(2)}`) ? `p:${id.slice(2)}` : acts.find((a) => a.startsWith('m:')) ?? (acts.includes('f:@custom') ? 'f:@custom' : acts.includes('pat') ? 'pat' : acts.find((a) => a.startsWith('d:')) ?? acts[0]);
     await page.click(`#panel [data-act="${pick}"]`).catch(() => {});
     if (pick.startsWith('p:c_')) { usedOff = true; await sleep(30); check('the designed play is named when called', (await text('#panel')).includes('Wildcat Special') || (await text('#calls')).includes('Wildcat Special')); }

@@ -16,7 +16,7 @@ const avg = (m: Map<string, Acc>, k: string): number => {
   return c ? c[1] / c[0] : NaN;
 };
 
-/** Rotates through the library so that all 24 plays are measured. */
+/** Rotates through the library so that all 40 plays are measured. */
 function rotatingBook(game: number, team: number): string[] {
   const runs = OFFENSE_PLAYS.filter((p) => p.kind === 'run');
   const passes = OFFENSE_PLAYS.filter((p) => p.kind === 'pass');

@@ -42,7 +42,7 @@ describe('team generation', () => {
 describe('play library (M2 acceptance)', () => {
   it('has at least 4 formations, 24 plays, 4 fronts and 4 calls, all as data', () => {
     expect(FORMATIONS.length).toBeGreaterThanOrEqual(4);
-    expect(OFFENSE_PLAYS.length).toBeGreaterThanOrEqual(24);
+    expect(OFFENSE_PLAYS.length).toBeGreaterThanOrEqual(40);
     expect(DEFENSE_FRONTS.length).toBeGreaterThanOrEqual(4);
     expect(DEFENSE_SCHEMES.length).toBeGreaterThanOrEqual(4);
     expect(new Set(OFFENSE_PLAYS.map((p) => p.id)).size).toBe(OFFENSE_PLAYS.length);
@@ -73,7 +73,8 @@ describe('play library (M2 acceptance)', () => {
   });
   it('validates playbooks', () => {
     expect(validateBook(DEFAULT_BOOK)).toBeNull();
-    expect(DEFAULT_BOOK.length).toBe(BOOK_SIZE);
+    expect(DEFAULT_BOOK.length).toBe(40);
+    expect(BOOK_SIZE).toBeGreaterThanOrEqual(DEFAULT_BOOK.length);
     expect(validateBook(DEFAULT_BOOK.slice(0, 7))).not.toBeNull();
     expect(validateBook([...DEFAULT_BOOK.slice(0, 7), DEFAULT_BOOK[0]])).not.toBeNull();
     expect(validateBook(OFFENSE_PLAYS.filter((p) => p.kind === 'run').slice(0, 8).map((p) => p.id))).not.toBeNull();
@@ -196,7 +197,8 @@ describe('full game', () => {
 
 describe('playbooks, depth charts and fatigue (M2 acceptance)', () => {
   it('only allows plays from the team playbook', () => {
-    const g = new Game(4, exhibitionTeams(4));
+    const small = ['dive', 'power', 'toss', 'counter', 'slants', 'curls', 'flood', 'verticals'];
+    const g = new Game(4, exhibitionTeams(4), { books: [small, small] });
     g.begin(null, null);
     g.tick();
     expect(() => g.begin({ kind: 'play', playId: 'mesh' }, { frontId: '43', callId: 'base' })).toThrow(/playbook/);
@@ -207,6 +209,12 @@ describe('playbooks, depth charts and fatigue (M2 acceptance)', () => {
     const home = new Set(g.events.filter((e) => e.offense === 0 && e.offCall).map((e) => e.offCall));
     for (const id of home) expect(book).toContain(id);
     expect(() => new Game(1, exhibitionTeams(1), { books: [book.slice(1), DEFAULT_BOOK] })).toThrow();
+    expect(() => new Game(1, exhibitionTeams(1), { books: [[...DEFAULT_BOOK, 'c_notmine00'], DEFAULT_BOOK] })).toThrow();
+  });
+  it('the starter book is the whole library: 40 plays, eight from each formation', () => {
+    expect(DEFAULT_BOOK.length).toBe(40);
+    for (const f of FORMATIONS) expect(OFFENSE_PLAYS.filter((p) => p.formation === f.id).length, f.id).toBe(8);
+    expect(new Set(OFFENSE_PLAYS.map((p) => p.id)).size).toBe(40);
   });
   it('depth chart changes put a different player on the field and replay exactly', () => {
     const teams = exhibitionTeams(21);

@@ -84,7 +84,10 @@ try {
       const acts = await p.$$eval('#panel [data-act]', (els) => els.map((e) => e.dataset.act));
       let pick = acts.filter((x) => x.startsWith('p:') || x.startsWith('d:') || x.startsWith('m:') || x === 'pat');
       if (acts.includes('f:@custom') && i % 3 === 0) { await p.click('#panel [data-act="f:@custom"]').catch(() => {}); continue; }
+      if (acts.includes('tab:@mine') && !acts.includes(`p:${mineId}`) && i % 2 === 0) { await p.click('#panel [data-act="tab:@mine"]').catch(() => {}); continue; }
       if (acts.includes(`p:${mineId}`) && i % 2 === 0) pick = [`p:${mineId}`];
+      const tabsHere = acts.filter((x) => x.startsWith('tab:'));
+      if (tabsHere.length && i % 5 === 1) { await p.click(`#panel [data-act="${tabsHere[(i >> 2) % tabsHere.length]}"]`).catch(() => {}); continue; }
       if (prompt.startsWith('4th') && acts.includes('punt')) pick = [acts.includes('fg') ? 'fg' : 'punt'];
       if (!pick.length) continue;
       const chosen = pick[(i + k) % pick.length];

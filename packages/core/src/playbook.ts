@@ -68,6 +68,7 @@ export const OFFENSE_PLAYS: readonly OffPlay[] = [
   pass('post', 'Deep Post', 'single', 'A shot over the middle. Needs protection.', ['deep'], 6, 78, {
     WR1: route([[12, 0], [24, 9]], true), WR2: route([[12, 0], [11, 3]]), WR3: route([[6, 0], [8, 9]], true), TE: route([[5, 0], [6, 4]]),
   }),
+  run('stretch', 'Stretch', 'single', 'Race the defense to the right edge.', ['outside'], 24, { RB: carry([[-4.5, 4], [-2, 9], [3, 11.5]]) }),
   // I-Form
   run('iso', 'Iso', 'iform', 'Fullback leads through the middle.', ['inside', 'power'], 26, { FB: lead([[1, 0.8], [4, 0.8]]), RB: carry([[-3, 0.6], [2, 0.6]]) }),
   run('power', 'Power Right', 'iform', 'Fullback kicks out, tailback follows.', ['inside', 'power'], 28, { FB: lead([[-1, 4], [3, 6]]), RB: carry([[-4, 3], [0, 5.5], [4, 6.5]]) }),
@@ -77,6 +78,13 @@ export const OFFENSE_PLAYS: readonly OffPlay[] = [
   }),
   pass('teCross', 'Tight End Cross', 'iform', 'Tight end drags across the field.', ['short', 'mid'], 5, 62, {
     TE: route([[7, 0], [9, -12]], true), WR1: route([[13, 0], [12, 2]]), WR2: route([[9, 0], [18, -8]], true), RB: route([[-1, -5], [2, -9]]),
+  }),
+  run('fbDive', 'Fullback Dive', 'iform', 'Quick hitter to the fullback.', ['inside', 'power'], 14, { FB: carry([[-1, 0], [3, 0]]) }),
+  pass('paPost', 'Play-Action Post', 'iform', 'Fake the run, throw the post behind it.', ['deep'], 6, 80, {
+    WR1: route([[12, 0], [24, 9]], true), WR2: route([[10, 0], [9, -2]]), TE: route([[6, 0], [8, 5]], true), FB: route([[0, -5], [2, -9]]),
+  }),
+  pass('outs', 'Quick Outs', 'iform', 'Both receivers break to the sideline.', ['quick', 'short'], 3, 46, {
+    WR1: route([[5, 0], [6, -5]]), WR2: route([[5, 0], [6, 5]]), TE: route([[4, 0], [7, -4]], true), RB: route([[-1, 5], [1, 9]]),
   }),
   // Shotgun
   pass('verticals', 'Four Verticals', 'gun', 'Everyone deep. Needs time to throw.', ['deep'], 2, 72, {
@@ -92,6 +100,13 @@ export const OFFENSE_PLAYS: readonly OffPlay[] = [
   pass('stick', 'Stick', 'gun', 'Short and safe. Take what is there.', ['quick', 'short'], 2, 40, {
     TE: route([[5, 0], [5.5, 3]]), WR2: route([[5, 0], [6, 4]]), WR3: route([[5, 0], [4, 1]]), WR1: route([[14, 0]], true), RB: route([[0, 5], [1, 10]]),
   }),
+  run('gunPower', 'Shotgun Power', 'gun', 'Off the right side from the gun.', ['inside'], 22, { RB: carry([[-3, 3.5], [1, 5.5], [4, 6.5]]) }),
+  pass('tunnel', 'Tunnel Screen', 'gun', 'Quick throw to the slot behind blockers.', ['quick'], 1, 28, {
+    WR3: route([[-1, 4]]), WR1: route([[10, 0]], true), TE: route([[4, 0], [5, -3]]), WR2: route([[6, 0], [5, -1]]),
+  }),
+  pass('corner', 'Corner Shot', 'gun', 'Slot to the deep corner. Needs time.', ['deep'], 3, 76, {
+    WR3: route([[10, 0], [20, -9]], true), WR1: route([[6, 0], [5, 1]]), WR2: route([[14, 0], [13, -2]]), TE: route([[6, 0], [8, 6]], true), RB: route([[0, -5], [2, -9]]),
+  }),
   // Spread
   run('zone', 'Inside Zone', 'spread', 'Run at a light box.', ['inside'], 20, { RB: carry([[-3, -0.8], [2, -0.8]]) }),
   pass('bubble', 'Bubble', 'spread', 'Quick flip to the slot outside.', ['quick'], 1, 26, {
@@ -104,14 +119,35 @@ export const OFFENSE_PLAYS: readonly OffPlay[] = [
     WR3: route([[12, 0], [16, 18]], true), WR4: route([[8, 0], [10, -16]], true), WR1: route([[30, 0]], true), WR2: route([[30, 0]], true),
   }),
   run('qbDraw', 'Quarterback Draw', 'spread', 'The quarterback keeps it up the middle.', ['inside'], 0, { QB: carry([[-3, 0], [2, 0.5]]) }),
+  pass('dblSlants', 'Double Slants', 'spread', 'Four quick slants. Pick the open one.', ['quick', 'short'], 1, 40, {
+    WR1: route([[3, 0], [7, 7]], true), WR3: route([[2, 0], [6, 6]], true), WR2: route([[3, 0], [7, -7]], true), WR4: route([[2, 0], [6, -6]], true), RB: route([[0, -4], [1, -8]]),
+  }),
+  run('spreadCounter', 'Spread Counter', 'spread', 'Start left, cut back behind the right guard.', ['inside'], 28, { RB: carry([[-4.5, -3], [-2.5, 1], [3, 3]]) }),
+  pass('fade', 'Fades', 'spread', 'Outside receivers go deep down the sideline.', ['deep'], 3, 64, {
+    WR1: route([[38, -2]], true), WR2: route([[38, 2]], true), WR3: route([[6, 0], [5, 1]]), WR4: route([[6, 0], [5, -1]]), RB: route([[1, 0], [4, 0]]),
+  }),
   // Heavy
   run('sneak', 'Quarterback Sneak', 'heavy', 'One yard, straight ahead.', ['power'], 0, { QB: carry([[1, 0]]) }),
   run('blast', 'Blast', 'heavy', 'Everyone in. Short yardage and goal line.', ['inside', 'power'], 26, { FB: lead([[1, -0.8], [3, -0.8]]), RB: carry([[-3, -0.6], [2, -0.6]]) }),
+  run('heavyPower', 'Power Left', 'heavy', 'Two tight ends and a lead blocker to the left.', ['inside', 'power'], 28, { FB: lead([[-1, -4], [3, -6]]), RB: carry([[-4, -3], [0, -5.5], [4, -6.5]]) }),
+  run('heavyToss', 'Heavy Toss', 'heavy', 'Pitch right behind the big bodies.', ['outside'], 14, { FB: lead([[-3, 7], [1, 10]]), RB: carry([[-5.5, 6], [-2.5, 10.5], [3, 12.5]]) }),
+  run('wedge', 'Fullback Wedge', 'heavy', 'Fullback straight into the pile.', ['inside', 'power'], 14, { FB: carry([[-1, 0], [3, 0]]) }),
+  pass('bootleg', 'Bootleg', 'heavy', 'Tight ends flood the right side.', ['short', 'mid'], 5, 66, {
+    TE: route([[6, 0], [9, 8]], true), TE2: route([[4, 0], [6, 10]], true), WR1: route([[12, 0], [11, -2]]), FB: route([[0, 5], [1, 9]]),
+  }),
+  pass('tePop', 'Tight End Pop', 'heavy', 'Quick throw to the tight end off a run look.', ['quick', 'short'], 2, 36, {
+    TE: route([[4, 0], [5, 2]]), WR1: route([[5, 0], [6, -4]], true),
+  }),
+  pass('maxShot', 'Max Protect Shot', 'heavy', 'Eight stay in to block for one deep throw.', ['deep'], 6, 80, {
+    WR1: route([[12, 0], [24, -9]], true), TE: route([[6, 0], [7, 4]]),
+  }),
 ];
 
-/** The eight plays a team carries when its coach has not built a book. */
-export const DEFAULT_BOOK: readonly string[] = ['dive', 'power', 'toss', 'counter', 'slants', 'curls', 'flood', 'verticals'];
-export const BOOK_SIZE = 8;
+/** The starter book: the whole 40-play library, eight plays from each formation. */
+export const DEFAULT_BOOK: readonly string[] = OFFENSE_PLAYS.map((p) => p.id);
+/** A book holds between BOOK_MIN and BOOK_SIZE plays: the 40 library plays plus room for a coach's twelve designs. */
+export const BOOK_SIZE = 52;
+export const BOOK_MIN = 8;
 
 // ------------------------------------------------------------------ defense
 
@@ -209,9 +245,10 @@ export const formationById = byId(FORMATIONS, 'formation');
 export const frontById = byId(DEFENSE_FRONTS, 'front');
 export const schemeById = byId(DEFENSE_SCHEMES, 'defensive call');
 
-/** A book is valid when it has exactly eight distinct plays (library or the coach's own designs) with at least one run and one pass. */
+/** A book is valid when it has 8 to 52 distinct plays (library or the coach's own designs) with at least one run and one pass. */
 export function validateBook(ids: readonly string[], designed: readonly OffPlay[] = []): string | null {
-  if (ids.length !== BOOK_SIZE) return `A playbook needs exactly ${BOOK_SIZE} plays.`;
+  if (ids.length < BOOK_MIN) return `A playbook needs at least ${BOOK_MIN} plays.`;
+  if (ids.length > BOOK_SIZE) return `A playbook holds at most ${BOOK_SIZE} plays.`;
   if (new Set(ids).size !== ids.length) return 'A play can only be in the book once.';
   const plays = ids.map((id) => designed.find((p) => p.id === id) ?? OFFENSE_PLAYS.find((p) => p.id === id));
   if (plays.some((p) => !p)) return 'Unknown play in the book.';

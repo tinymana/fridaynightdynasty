@@ -414,8 +414,10 @@ describe('tamper resistance', () => {
   };
   it('a coach cannot call a play that is not in his book', async () => {
     const { w, pin, hv, offToken } = await setup();
-    expect(DEFAULT_BOOK).not.toContain('mesh');
-    expect((await w.call({ action: 'call', token: offToken, pin, turn: hv.turn, call: { kind: 'play', playId: 'mesh' } })).error!.code).toBe('bad_call');
+    for (const playId of ['notAPlay', 'c_someoneelse']) {
+      expect(DEFAULT_BOOK).not.toContain(playId);
+      expect((await w.call({ action: 'call', token: offToken, pin, turn: hv.turn, call: { kind: 'play', playId } })).error!.code).toBe('bad_call');
+    }
   });
   it('a coach cannot make the other sideline\'s call: the role comes from who he is', async () => {
     const { w, pin, hv, offToken, defToken } = await setup();

@@ -22,16 +22,16 @@ await sleep(150);
 await page.click('#editBook');
 await sleep(100);
 await page.click('[data-act="b:toss"]');
-check('removing a play makes the book invalid', await page.$eval('#bookSave', (b) => b.disabled));
-await page.click('[data-act="b:mesh"]');
-await page.click('[data-act="b:counter"]');
-await page.click('[data-act="b:iso"]');
+check('the starter book has 40 plays and can be trimmed', (await page.$eval('#bookCount', (e) => e.textContent)).startsWith('39 plays') && !(await page.$eval('#bookSave', (b) => b.disabled)));
+for (const id of await page.$$eval('#bookList .card.sel[data-act]', (els) => els.map((e) => e.dataset.act).filter((a) => !['b:mesh', 'b:iso', 'b:dive', 'b:slants'].includes(a)))) await page.click(`[data-act="${id}"]`);
+check('fewer than eight plays cannot be saved', await page.$eval('#bookSave', (b) => b.disabled));
+for (const id of ['b:counter', 'b:curls', 'b:zone', 'b:stick']) await page.click(`[data-act="${id}"]`);
 check('eight plays with runs and passes can be saved', !(await page.$eval('#bookSave', (b) => b.disabled)));
 await page.screenshot({ path: `${out}/m2-book.png` });
 await page.click('#bookSave');
 await sleep(100);
 check('saved book is used', (await st()).book.includes('mesh') && !(await st()).book.includes('toss'));
-check('book survives a reload', await page.evaluate(() => JSON.parse(localStorage.getItem('fnd.book.v1')).includes('iso')));
+check('book survives a reload', await page.evaluate(() => JSON.parse(localStorage.getItem('fnd.book.v2')).includes('iso')));
 
 await page.click('[data-team="0"]');
 const waitChoose = async () => { for (let i = 0; i < 600; i++) { const s = await st(); if (s.mode === 'choose' || s.mode === 'final') return s; await sleep(50); } throw new Error('stuck ' + JSON.stringify(await st())); };
@@ -46,7 +46,11 @@ while ((!seenOff || !seenDef) && n++ < 80 && s.mode !== 'final') {
   const acts = await page.$$eval('#panel [data-act]', (els) => els.map((e) => e.dataset.act));
   if (acts.some((a) => a.startsWith('p:')) && !seenOff) {
     seenOff = true;
-    check('offense panel shows the custom book', acts.includes('p:mesh') && acts.includes('p:iso') && !acts.includes('p:toss'));
+    check('offense panel groups the custom book by formation', acts.includes('p:dive') && !acts.includes('p:offTackle') && acts.includes('tab:iform') && acts.includes('tab:gun') && !acts.includes('tab:heavy'));
+    await page.click('#panel [data-act="tab:gun"]');
+    await sleep(50);
+    check('switching formation shows its plays', (await page.$$eval('#panel [data-act]', (els) => els.map((e) => e.dataset.act))).includes('p:mesh'));
+    await page.screenshot({ path: `${out}/offense-tabs.png` });
     // Sideline: move the backup running back up, change the plan.
     await page.click('#sidelineBtn');
     await sleep(80);
