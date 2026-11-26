@@ -2,6 +2,37 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.3",
+      "date": "2026-11-25",
+      "title": "Online head-to-head",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Play a friend online. Sign in with a coach name and a four-digit PIN, host a game, and share the five-digit game PIN. The other coach types it in to join."
+        },
+        {
+          "tag": "new",
+          "text": "Hidden play calls: you only see that the other sideline has called its play, never what it is, until the snap."
+        },
+        {
+          "tag": "new",
+          "text": "The server runs every play. Both browsers replay it from the shared record and check that they match the server exactly."
+        },
+        {
+          "tag": "new",
+          "text": "If a coach drops out, the AI calls his plays so nobody is left waiting. He can sign back in on any device and pick up where the game is."
+        },
+        {
+          "tag": "new",
+          "text": "Depth chart and game plan changes work online, and your own eight-play book comes with you."
+        },
+        {
+          "tag": "improved",
+          "text": "The site now publishes itself when an update is merged."
+        }
+      ]
+    },
+    {
       "version": "0.2",
       "date": "2026-11-25",
       "title": "Playbooks, fronts and the sideline",
@@ -122,9 +153,14 @@
       "text": "A 24-play library, build-your-own book, four defensive fronts, fatigue and substitutions, a play clock and a game plan. Playable now."
     },
     {
-      "status": "next",
+      "status": "testing",
       "title": "Online head-to-head",
-      "text": "Invite a friend by link and coach against each other live, with hidden play calls."
+      "text": "Invite a friend with a game PIN and coach against each other live, with hidden play calls. Playable now on the website."
+    },
+    {
+      "status": "next",
+      "title": "Sideline voice chat",
+      "text": "Talk to the other coach during an online game, free and straight from your browser."
     },
     {
       "status": "planned",

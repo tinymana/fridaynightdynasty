@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.3.0 — 2026-11-25
+
+Milestone 2b release candidate: online head-to-head exhibition.
+
+### Added
+- `online` package: room rules as pure state transitions (lobby, hidden calls, play clock, AI cover for an absent
+  coach, sideline changes), an API router behind a storage interface, and in-memory storage for tests.
+- `supabase/`: the `fnd` schema (coaches, sessions, rooms; not exposed through the public API, row level security on
+  with no policies) and the `fnd` Edge Function, which is the only way in. `npm run bundle:function` bundles it.
+- `client`: coach sign-in (name plus four-digit PIN), host and join by five-digit game PIN, lobby, hidden calls with
+  the server's play clock, rejoin, and a sync check of the local replay against the server's fingerprint.
+- Tests: 23 online tests (sign-in, lobby, hidden calls, a whole game agreeing between two browsers and the server,
+  clock expiry, disconnect and rejoin, tamper resistance). 143 tests in all.
+- Tools: `npm run mock:online` (the real API with in-memory storage), `npm run check:online` (two headless browsers
+  play a whole game, one of them dropping out and rejoining).
+- `.github/workflows/pages.yml`: typecheck, test, build and publish `site/` on every push to main.
+
+### How results stay honest
+- The server picks the seed, holds both calls until the snap, runs the play and stores the log. A browser can only
+  submit a call for its own sideline and the current turn, from its own playbook.
+- Each browser redraws the game from the seed and the public log and compares fingerprints with the server.
+
+### Known gaps
+- No voice chat yet. No rematch button: host a new game from the menu.
+- Coach names are not filtered for offensive words.
+- An absent coach is covered by the AI immediately, rather than after the 90-second pause in the original design.
+- The Supabase storage adapter is exercised by the same API tests only through its in-memory twin; the deployed
+  function has not been called from the build machine, which cannot reach it.
+
 ## 0.2.0 — 2026-11-25
 
 Milestone 2 release candidate: playbooks, fronts and smarter football.

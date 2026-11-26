@@ -127,6 +127,22 @@
   .sl-field .t { font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); margin-bottom: 6px; }
   .sl-field .opts { display: flex; gap: 4px; flex-wrap: wrap; }
 
+  /* online */
+  #onlineBox { margin-top: 18px; background: var(--panel); border: 3px solid var(--line); border-radius: 6px; padding: 12px 14px; }
+  #onlineBox h3 { margin: 0 0 10px; font-size: 14px; letter-spacing: 2px; text-transform: uppercase; text-align: center; }
+  .orow { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; margin: 8px 0; font-size: 13px; }
+  .orow input { font-family: inherit; font-size: 14px; background: #000; color: var(--ink); border: 2px solid var(--line); border-radius: 4px; padding: 6px 8px; width: 150px; text-transform: uppercase; }
+  .orow input:focus { outline: none; border-color: var(--accent); }
+  #oMsg, #lobbyMsg { min-height: 18px; text-align: center; font-size: 12.5px; color: #ff8d85; margin-top: 4px; }
+  #lobby h2 { font-size: 16px; letter-spacing: 4px; text-transform: uppercase; margin: 22px 0 4px; text-align: center; color: var(--dim); }
+  #lobbyPin { text-align: center; font-size: 72px; font-weight: 700; letter-spacing: 12px; color: var(--accent); text-shadow: 0 4px 0 #000; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  #lobby p { text-align: center; color: var(--dim); font-size: 13px; margin: 6px 0 16px; }
+  .team-card.seat { cursor: default; }
+  .team-card.seat:hover { border-color: var(--line); }
+  .team-card.seat.me { border-color: var(--accent); }
+  .team-card .coach { font-size: 15px; margin-top: 8px; color: var(--accent); min-height: 22px; }
+  .team-card .coach.empty { color: var(--dim); animation: blink 1.2s steps(2) infinite; }
+
   /* final */
   #final { text-align: center; }
   #final .result { font-size: 30px; font-weight: 700; margin: 6px 0 14px; font-variant-numeric: tabular-nums; }
@@ -157,7 +173,34 @@
       <span id="bookSummary"></span>
       <label class="chk"><input type="checkbox" id="clockToggle"> 20-second play clock</label>
     </div>
-    <div class="note">Milestone 1 build. School names, colours and field art are placeholders.</div>
+    <div id="onlineBox">
+      <h3>Play a friend online</h3>
+      <div id="oSignedOut" class="orow">
+        <input id="oName" maxlength="12" placeholder="Coach name" autocomplete="nickname" aria-label="Coach name">
+        <input id="oPin" maxlength="4" inputmode="numeric" placeholder="4-digit PIN" autocomplete="off" aria-label="Your four-digit PIN">
+        <button class="seg on" id="oEnter">Sign in</button>
+      </div>
+      <div id="oSignedIn" class="hidden">
+        <div class="orow"><span id="oWho"></span><button class="seg" id="oOut">Sign out</button></div>
+        <div class="orow" id="oHostRow"></div>
+        <div class="orow">
+          <input id="oJoinPin" maxlength="5" inputmode="numeric" placeholder="Game PIN" autocomplete="off" aria-label="Five-digit game PIN">
+          <button class="seg on" id="oJoin">Join a game</button>
+        </div>
+      </div>
+      <div id="oMsg" role="status" aria-live="polite"></div>
+      <div class="note">Pick a coach name and a PIN you will remember. The name is yours once you use it.</div>
+    </div>
+    <div class="note">Early build. School names, colours and field art are placeholders.</div>
+  </section>
+
+  <section id="lobby" class="hidden">
+    <h2>Game PIN</h2>
+    <div id="lobbyPin" aria-label="Game PIN"></div>
+    <p id="lobbyHelp">Tell the other coach to sign in, type this PIN and press Join.</p>
+    <div class="teams" id="lobbySeats"></div>
+    <div class="orow center"><button class="seg on" id="lobbyStart">Start the game</button><button class="seg" id="lobbyLeave">Leave</button></div>
+    <div id="lobbyMsg" role="status" aria-live="polite"></div>
   </section>
 
   <section id="game" class="hidden">

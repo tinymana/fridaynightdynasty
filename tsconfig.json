@@ -12,8 +12,9 @@
     "paths": {
       "@fnd/core": ["./packages/core/src/index.ts"],
       "@fnd/football-ai": ["./packages/football-ai/src/index.ts"],
-      "@fnd/match-sim": ["./packages/match-sim/src/index.ts"]
+      "@fnd/match-sim": ["./packages/match-sim/src/index.ts"],
+      "@fnd/online": ["./packages/online/src/index.ts"]
     }
   },
-  "include": ["packages", "apps", "tools", "tests", "site/devnotes.json", "vite.config.ts"]
+  "include": ["packages", "apps", "tools", "tests", "supabase/functions/fnd/index.ts", "site/devnotes.json", "vite.config.ts"]
 }

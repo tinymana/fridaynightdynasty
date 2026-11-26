@@ -1,10 +1,12 @@
 import {
   BOOK_SIZE, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, FORMATIONS, OFFENSE_PLAYS, RULES, U, defAssignment, exhibitionTeams,
   formationById, frontById, overall, playById, validateBook,
-  type DefDecision, type DefFront, type DefScheme, type Group, type OffAssign, type OffDecision, type OffPlay, type PlayEvent, type Team,
+  type DefDecision, type DefFront, type DefScheme, type Group, type ManageAction, type OffAssign, type OffDecision, type OffPlay, type PlayEvent, type Team,
 } from '@fnd/core';
 import { fieldGoalDistance } from '@fnd/football-ai';
-import { AutoCoach, Game, gameHash, simulateGame, summarize, type PlaySim } from '@fnd/match-sim';
+import { AutoCoach, Game, gameHash, replayGame, simulateGame, summarize, type LoggedDecision, type PlaySim } from '@fnd/match-sim';
+import type { RoomView } from '@fnd/online';
+import { OnlineError, online } from './net/online';
 import { FieldScene, createGame, type FieldView, type ViewPlayer } from './scene';
 import { setMuted, sfx, unlockAudio } from './audio';
 import titleUrl from './assets/title.jpg';
@@ -21,7 +23,21 @@ const other = (t: 0 | 1): 0 | 1 => (t === 0 ? 1 : 0);
 const css = (n: number): string => `#${n.toString(16).padStart(6, '0')}`;
 const ord = (n: number): string => ['', '1st', '2nd', '3rd', '4th'][n] ?? `${n}th`;
 
-type Mode = 'menu' | 'choose' | 'presnap' | 'live' | 'replay' | 'kick' | 'post' | 'final';
+type Mode = 'menu' | 'choose' | 'wait' | 'presnap' | 'live' | 'replay' | 'kick' | 'post' | 'final';
+
+/** An online game in progress. The server owns the result; this browser replays the shared log to draw it. */
+interface Net {
+  token: string;
+  pin: string;
+  view: RoomView;
+  /** Log entries received from the server but not yet shown. */
+  queue: LoggedDecision[];
+  /** How many log entries this browser has received. */
+  received: number;
+  timer: number;
+  busy: boolean;
+  sync: 'ok' | 'bad';
+}
 interface KickAnim { x0: number; x1: number; y0: number; y1: number; t: number; T: number; e: PlayEvent }
 
 /** Small per-browser conveniences. Storage can be missing or throw, so every access is guarded. */
@@ -74,6 +90,10 @@ let clockOn = false;
 let sidelineOpen = false;
 let sidelineTab: 'depth' | 'plan' = 'depth';
 let sidelineGroup: Group = 'RB';
+let net: Net | null = null;
+/** Test-only: shortens the pauses between plays and polls faster. */
+let turbo = false;
+let session = store.get<{ token: string; name: string } | null>('fnd.session.v1', null);
 
 const scene = new FieldScene();
 scene.onFrame = (dt) => step(dt);
@@ -163,7 +183,11 @@ function step(dt: number): FieldView | null {
   dt = Math.min(dt, 100);
   switch (mode) {
     case 'choose':
-      if (clockOn && !sidelineOpen) {
+      if (net) {
+        // Online, the server's clock is the one that counts; this is only its display.
+        clockLeft = Math.max(0, clockLeft - dt);
+        showPlayClock();
+      } else if (clockOn && !sidelineOpen) {
         clockLeft -= dt;
         showPlayClock();
         if (clockLeft <= 0) playClockExpired();
@@ -232,6 +256,7 @@ function next(): void {
   $('calls').classList.add('hidden');
   const s = game.state;
   if (s.phase === 'final') return showFinal();
+  if (net) return onlineNext();
   updateBug();
   if (s.phase === 'kickoff') {
     const k = s.kicking;
@@ -276,7 +301,7 @@ function showPlayClock(): void {
 /** Time is up: the AI coach makes the call from your game plan. */
 function playClockExpired(): void {
   clockOn = false;
-  if (mode !== 'choose') return;
+  if (mode !== 'choose' || net) return;
   closeSideline();
   if (game.state.possession === user) commit(coach.offense(game)!, coach.defense(game)!);
   else commit(pendingOff!, coach.defense(game)!);
@@ -377,7 +402,7 @@ function showResult(e: PlayEvent | null): void {
     else sfx.tackle();
   }
   const base = big || period ? 2600 : e?.type === 'kneel' ? 1000 : 1700;
-  timer = speed === 0 ? Math.min(base, 900) : speed === 1 ? base : Math.round(base * 0.5);
+  timer = turbo ? 40 : speed === 0 ? Math.min(base, 900) : speed === 1 ? base : Math.round(base * 0.5);
   mode = 'post';
 }
 
@@ -393,7 +418,8 @@ function updateBug(): void {
   ([0, 1] as const).forEach((t) => {
     const el = $(`s${t}`);
     (el.querySelector('.chip') as HTMLElement).style.background = css(teams[t].colors.jersey);
-    el.querySelector('.ab')!.textContent = teams[t].abbr + (t === user ? ' (you)' : '');
+    el.querySelector('.ab')!.textContent = teams[t].abbr + (t === user ? ' (you)' : net?.view.away[t] ? ' (AI)' : '');
+    (el as HTMLElement).title = net ? `${net.view.coaches[t] ?? ''}` : '';
     el.querySelector('.sc')!.textContent = String(s.score[t]);
     el.querySelector('.to')!.textContent = '■'.repeat(s.timeouts[t]) + '□'.repeat(RULES.timeoutsPerHalf - s.timeouts[t]);
     el.classList.toggle('poss', s.phase !== 'final' && (s.phase === 'kickoff' ? other(s.kicking) : s.possession) === t);
@@ -475,11 +501,10 @@ function showOffensePanel(twoPointPick = false): void {
   const panel = $('panel');
   mode = 'choose';
   showPlayClock();
-  const defense = (): DefDecision => coach.defense(game)!;
   if (s.phase === 'conversion' && !twoPointPick) {
     $('prompt').textContent = 'Touchdown! Choose the try';
     panel.innerHTML = `<div class="wide"><button class="act" data-act="pat">Kick extra point <kbd>[1]</kbd><small>1 point</small></button><button class="act" data-act="two">Go for two <kbd>[2]</kbd><small>One play from the 3</small></button></div>`;
-    bind({ pat: () => commit({ kind: 'patKick' }, defense()), two: () => showOffensePanel(true) }, (k) => (k === '1' ? 'pat' : k === '2' ? 'two' : null));
+    bind({ pat: () => submitOff({ kind: 'patKick' }), two: () => showOffensePanel(true) }, (k) => (k === '1' ? 'pat' : k === '2' ? 'two' : null));
     return;
   }
   $('prompt').textContent = s.phase === 'conversion' ? 'Two-point play' : s.down === 4 ? '4th down: go, punt or kick' : 'Call your play';
@@ -492,12 +517,12 @@ function showOffensePanel(twoPointPick = false): void {
   }
   panel.innerHTML = html;
   const acts: Record<string, () => void> = {
-    punt: () => commit({ kind: 'punt', timeout: wantTimeout }, defense()),
-    fg: () => commit({ kind: 'fieldGoal', timeout: wantTimeout }, defense()),
-    kneel: () => commit({ kind: 'kneel' }, defense()),
+    punt: () => submitOff({ kind: 'punt', timeout: wantTimeout }),
+    fg: () => submitOff({ kind: 'fieldGoal', timeout: wantTimeout }),
+    kneel: () => submitOff({ kind: 'kneel' }),
     timeout: () => { wantTimeout = !wantTimeout; showOffensePanel(twoPointPick); },
   };
-  for (const p of plays) acts[`p:${p.id}`] = () => commit({ kind: 'play', playId: p.id, timeout: wantTimeout }, defense());
+  for (const p of plays) acts[`p:${p.id}`] = () => submitOff({ kind: 'play', playId: p.id, timeout: wantTimeout });
   bind(acts, (k) => {
     const n = Number(k);
     if (n >= 1 && n <= plays.length) return `p:${plays[n - 1].id}`;
@@ -519,7 +544,7 @@ function showDefensePanel(): void {
     + (tb ? `<div class="wide">${tb}</div>` : '');
   const acts: Record<string, () => void> = { timeout: () => { wantTimeout = !wantTimeout; showDefensePanel(); } };
   for (const f of DEFENSE_FRONTS) acts[`f:${f.id}`] = () => { frontId = f.id; setStatic(); showDefensePanel(); };
-  for (const c of DEFENSE_SCHEMES) acts[`d:${c.id}`] = () => commit(pendingOff!, { frontId, callId: c.id, timeout: wantTimeout });
+  for (const c of DEFENSE_SCHEMES) acts[`d:${c.id}`] = () => submitDef({ frontId, callId: c.id, timeout: wantTimeout });
   bind(acts, (k) => {
     const n = Number(k);
     if (n >= 1 && n <= DEFENSE_SCHEMES.length) return `d:${DEFENSE_SCHEMES[n - 1].id}`;
@@ -527,6 +552,16 @@ function showDefensePanel(): void {
     if (fi >= 0) return `f:${DEFENSE_FRONTS[fi].id}`;
     return k === 't' ? 'timeout' : null;
   });
+}
+
+/** A call made by the person at this screen. Offline it runs at once; online it goes to the server, hidden until the snap. */
+function submitOff(off: OffDecision): void {
+  if (net) void sendCall(off);
+  else commit(off, coach.defense(game)!);
+}
+function submitDef(def: DefDecision): void {
+  if (net) void sendCall(def);
+  else commit(pendingOff!, def);
 }
 
 function bind(acts: Record<string, () => void>, keys: (k: string) => string | null): void {
@@ -575,9 +610,10 @@ function renderSideline(): void {
       + `<div class="sl-field"><div class="t">Fourth downs and tries</div>${seg('agg', plan.aggression, [[0, 'Conservative'], [1, 'Normal'], [2, 'Aggressive']])}</div>`
       + `<div class="sl-field"><div class="t">Rest starters below ${game.subThreshold[user]}% energy</div>${seg('thr', game.subThreshold[user], [[0, 'Never'], [35, '35%'], [55, '55%'], [70, '70%']])}</div>`
       + `<p class="sl-note">A tired player is slower. A resting starter returns once he has recovered 20 points above the line.</p>`;
-    body.querySelectorAll<HTMLElement>('[data-bias]').forEach((el) => el.addEventListener('click', () => { plan.passBias = Number(el.dataset.bias); renderSideline(); }));
-    body.querySelectorAll<HTMLElement>('[data-agg]').forEach((el) => el.addEventListener('click', () => { plan.aggression = Number(el.dataset.agg); renderSideline(); }));
-    body.querySelectorAll<HTMLElement>('[data-thr]').forEach((el) => el.addEventListener('click', () => { game.manage({ kind: 'threshold', team: user, value: Number(el.dataset.thr) }); renderSideline(); }));
+    const savePlan = (): void => { if (net) void netRequest(() => online.plan(net!.token, net!.pin, plan, net!.received)); renderSideline(); };
+    body.querySelectorAll<HTMLElement>('[data-bias]').forEach((el) => el.addEventListener('click', () => { plan.passBias = Number(el.dataset.bias); savePlan(); }));
+    body.querySelectorAll<HTMLElement>('[data-agg]').forEach((el) => el.addEventListener('click', () => { plan.aggression = Number(el.dataset.agg); savePlan(); }));
+    body.querySelectorAll<HTMLElement>('[data-thr]').forEach((el) => el.addEventListener('click', () => manage({ kind: 'threshold', team: user, value: Number(el.dataset.thr) })));
     return;
   }
   const ids = game.depth[user][sidelineGroup];
@@ -598,9 +634,18 @@ function renderSideline(): void {
     const j = i + d;
     if (j < 0 || j >= order.length) return;
     [order[i], order[j]] = [order[j], order[i]];
-    game.manage({ kind: 'depth', team: user, group: sidelineGroup, order });
-    renderSideline();
+    manage({ kind: 'depth', team: user, group: sidelineGroup, order });
   }));
+}
+
+/** A sideline change. Online it goes through the server so both browsers apply it in the same order. */
+function manage(action: ManageAction): void {
+  if (net) {
+    void netRequest(() => online.manage(net!.token, net!.pin, action as unknown as Record<string, unknown>, net!.received));
+    return;
+  }
+  game.manage(action);
+  renderSideline();
 }
 
 // ---------------------------------------------------------- playbook builder
@@ -637,14 +682,15 @@ function bookSummary(): void {
 
 // --------------------------------------------------------------- screens
 
-function show(id: 'title' | 'setup' | 'game' | 'final' | 'bookScreen'): void {
-  for (const s of ['title', 'setup', 'game', 'final', 'bookScreen']) $(s).classList.toggle('hidden', s !== id);
+function show(id: 'title' | 'setup' | 'game' | 'final' | 'bookScreen' | 'lobby'): void {
+  for (const s of ['title', 'setup', 'game', 'final', 'bookScreen', 'lobby']) $(s).classList.toggle('hidden', s !== id);
 }
 
 function showSetup(fresh = true): void {
   unlockAudio();
   mode = 'menu';
   closeSideline();
+  stopOnline();
   if (fresh) {
     seed = (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0;
     teams = exhibitionTeams(seed);
@@ -654,6 +700,7 @@ function showSetup(fresh = true): void {
   $('teams').querySelectorAll<HTMLElement>('[data-team]').forEach((el) => el.addEventListener('click', () => startGame(Number(el.dataset.team) as 0 | 1)));
   ($('clockToggle') as HTMLInputElement).checked = useClock;
   bookSummary();
+  renderOnlineBox();
   show('setup');
 }
 
@@ -696,9 +743,258 @@ function showFinal(): void {
     + row('Rushing', `${a.rushAtt} for ${a.rushYds}`, `${b.rushAtt} for ${b.rushYds}`)
     + row('Passing', `${a.passComp}/${a.passAtt} for ${a.passYds}`, `${b.passComp}/${b.passAtt} for ${b.passYds}`)
     + row('Sacks taken', a.sacksTaken, b.sacksTaken) + row('Turnovers', a.turnovers, b.turnovers);
-  $('finalMeta').textContent = `Seed ${seed} · ${game.log.length} decisions · game fingerprint ${gameHash(game)}`;
+  const official = net ? (net.sync === 'ok' && net.view.hash === gameHash(game) ? ' · matches the server' : ' · DOES NOT MATCH THE SERVER') : '';
+  $('finalMeta').textContent = `Seed ${seed} · ${game.log.length} decisions · game fingerprint ${gameHash(game)}${official}`;
+  if (net) window.clearInterval(net.timer);
   $('log').innerHTML = game.events.filter((e) => e.points[0] + e.points[1] > 0).map((e) => `<div><b>Q${e.quarter} ${Math.floor(e.clock / 60)}:${String(e.clock % 60).padStart(2, '0')}</b> ${e.text} <b>${e.scoreAfter[0]}–${e.scoreAfter[1]}</b></div>`).join('') || '<div>No scoring.</div>';
   show('final');
+}
+
+// ------------------------------------------------------------------ online
+
+const localTurn = (): number => game.log.filter((d) => !('manage' in d)).length;
+
+function onlineMessage(where: 'oMsg' | 'lobbyMsg', e: unknown): void {
+  $(where).textContent = e instanceof OnlineError ? e.message : 'Something went wrong.';
+}
+
+function renderOnlineBox(): void {
+  $('oMsg').textContent = '';
+  $('oSignedOut').classList.toggle('hidden', !!session);
+  $('oSignedIn').classList.toggle('hidden', !session);
+  if (!session || !teams) return;
+  $('oWho').textContent = `Signed in as ${session.name}`;
+  $('oHostRow').innerHTML = teams.map((t, i) => `<button class="seg" data-host="${i}">Host as ${t.name}</button>`).join('');
+  $('oHostRow').querySelectorAll<HTMLElement>('[data-host]').forEach((el) => el.addEventListener('click', async () => {
+    try {
+      openLobby((await online.host(session!.token, Number(el.dataset.host) as 0 | 1, book)).room);
+    } catch (e) {
+      signedOutCheck(e);
+      onlineMessage('oMsg', e);
+    }
+  }));
+}
+
+function signedOutCheck(e: unknown): void {
+  if (e instanceof OnlineError && e.code === 'signed_out') {
+    session = null;
+    store.set('fnd.session.v1', null);
+    renderOnlineBox();
+  }
+}
+
+async function signIn(): Promise<void> {
+  const name = ($('oName') as HTMLInputElement).value;
+  const pin = ($('oPin') as HTMLInputElement).value;
+  try {
+    const r = await online.enter(name, pin);
+    session = { token: r.token, name: r.coach.name };
+    store.set('fnd.session.v1', session);
+    renderOnlineBox();
+  } catch (e) {
+    onlineMessage('oMsg', e);
+  }
+}
+
+async function joinByPin(): Promise<void> {
+  if (!session) return;
+  try {
+    openLobby((await online.join(session.token, ($('oJoinPin') as HTMLInputElement).value.trim(), book)).room);
+  } catch (e) {
+    signedOutCheck(e);
+    onlineMessage('oMsg', e);
+  }
+}
+
+function openLobby(view: RoomView): void {
+  stopOnline();
+  net = { token: session!.token, pin: view.pin, view, queue: [...view.log], received: view.logSize, timer: 0, busy: false, sync: 'ok' };
+  net.timer = window.setInterval(() => void poll(), turbo ? 120 : 1000);
+  $('lobbyMsg').textContent = '';
+  if (view.state === 'lobby') {
+    show('lobby');
+    renderLobby();
+  } else enterOnlineGame();
+}
+
+function stopOnline(): void {
+  if (!net) return;
+  window.clearInterval(net.timer);
+  net = null;
+}
+
+function renderLobby(): void {
+  if (!net) return;
+  const v = net.view;
+  const lobbyTeams = exhibitionTeams(v.seed);
+  $('lobbyPin').textContent = v.pin;
+  $('lobbySeats').innerHTML = lobbyTeams.map((t, i) => `<div class="team-card seat${i === v.you ? ' me' : ''}"><div class="swatch" style="background:linear-gradient(90deg, ${css(t.colors.jersey)} 0 60%, ${css(t.colors.trim)} 60% 80%, ${css(t.colors.helmet)} 80%)"></div><div class="nm">${t.name} ${t.mascot}</div><div class="coach${v.coaches[i] ? '' : ' empty'}">${v.coaches[i] ? `${v.coaches[i]}${i === v.you ? ' (you)' : ''}` : 'Waiting for a coach…'}</div></div>`).join('');
+  const ready = !!v.coaches[0] && !!v.coaches[1];
+  const start = $('lobbyStart') as HTMLButtonElement;
+  start.classList.toggle('hidden', !v.isHost);
+  start.disabled = !ready;
+  start.style.opacity = ready ? '1' : '0.4';
+  $('lobbyHelp').textContent = v.isHost
+    ? (ready ? 'Both coaches are here. Start when you are ready.' : 'Tell the other coach to sign in, type this PIN and press Join.')
+    : 'You are in. Waiting for the host to start the game.';
+}
+
+/** Every reply carries the room, so every reply is also a poll. */
+async function netRequest(fn: () => Promise<{ room: RoomView }>): Promise<boolean> {
+  if (!net) return false;
+  const mine = net;
+  try {
+    const r = await fn();
+    if (net !== mine) return false;
+    takeView(r.room);
+    return true;
+  } catch (e) {
+    if (net !== mine) return false;
+    if (e instanceof OnlineError && e.code === 'stale') return false;
+    if (mode === 'menu') onlineMessage('lobbyMsg', e);
+    else if (e instanceof OnlineError && e.code !== 'offline') console.warn('online', e.code, e.message);
+    return false;
+  }
+}
+
+async function poll(): Promise<void> {
+  if (!net || net.busy) return;
+  net.busy = true;
+  const mine = net;
+  await netRequest(() => online.game(mine.token, mine.pin, mine.received));
+  mine.busy = false;
+}
+
+function takeView(view: RoomView): void {
+  if (!net) return;
+  const was = net.view.state;
+  // Two replies can overlap; only take the entries that continue from what this browser already has.
+  const start = view.logSize - view.log.length;
+  if (start <= net.received && view.logSize > net.received) {
+    const fresh = view.log.slice(net.received - start);
+    net.queue.push(...fresh);
+    net.received += fresh.length;
+  }
+  // An older reply must not replace a newer picture of the room.
+  if (view.logSize >= net.view.logSize) net.view = view;
+  if (net.view.state === 'lobby') return renderLobby();
+  if (was === 'lobby' || mode === 'menu') return enterOnlineGame();
+  if (mode === 'choose' || mode === 'wait') {
+    clockLeft = Math.max(0, net.view.deadlineInMs);
+    updateBug();
+    pump();
+  }
+}
+
+/** Builds the local copy of the game. A game already under way is caught up without animation. */
+function enterOnlineGame(): void {
+  if (!net) return;
+  const v = net.view;
+  unlockAudio();
+  seed = v.seed;
+  teams = exhibitionTeams(seed);
+  user = v.you;
+  coach = new AutoCoach(seed, [v.plan, v.plan]);
+  const catchUp = net.queue.length > 1 ? net.queue.splice(0, net.queue.length) : [];
+  game = replayGame(seed, teams, catchUp, { books: v.books });
+  lastQuarter = game.state.quarter;
+  kick = null;
+  viewSim = null;
+  frontId = DEFENSE_FRONTS[0].id;
+  scene.setTeams(teams);
+  show('game');
+  setStatic();
+  scene.snapCamera(spot.x);
+  updateBug();
+  $('banner').className = '';
+  $('banner').innerHTML = `${v.coaches[0] ?? ''} (${teams[0].abbr}) against ${v.coaches[1] ?? ''} (${teams[1].abbr})<small>You are coaching the ${teams[user].name} ${teams[user].mascot}. Game PIN ${v.pin}.</small>`;
+  $('banner').classList.remove('hidden');
+  setPanelWaiting(catchUp.length ? 'Rejoining the game' : 'Kickoff');
+  timer = 1800;
+  mode = 'post';
+}
+
+/** Between plays online: show what the server has resolved, or ask for this sideline's call. */
+function onlineNext(): void {
+  if (!net) return;
+  updateBug();
+  setStatic();
+  wantTimeout = false;
+  mode = 'wait';
+  if (net.queue.length) return pump();
+  showOnlinePanel();
+}
+
+function showOnlinePanel(): void {
+  if (!net || game.state.phase === 'final' || game.state.phase === 'kickoff') return;
+  const v = net.view;
+  if (v.turn !== localTurn()) {
+    setPanelWaiting('Waiting for the server');
+    return;
+  }
+  clockOn = true;
+  clockLeft = Math.max(0, v.deadlineInMs);
+  if (v.mine) {
+    mode = 'wait';
+    setPanelWaiting('Your call is in. Waiting for the other sideline…');
+    return;
+  }
+  if (game.state.possession === user) showOffensePanel();
+  else showDefensePanel();
+}
+
+async function sendCall(call: OffDecision | DefDecision): Promise<void> {
+  if (!net) return;
+  const mine = net;
+  mode = 'wait';
+  keyHandler = null;
+  $('pclock').classList.add('hidden');
+  setPanelWaiting('Your call is in. Waiting for the other sideline…');
+  const ok = await netRequest(() => online.call(mine.token, mine.pin, localTurn(), call, mine.received));
+  // A refused call (the clock ran out first, say) simply leaves the server's result to arrive by polling.
+  if (!ok && net === mine && mode === 'wait' && !mine.queue.length && mine.view.turn === localTurn() && !mine.view.mine) showOnlinePanel();
+}
+
+/** Applies what the server has resolved. Sideline changes apply at once; a play is shown, then the next waits its turn. */
+function pump(): void {
+  if (!net || (mode !== 'choose' && mode !== 'wait')) return;
+  while (net.queue.length) {
+    const entry = net.queue.shift()!;
+    if ('manage' in entry) {
+      game.manage(entry.manage);
+      if (sidelineOpen) renderSideline();
+      continue;
+    }
+    closeSideline();
+    $('banner').classList.add('hidden');
+    $('calls').classList.add('hidden');
+    if (game.state.phase === 'kickoff') {
+      const k = game.state.kicking;
+      const from = game.state.kickFrom;
+      setStatic();
+      setPanelWaiting('Kickoff');
+      game.begin(null, null);
+      game.tick();
+      const e = game.lastEvent!;
+      startKick(k, from, Math.min(from + e.yards, 104), CY_YD, e);
+    } else {
+      commit(entry.off!, entry.def!);
+    }
+    checkSync();
+    return;
+  }
+  if (mode === 'wait' && game.state.phase !== 'final' && $('panel').querySelector('[data-act]') === null) showOnlinePanel();
+}
+
+/** Once this browser has everything the server has resolved, the two must agree exactly. */
+function checkSync(): void {
+  if (!net || net.queue.length || game.log.length !== net.view.logSize) return;
+  // The play just begun is still being drawn here, so compare a finished copy built from the same log.
+  const probe = replayGame(seed, teams, game.log, { books: net.view.books });
+  if (gameHash(probe) !== net.view.hash) {
+    net.sync = 'bad';
+    console.error('out of sync with the server', gameHash(probe), net.view.hash);
+  }
 }
 
 // ---------------------------------------------------------------- wiring
@@ -719,6 +1015,16 @@ $('bookSave').addEventListener('click', () => {
 $('clockToggle').addEventListener('change', (ev) => {
   useClock = (ev.target as HTMLInputElement).checked;
   store.set('fnd.clock.v1', useClock);
+});
+$('oEnter').addEventListener('click', () => void signIn());
+$('oPin').addEventListener('keydown', (ev) => { if ((ev as KeyboardEvent).key === 'Enter') void signIn(); });
+$('oOut').addEventListener('click', () => { session = null; store.set('fnd.session.v1', null); renderOnlineBox(); });
+$('oJoin').addEventListener('click', () => void joinByPin());
+$('oJoinPin').addEventListener('keydown', (ev) => { if ((ev as KeyboardEvent).key === 'Enter') void joinByPin(); });
+$('lobbyStart').addEventListener('click', () => { if (net) void netRequest(() => online.start(net!.token, net!.pin)); });
+$('lobbyLeave').addEventListener('click', () => {
+  if (net) void online.leave(net.token, net.pin).catch(() => undefined);
+  showSetup(false);
 });
 $('sidelineBtn').addEventListener('click', openSideline);
 $('slClose').addEventListener('click', closeSideline);
@@ -751,7 +1057,9 @@ window.addEventListener('keydown', (ev) => {
 /** Debug hooks used by the browser checks. */
 (window as unknown as Record<string, unknown>).__fnd = {
   selftest: (s: number): string => gameHash(simulateGame(s, exhibitionTeams(s))),
-  state: () => ({ mode, phase: game?.state.phase, score: game?.state.score, quarter: game?.state.quarter, clock: game?.state.clock, sidelineOpen, playClock: clockOn ? Math.ceil(clockLeft / 1000) : null, book }),
+  state: () => ({ mode, phase: game?.state.phase, score: game?.state.score, quarter: game?.state.quarter, clock: game?.state.clock, sidelineOpen, playClock: clockOn ? Math.ceil(clockLeft / 1000) : null, book,
+    online: net ? { pin: net.pin, state: net.view.state, turn: net.view.turn, you: net.view.you, sync: net.sync, serverHash: net.view.hash, localHash: game ? gameHash(game) : '', queued: net.queue.length, serverScore: net.view.score, mine: !!net.view.mine } : null }),
   setSpeed: (n: number) => { speed = n; },
+  setTurbo: (on: boolean) => { turbo = on; },
   setPlayClock: (on: boolean) => { useClock = on; clockOn = clockOn && on; },
 };
