@@ -16,7 +16,7 @@ const ALLOWED: Record<string, string[]> = {
   core: [],
   'football-ai': ['core'],
   'match-sim': ['core', 'football-ai'],
-  online: ['core', 'football-ai', 'match-sim'],
+  online: ['core', 'football-ai', 'match-sim', 'league'],
 };
 /** Packages that must be deterministic. The online package is allowed a clock and real randomness. */
 const SIM_PACKAGES = ['core', 'football-ai', 'match-sim', 'league'];

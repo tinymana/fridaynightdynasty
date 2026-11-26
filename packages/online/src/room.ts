@@ -4,6 +4,7 @@ import {
 } from '@fnd/core';
 import { DEFAULT_PLAN } from '@fnd/football-ai';
 import { AutoCoach, Game, gameHash, replayGame, type LoggedDecision } from '@fnd/match-sim';
+import { leagueTeams, type RoomLeague } from './shared';
 
 /**
  * A head-to-head game room. Pure state transitions: no clock, no storage, no network.
@@ -23,6 +24,9 @@ export interface Coach {
   id: string;
   name: string;
 }
+
+/** The seat of a school no coach runs. It is always "away", so the AI makes its calls at once. */
+export const AI_COACH: Coach = { id: '@ai', name: 'AI coach' };
 
 export interface Room {
   pin: string;
@@ -57,6 +61,8 @@ export interface Room {
   voice?: VoiceBox;
   /** Set once the final score has been written to both coaches' career records. */
   recorded?: boolean;
+  /** Present when this is a dynasty league game: which league, week and schools. Team 0 is the home school. */
+  league?: RoomLeague;
 }
 
 /** A finished game, ready to be added to the two coaches' career records. */
@@ -64,6 +70,8 @@ export interface GameResult {
   /** Coach ids by team index. */
   coaches: [string, string];
   score: [number, number];
+  /** The league game this was, if it was one. */
+  league?: RoomLeague;
 }
 
 /** Hands over the result of a finished game exactly once. */
@@ -73,7 +81,7 @@ export function takeResult(room: Room): GameResult | null {
   const coaches: [string, string] = ['', ''];
   coaches[room.hostTeam] = room.host.id;
   coaches[room.hostTeam === 0 ? 1 : 0] = room.guest.id;
-  return { coaches, score: [room.score[0], room.score[1]] };
+  return room.league ? { coaches, score: [room.score[0], room.score[1]], league: room.league } : { coaches, score: [room.score[0], room.score[1]] };
 }
 
 export interface VoiceSignal {
@@ -163,6 +171,35 @@ export function createRoom(pin: string, host: Coach, team: 0 | 1, bring: Bringin
   return room;
 }
 
+/**
+ * A room for a dynasty league game. The home school is team 0. With `vsAi` the other school has no coach:
+ * the game starts at once and the AI makes that side's calls.
+ */
+export function createLeagueRoom(pin: string, host: Coach, team: 0 | 1, bring: Bringing, seed: number, league: RoomLeague, setup: GameSetup, vsAi: boolean, now: number): Room {
+  const room = createRoom(pin, host, team, bring, seed, now);
+  room.league = league;
+  room.setup = setup;
+  if (vsAi) {
+    room.guest = AI_COACH;
+    room.state = 'playing';
+    room.seen = [now, now];
+    room.seen[other(team)] = 0;
+    settle(room, buildGame(room), now);
+  }
+  return room;
+}
+
+/** The second coach of a league game sits down: the game starts as soon as both are there. */
+export function joinLeagueRoom(room: Room, guest: Coach, bring: Bringing, now: number): void {
+  if (room.state === 'lobby' && room.host.id !== guest.id && !room.guest) {
+    joinRoom(room, guest, bring, now);
+    room.state = 'playing';
+    room.log = [];
+    room.seen = [now, now];
+    settle(room, buildGame(room), now);
+  } else joinRoom(room, guest, bring, now);
+}
+
 export function joinRoom(room: Room, guest: Coach, bring: Bringing, now: number): void {
   if (room.host.id === guest.id || room.guest?.id === guest.id) {
     touch(room, guest.id, now);
@@ -189,7 +226,7 @@ export function touch(room: Room, coachId: string, now: number): void {
 }
 
 function buildGame(room: Room): Game {
-  return replayGame(room.seed, exhibitionTeams(room.seed), room.log, { books: room.books, plays: room.designs?.plays, defenses: room.designs?.defenses, setup: room.setup });
+  return replayGame(room.seed, room.league ? leagueTeams(room.league) : exhibitionTeams(room.seed), room.log, { books: room.books, plays: room.designs?.plays, defenses: room.designs?.defenses, setup: room.setup });
 }
 
 /** Records what the next decision is. */
@@ -384,6 +421,8 @@ export interface RoomView {
   /** Both coaches' designs. Each browser needs them to redraw the game. */
   designs: Designs;
   setup: GameSetup;
+  /** Set for a dynasty league game: the browser builds the two schools from it. */
+  league: RoomLeague | null;
   turn: number;
   logSize: number;
   /** Log entries from the index the client asked for. */
@@ -412,7 +451,7 @@ export function viewRoom(room: Room, coachId: string, have: number, now: number)
   coaches[other(room.hostTeam)] = room.guest?.name ?? null;
   const iAmOffense = you === room.need.offense;
   return {
-    pin: room.pin, state: room.state, you, isHost: room.host.id === coachId, coaches, seed: room.seed, books: room.books, designs: room.designs ?? { plays: [[], []], defenses: [[], []] }, setup: cleanSetup(room.setup),
+    pin: room.pin, state: room.state, you, isHost: room.host.id === coachId, coaches, seed: room.seed, books: room.books, designs: room.designs ?? { plays: [[], []], defenses: [[], []] }, setup: cleanSetup(room.setup), league: room.league ?? null,
     turn: room.turn, logSize: room.log.length, log: room.log.slice(clamp(Math.trunc(have) || 0, 0, room.log.length)),
     need: room.need, submitted: { off: !!room.pending.off, def: !!room.pending.def },
     mine: (iAmOffense ? room.pending.off : room.pending.def) ?? null,

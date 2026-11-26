@@ -245,33 +245,56 @@ export function simulate(d: Dynasty, week: number, home: number, away: number): 
 /** The championship cannot end level: a tie goes to the home team, which earned first place. */
 export const winnerOf = (g: GameResult): number => (g.score[1] > g.score[0] ? g.away : g.home);
 
+/** True when every game of the current week has a result. */
+export function weekComplete(d: Dynasty): boolean {
+  return d.week <= REGULAR_WEEKS && weekGames(d).every(([h, a]) => d.results.some((g) => g.week === d.week && g.home === h && g.away === a));
+}
+
+/** Adds one result for the current week. The game must be on this week's schedule and not already played. */
+export function addResult(d: Dynasty, r: GameResult): Dynasty {
+  if (d.week > REGULAR_WEEKS) throw new Error('the season is over');
+  if (r.week !== d.week || !weekGames(d).some(([h, a]) => h === r.home && a === r.away)) throw new Error('that result is not for this week\'s game');
+  if (d.results.some((g) => g.week === r.week && g.home === r.home && g.away === r.away)) throw new Error('that game has already been played');
+  return { ...d, results: [...d.results, { week: r.week, home: r.home, away: r.away, score: [r.score[0], r.score[1]] }] };
+}
+
+/** Moves on to the next week once every game is in. After the championship it writes the season into the history. */
+export function closeWeek(d: Dynasty): Dynasty {
+  if (!weekComplete(d)) throw new Error('this week still has games to play');
+  const next: Dynasty = { ...d, week: d.week + 1, history: [...d.history] };
+  if (next.week > REGULAR_WEEKS) {
+    const final = d.results[d.results.length - 1];
+    const champion = winnerOf(final);
+    const table = standings(d.results);
+    next.history.push({ year: d.year, champion, runnerUp: champion === final.home ? final.away : final.home, record: recordOf(d.results, d.user), place: table.findIndex((r) => r.school === d.user) + 1 });
+  }
+  return next;
+}
+
+/** One school's wins, losses and ties in a season, the championship game included (it always has a winner). */
+export function recordOf(results: readonly GameResult[], school: number): [number, number, number] {
+  const rec: [number, number, number] = [0, 0, 0];
+  for (const g of results) {
+    if (g.home !== school && g.away !== school) continue;
+    const us = g.home === school ? g.score[0] : g.score[1];
+    const them = g.home === school ? g.score[1] : g.score[0];
+    if (g.week === REGULAR_WEEKS) rec[winnerOf(g) === school ? 0 : 1]++;
+    else rec[us > them ? 0 : us < them ? 1 : 2]++;
+  }
+  return rec;
+}
+
 /**
  * Plays out the current week. `mine` is the result of the coach's own game when he played it;
  * leave it out to have the AI coach his team too. Returns a new dynasty; the input is not changed.
  */
 export function playWeek(d: Dynasty, mine?: GameResult): Dynasty {
   if (d.week > REGULAR_WEEKS) throw new Error('the season is over');
-  const games = weekGames(d);
   const own = userGame(d);
   if (mine && (!own || mine.home !== own[0] || mine.away !== own[1] || mine.week !== d.week)) throw new Error('that result is not for this week\'s game');
-  const results = [...d.results];
-  for (const [h, a] of games) results.push(mine && own && h === own[0] && a === own[1] ? { week: d.week, home: h, away: a, score: [mine.score[0], mine.score[1]] } : simulate(d, d.week, h, a));
-  const next: Dynasty = { ...d, results, week: d.week + 1, history: [...d.history] };
-  if (next.week > REGULAR_WEEKS) {
-    const final = results[results.length - 1];
-    const champion = winnerOf(final);
-    const table = standings(results);
-    const rec: [number, number, number] = [0, 0, 0];
-    for (const g of results) {
-      if (g.home !== d.user && g.away !== d.user) continue;
-      const us = g.home === d.user ? g.score[0] : g.score[1];
-      const them = g.home === d.user ? g.score[1] : g.score[0];
-      if (g.week === REGULAR_WEEKS) rec[champion === d.user ? 0 : 1]++;
-      else rec[us > them ? 0 : us < them ? 1 : 2]++;
-    }
-    next.history.push({ year: d.year, champion, runnerUp: champion === final.home ? final.away : final.home, record: rec, place: table.findIndex((r) => r.school === d.user) + 1 });
-  }
-  return next;
+  let next = d;
+  for (const [h, a] of weekGames(d)) next = addResult(next, mine && own && h === own[0] && a === own[1] ? mine : simulate(d, d.week, h, a));
+  return closeWeek(next);
 }
 
 /** Starts the next season: winners gain prestige, everyone drifts toward the middle, and a little luck shuffles the order. */
