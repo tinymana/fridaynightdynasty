@@ -17,6 +17,8 @@ export const CALL_MS = 45000;
 export const KICK_MS = 20000;
 /** A coach not heard from for this long is away: the AI calls his plays so the other coach is not kept waiting. */
 export const AWAY_MS = 12000;
+/** How long the offense has at the line to look at the front and change the play. */
+export const LINE_MS = 8000;
 /** A guest who stops checking in to the lobby for this long has left. */
 export const LOBBY_TIMEOUT_MS = 20000;
 /** Both coaches of a league game must have checked in this recently for it to start. */
@@ -48,6 +50,10 @@ export interface Room {
   turn: number;
   /** Calls made for the current turn. Never sent to the other coach before the snap. */
   pending: { off?: OffDecision; def?: DefDecision };
+  /** Both calls are in and the offense is at the line: it sees the front and may change the play until `until`. */
+  line?: { until: number; snap?: boolean };
+  /** The offense asked to go to the line with its call (`look: true`). A browser that does not know the line never asks. */
+  look?: boolean;
   /** On a kickoff, `offense` is the kicking team and only that coach has a call to make. */
   need: { phase: 'scrimmage' | 'conversion' | 'kickoff' | 'none'; offense: 0 | 1 };
   /** Quarter length and weather, chosen by the host. Absent in rooms made before this existed. */
@@ -242,6 +248,8 @@ function settle(room: Room, game: Game, now: number): void {
   room.score = [game.state.score[0], game.state.score[1]];
   room.hash = gameHash(game);
   room.pending = {};
+  delete room.line;
+  delete room.look;
   if (game.state.phase === 'final') {
     room.state = 'done';
     room.need = { phase: 'none', offense: 0 };
@@ -307,8 +315,28 @@ export function submitCall(room: Room, coachId: string, turn: number, call: unkn
   const team = teamOf(room, coachId);
   if (turn !== room.turn) throw new RoomError('stale', 'That play has already been run.', 409);
   room.seen[team] = now;
+  if (room.line) {
+    // At the line only the offense has anything left to say: snap it, or change the play.
+    const c = (call ?? {}) as Record<string, unknown>;
+    const off = room.pending.off;
+    if (team === room.need.offense && !room.line.snap && off?.kind === 'play') {
+      if (c['kind'] === 'audible') {
+        const to = c['playId'];
+        if (typeof to !== 'string' || !room.books[team].includes(to)) throw new RoomError('bad_call', 'That play is not in your playbook.');
+        const game = buildGame(room);
+        if (game.playOf(team, to).formation !== game.playOf(team, off.playId).formation) throw new RoomError('bad_call', 'An audible keeps the formation that lined up.');
+        if (to !== off.playId) off.audible = to;
+        room.line.snap = true;
+      } else if (c['kind'] === 'snap') room.line.snap = true;
+    }
+    resolveIfReady(room, now);
+    return;
+  }
   if (team === room.need.offense) {
-    if (!room.pending.off) room.pending.off = cleanOffense(room, team, call);
+    if (!room.pending.off) {
+      room.pending.off = cleanOffense(room, team, call);
+      if (room.pending.off.kind === 'play' && (call as Record<string, unknown> | null)?.['look'] === true) room.look = true;
+    }
   } else if (room.need.phase === 'kickoff') throw new RoomError('bad_call', 'The kicking team makes this call.');
   else if (!room.pending.def) room.pending.def = cleanDefense(room, team, call);
   resolveIfReady(room, now);
@@ -326,15 +354,25 @@ export function resolveIfReady(room: Room, now: number): boolean {
   if (!ready) return false;
   const game = buildGame(room);
   const ai = new AutoCoach((room.seed + room.log.length) >>> 0, room.plans);
-  let offCall = room.pending.off ?? ai.offense(game)!;
   let defCall = kick ? null : room.pending.def ?? ai.defense(game)!;
+  // A coach who called a play and is still here walks his offense to the line first.
+  if (!kick && room.look && room.pending.off?.kind === 'play' && !offAway && defCall) {
+    if (!room.line) {
+      room.pending.def = defCall;
+      room.line = { until: now + LINE_MS };
+      room.updatedAt = now;
+      return false;
+    }
+    if (!room.line.snap && now < room.line.until) return false;
+  }
+  let offCall = room.pending.off ?? ai.audible(game, ai.offense(game), defCall)!;
   try {
     game.begin(offCall, defCall);
   } catch {
     // A call that became illegal (it cannot, but the server never trusts that): the AI calls the play instead.
     const fresh = buildGame(room);
     offCall = ai.offense(fresh)!;
-    defCall = ai.defense(fresh)!;
+    defCall = ai.defense(fresh);
     fresh.begin(offCall, defCall);
     while (!fresh.tick()) { /* step */ }
     settle(room, fresh, now);
@@ -439,6 +477,8 @@ export interface RoomView {
   submitted: { off: boolean; def: boolean };
   /** Your own call for this turn, if made. */
   mine: OffDecision | DefDecision | null;
+  /** The offense is at the line. Only the offense is shown the front. */
+  line: { front: string | null; msLeft: number } | null;
   deadlineInMs: number;
   away: [boolean, boolean];
   score: [number, number];
@@ -462,7 +502,8 @@ export function viewRoom(room: Room, coachId: string, have: number, now: number)
     turn: room.turn, logSize: room.log.length, log: room.log.slice(clamp(Math.trunc(have) || 0, 0, room.log.length)),
     need: room.need, submitted: { off: !!room.pending.off, def: !!room.pending.def },
     mine: (iAmOffense ? room.pending.off : room.pending.def) ?? null,
-    deadlineInMs: room.state === 'playing' ? room.deadline - now : 0,
+    line: room.line && room.state === 'playing' ? { front: iAmOffense ? room.pending.def?.frontId ?? null : null, msLeft: Math.max(0, room.line.until - now) } : null,
+    deadlineInMs: room.state === 'playing' ? (room.line ? Math.max(0, room.line.until - now) : room.deadline - now) : 0,
     away: [room.state === 'playing' && now - room.seen[0] > AWAY_MS, room.state === 'playing' && now - room.seen[1] > AWAY_MS],
     score: room.score, hash: room.hash, plan: room.plans[you],
     voice: [inVoice(room, 0, now), inVoice(room, 1, now)],

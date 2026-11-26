@@ -2,6 +2,37 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.10.0",
+      "date": "2026-11-26",
+      "title": "Audibles and ball-carrier moves",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Audibles. Call your play and your offense walks to the line. The defense shows its front (never its call), and you can snap it or change to any other play from the same formation."
+        },
+        {
+          "tag": "new",
+          "text": "Audibles work online too. Both calls go in, then the offense gets eight seconds at the line. The other coach sees only that you are at the line, and his call is locked."
+        },
+        {
+          "tag": "new",
+          "text": "The AI quarterback checks at the line as well: out of a run into a loaded box, or into a run against a light one. It happens a few times a game."
+        },
+        {
+          "tag": "new",
+          "text": "Ball-carrier moves. A missed tackle is now a stiff arm, a truck, a juke or a spin, picked by the runner's power and agility, and a runner who falls forward for extra yards dives. Backs, receivers after the catch, and returners all have them, with a callout on the field."
+        },
+        {
+          "tag": "tune",
+          "text": "Changing the play at the line is noisy: a false start is almost twice as likely on an audible."
+        },
+        {
+          "tag": "note",
+          "text": "Moves name what already happened on a broken tackle. They do not change how often tackles are broken."
+        }
+      ]
+    },
+    {
       "version": "0.9.0",
       "date": "2026-11-26",
       "title": "Returns: kicks, punts, picks and fumbles",
@@ -497,14 +528,14 @@
       "text": "Interception, fumble, kickoff and punt returns played out on the field with blocks and tackles. In the game now."
     },
     {
-      "status": "next",
+      "status": "testing",
       "title": "Ball-carrier moves",
-      "text": "Stiff arms, jukes, spins and dives for backs and receivers, driven by their ratings."
+      "text": "Stiff arms, trucks, jukes, spins and dives for backs, receivers and returners, driven by their ratings. Playable now."
     },
     {
-      "status": "next",
+      "status": "testing",
       "title": "Audibles",
-      "text": "Change the play at the line after you see the defense. The special teams tab is already in."
+      "text": "Change the play at the line after you see the defensive front, solo and online. Playable now."
     },
     {
       "status": "next",

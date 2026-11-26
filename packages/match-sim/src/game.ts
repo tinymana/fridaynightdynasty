@@ -5,7 +5,7 @@ import {
   type DefDecision, type GamePlan, type GameSetup, type Group, type KickStyle, type PenaltyKind, type ManageAction, type OffDecision, type PlayEvent, type PlayFlags, type PlayType,
   type Player, type Situation, type Slot, type Team,
 } from '@fnd/core';
-import { DEFAULT_PLAN, aiDefense, aiKickoff, aiOffense, fieldGoalDistance } from '@fnd/football-ai';
+import { DEFAULT_PLAN, aiAudible, aiDefense, aiKickoff, aiOffense, fieldGoalDistance } from '@fnd/football-ai';
 import { PlaySim, type PlayContext, type PlayResult } from './play';
 import { ReturnSim, kickoffReturnSetup, puntReturnSetup, type ReturnResult, type ReturnSetup } from './returns';
 import { blockOutcome, fieldGoalChance, patChance, resolvePunt, resolveStyledKickoff } from './special';
@@ -101,6 +101,8 @@ export class Game {
   /** The defense went for the block on the last snap and the offense ran a real play. */
   caughtBlocking = false;
   private calls: { off?: string; front?: string; def?: string } = {};
+  /** The offense changed the play at the line on this snap. */
+  private audibled = false;
   private lastSnap: { offense: 0 | 1; n: number; ctx: Omit<PlayContext, 'rng'> } | null = null;
 
   readonly setup: GameSetup;
@@ -258,11 +260,18 @@ export class Game {
     // (snapN is set at the top of begin.)
     // A call that is not allowed is refused whatever the officials do.
     if (off.kind === 'play' && !this.books[offTeam].includes(off.playId)) throw new Error(`play ${off.playId} is not in this team's playbook`);
+    const audible = off.kind === 'play' && off.audible !== undefined && off.audible !== off.playId ? off.audible : null;
+    if (off.kind === 'play' && audible !== null) {
+      if (!this.books[offTeam].includes(audible)) throw new Error(`play ${audible} is not in this team's playbook`);
+      if (this.playOf(offTeam, audible).formation !== this.playOf(offTeam, off.playId).formation) throw new Error('an audible keeps the formation that lined up');
+    }
+    this.audibled = audible !== null;
     // A flag before the snap: the call is thrown away and the down is replayed.
     if (s.phase === 'scrimmage' && off.kind !== 'kneel') {
       const roll = Rng.stream(this.seed, `flag:${n}`).range(0, 1);
-      if (roll < RULES.falseStartChance + RULES.offsideChance) {
-        this.deadBallFoul(roll < RULES.falseStartChance ? 'falseStart' : 'offside');
+      const jump = RULES.falseStartChance + (audible !== null ? RULES.audibleFalseStart : 0);
+      if (roll < jump + RULES.offsideChance) {
+        this.deadBallFoul(roll < jump ? 'falseStart' : 'offside');
         this.instant = true;
         return;
       }
@@ -313,7 +322,7 @@ export class Game {
     if (!def) throw new Error('defense decision required');
     if (!this.books[offTeam].includes(off.playId)) throw new Error(`play ${off.playId} is not in this team's playbook`);
 
-    const play = this.playOf(offTeam, off.playId);
+    const play = this.playOf(offTeam, audible ?? off.playId);
     const formation = formationOf(play);
     const called = this.defenseOf(other(offTeam), def);
     const front = called.front;
@@ -383,7 +392,7 @@ export class Game {
     const e: PlayEvent = {
       seq: this.events.length + 1, quarter: before.quarter, clock: before.clock, offense,
       down: before.down, distance: before.distance, yardLine: before.yardLine, type,
-      offCall: this.calls.off, defFront: this.calls.front, defCall: this.calls.def, yards, flags, points,
+      offCall: this.calls.off, defFront: this.calls.front, defCall: this.calls.def, yards, flags: this.audibled && (type === 'run' || type === 'pass') ? { ...flags, audible: true } : flags, points,
       scoreAfter: [this.state.score[0], this.state.score[1]], seconds, text, ...who,
     };
     this.events.push(e);
@@ -871,8 +880,11 @@ export function gameHash(game: Game): string {
 export class AutoCoach {
   private readonly rng: [Rng, Rng];
   readonly plans: [GamePlan, GamePlan];
+  /** Checks at the line draw from their own stream, so they never disturb the calls. */
+  private readonly lineRng: [Rng, Rng];
   constructor(seed: number, plans?: readonly [GamePlan, GamePlan]) {
     this.rng = [Rng.stream(seed, 'coach:0'), Rng.stream(seed, 'coach:1')];
+    this.lineRng = [Rng.stream(seed, 'line:0'), Rng.stream(seed, 'line:1')];
     this.plans = plans ? [{ ...plans[0] }, { ...plans[1] }] : [{ ...DEFAULT_PLAN }, { ...DEFAULT_PLAN }];
   }
   offense(game: Game): OffDecision | null {
@@ -880,6 +892,14 @@ export class AutoCoach {
     if (s.phase === 'kickoff') return { kind: 'kickoff', style: aiKickoff(s.quarter, s.clock, s.score[s.kicking] - s.score[other(s.kicking)]) };
     const t = s.possession;
     return aiOffense(game.situation(t), game.bookPlays(t), this.rng[t], this.plans[t]);
+  }
+  /** The quarterback's look at the line: the call, or the call with a check to a better play against the front shown. */
+  audible(game: Game, off: OffDecision | null, def: DefDecision | null): OffDecision | null {
+    if (!off || !def || off.kind !== 'play' || game.state.phase === 'kickoff') return off;
+    const t = game.state.possession;
+    if (!game.bookPlays(t).some((p) => p.id === off.playId)) return off;
+    const to = aiAudible(game.situation(t), game.playOf(t, off.playId), def.frontId, game.bookPlays(t), this.lineRng[t]);
+    return to ? { ...off, audible: to } : off;
   }
   defense(game: Game): DefDecision | null {
     if (game.state.phase === 'kickoff') return null;
@@ -893,7 +913,8 @@ export function simulateGame(seed: number, teams: readonly [Team, Team], opts: G
   const game = new Game(seed, teams, opts);
   const coach = new AutoCoach(seed, opts.plans);
   while (game.state.phase !== 'final') {
-    game.begin(coach.offense(game), coach.defense(game));
+    const def = coach.defense(game);
+    game.begin(coach.audible(game, coach.offense(game), def), def);
     while (!game.tick()) { /* step */ }
   }
   return game;

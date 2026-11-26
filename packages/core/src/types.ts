@@ -124,7 +124,8 @@ export interface DefScheme {
 }
 
 export type OffDecision =
-  | { kind: 'play'; playId: string; timeout?: boolean }
+  /** `audible`: the play changed to at the line, after seeing the defensive front. Same formation as the play called. */
+  | { kind: 'play'; playId: string; timeout?: boolean; audible?: string }
   | { kind: 'punt'; timeout?: boolean }
   | { kind: 'fieldGoal'; timeout?: boolean }
   | { kind: 'kneel' }
@@ -182,6 +183,8 @@ export interface PlayFlags {
   roughing?: boolean;
   /** An interception or fumble run back for a score. The points go to the defense. */
   defensiveTouchdown?: boolean;
+  /** The offense changed the play at the line. */
+  audible?: boolean;
   /** Set on a penalty event: which foul it was. */
   foul?: PenaltyKind;
 }

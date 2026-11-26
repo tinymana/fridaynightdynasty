@@ -121,6 +121,28 @@ export function aiOffense(s: Situation, book: readonly OffPlay[], rng: Rng, plan
   return { kind: 'play', playId: play.id, timeout };
 }
 
+/** Fronts that load the box, and the one that empties it. */
+const HEAVY_FRONTS: readonly string[] = ['52', '44'];
+const LIGHT_FRONTS: readonly string[] = ['nickel'];
+/** How often a quarterback who sees the wrong look gets out of the play. */
+export const AUDIBLE_RATE = 0.18;
+
+/**
+ * The check at the line. A run called into a loaded box becomes a quick or short pass; a pass called against
+ * a light box on a makeable down becomes a run. Only plays from the formation already lined up. Null: run the call.
+ */
+export function aiAudible(s: Situation, called: OffPlay, frontId: string, book: readonly OffPlay[], rng: Rng): string | null {
+  const same = book.filter((p) => p.formation === called.formation && p.id !== called.id);
+  let pool: OffPlay[] = [];
+  if (called.kind === 'run' && HEAVY_FRONTS.includes(frontId) && s.distance >= 5 && s.yardLine < 95) {
+    pool = same.filter((p) => p.kind === 'pass' && (p.tags.includes('quick') || p.tags.includes('short')));
+  } else if (called.kind === 'pass' && LIGHT_FRONTS.includes(frontId) && s.distance <= 6 && !(s.quarter === 4 && s.clock < 300 && s.scoreDiff < 0)) {
+    pool = same.filter((p) => p.kind === 'run');
+  }
+  if (!pool.length || !rng.chance(AUDIBLE_RATE)) return null;
+  return pool[rng.int(0, pool.length - 1)].id;
+}
+
 /** Kickoff call: onside when behind late, a squib to kill the last seconds of a half, deep otherwise. */
 export function aiKickoff(quarter: number, clock: number, lead: number): KickStyle {
   if (quarter >= 4 && lead < 0 && (clock <= 150 || (clock <= 300 && lead <= -9))) return 'onside';

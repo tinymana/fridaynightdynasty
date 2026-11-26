@@ -1,6 +1,6 @@
 import { FIELD_W, U, clamp, dist, yd, type Player, type Rng } from '@fnd/core';
 import { carrierTarget } from '@fnd/football-ai';
-import { speedOf } from './play';
+import { moveFor, speedOf, type CarrierMove } from './play';
 
 /**
  * A return: one man with the ball, his blockers, and the other team chasing him down.
@@ -65,6 +65,8 @@ export class ReturnSim {
   private readonly delay: number;
   private readonly tackleBonus: number;
   private stumbleUntil = 0;
+  /** Broken tackles on this return, for the broadcast. */
+  readonly moves: CarrierMove[] = [];
 
   constructor(setup: ReturnSetup) {
     this.rng = setup.rng;
@@ -177,6 +179,8 @@ export class ReturnSim {
         if (this.rng.chance(p)) return this.end(d, false);
         d.stunUntil = this.tick + 36;
         this.stumbleUntil = this.tick + 12;
+        // The returner runs toward smaller x, so a chaser at a smaller x is in front of him.
+        this.moves.push({ tick: this.tick, kind: moveFor(c.player, d.x <= c.x, this.tick), carrier: c.player, defender: d.player });
         // A missed tackle in traffic gets in the way of the men right behind it.
         for (const o of chasers) {
           if (o !== d && o.engaged < 0 && this.tick >= o.stunUntil && dist(o.x, o.y, d.x, d.y) < yd(4) && this.rng.chance(0.5)) o.stunUntil = this.tick + 24;

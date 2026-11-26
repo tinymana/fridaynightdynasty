@@ -71,7 +71,7 @@ try {
   await b.waitForSelector('#game:not(.hidden)');
   for (const p of [a, b]) await p.evaluate(() => window.__fnd.setSpeed(0));
 
-  let shot = false, rejoined = false, plays = 0, ownPlay = 0, ownDef = 0, blocks = 0;
+  let shot = false, rejoined = false, plays = 0, ownPlay = 0, ownDef = 0, blocks = 0, snaps = 0, audibles = 0;
   let pages = [a, b];
   for (let i = 0; i < 6000; i++) {
     const states = await Promise.all(pages.map(st));
@@ -82,7 +82,7 @@ try {
       const p = pages[k];
       const prompt = await p.$eval('#prompt', (e) => e.textContent);
       const acts = await p.$$eval('#panel [data-act]', (els) => els.map((e) => e.dataset.act));
-      let pick = acts.filter((x) => x.startsWith('p:') || x.startsWith('d:') || x.startsWith('m:') || x.startsWith('k:') || x === 'pat');
+      let pick = acts.filter((x) => x === 'snap' || x.startsWith('a:') || x.startsWith('p:') || x.startsWith('d:') || x.startsWith('m:') || x.startsWith('k:') || x === 'pat');
       if (acts.includes('block') && i % 4 === 0) { await p.click('#panel [data-act="block"]').catch(() => {}); blocks++; continue; }
       if (acts.includes('f:@custom') && i % 3 === 0) { await p.click('#panel [data-act="f:@custom"]').catch(() => {}); continue; }
       if (acts.includes('tab:@mine') && !acts.includes(`p:${mineId}`) && i % 2 === 0) { await p.click('#panel [data-act="tab:@mine"]').catch(() => {}); continue; }
@@ -95,6 +95,8 @@ try {
       await p.click(`#panel [data-act="${chosen}"]`).catch(() => {});
       plays++;
       if (chosen === `p:${mineId}`) ownPlay++;
+      if (chosen === 'snap') snaps++;
+      if (chosen.startsWith('a:')) audibles++;
       if (chosen.startsWith('m:')) ownDef++;
       if (!shot && k === 0) { await sleep(150); await p.screenshot({ path: `${out}/online-waiting.png` }); shot = true; }
     }
@@ -124,6 +126,8 @@ try {
   await pages[0].screenshot({ path: `${out}/online-final.png` });
   console.log('final score', sa.score, 'calls made', plays, 'designed plays called', ownPlay, 'designed defenses called', ownDef, 'block toggles', blocks);
   check('designed plays and defenses were called online', ownPlay > 3 && ownDef > 3);
+  console.log('snaps at the line', snaps, 'audibles', audibles);
+  check('both coaches went to the line and audibled online', snaps > 5 && audibles > 5);
   // Careers and the Hall of Fame.
   await sleep(3200);
   const want = (mine, theirs) => (mine > theirs ? '1-0' : mine < theirs ? '0-1' : '0-0-1');

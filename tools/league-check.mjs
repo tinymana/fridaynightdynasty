@@ -85,7 +85,7 @@ try {
       if (s.mode !== 'choose') continue;
       const acts = await p.$$eval('#panel [data-act]', (els) => els.map((e) => e.dataset.act));
       const prompt = await text(p, '#prompt');
-      let pick = acts.filter((x) => x.startsWith('p:') || x.startsWith('d:') || x.startsWith('k:') || x === 'pat');
+      let pick = acts.filter((x) => x === 'snap' || x.startsWith('a:') || x.startsWith('p:') || x.startsWith('d:') || x.startsWith('k:') || x === 'pat');
       if (prompt.startsWith('4th') && acts.includes('punt')) pick = [acts.includes('fg') ? 'fg' : 'punt'];
       if (pick.length) await p.click(`#panel [data-act="${pick[i % pick.length]}"]`).catch(() => {});
     }

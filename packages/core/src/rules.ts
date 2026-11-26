@@ -11,6 +11,8 @@ export const RULES = {
   runoffSeconds: 32,
   /** Chance of each foul. Before the snap: per snap. Holding: per play the offense gained on. Interference: per incomplete pass. */
   falseStartChance: 0.03,
+  /** Changing the play at the line is noisy: this much more chance of a false start. */
+  audibleFalseStart: 0.025,
   offsideChance: 0.02,
   holdingChance: 0.035,
   interferenceChance: 0.05,

@@ -5,7 +5,7 @@ import {
   type DefDecision, type DefFront, type DefPlay, type DefScheme, type GameSetup, type Group, type KickStyle, type ManageAction, type OffAssign, type OffDecision, type OffPlay, type PlayEvent, type Team,
 } from '@fnd/core';
 import { fieldGoalDistance } from '@fnd/football-ai';
-import { AutoCoach, Game, gameHash, replayGame, simulateGame, summarize, type LoggedDecision, type PlaySim, type ReturnSim } from '@fnd/match-sim';
+import { AutoCoach, Game, gameHash, replayGame, simulateGame, summarize, type LoggedDecision, type MoveKind, type PlaySim, type ReturnSim } from '@fnd/match-sim';
 import { leagueTeams, type Career, type RoomView } from '@fnd/online';
 import { OnlineError, online } from './net/online';
 import { cutinFor } from './cutins';
@@ -91,6 +91,8 @@ let kick: KickAnim | null = null;
 /** A kick, punt or turnover being run back: the real return, replayed from the game. */
 let viewReturn: { sim: ReturnSim; frame: 0 | 1; then: (() => void) | null; hold: number } | null = null;
 let pendingOff: OffDecision | null = null;
+/** Solo: your offense is at the line with this call, facing this defense. */
+let atLine: { off: OffDecision & { kind: 'play' }; def: DefDecision } | null = null;
 let pendingEvent: PlayEvent | null = null;
 let wantTimeout = false;
 /** Fourth down on defense: sell out for the block. */
@@ -208,6 +210,30 @@ function startReturn(then: () => void): void {
   kick = null;
   mode = 'return';
   acc = 0;
+}
+
+const MOVE_WORDS: Record<MoveKind, string> = { stiffArm: 'STIFF ARM!', truck: 'RUNS HIM OVER!', juke: 'JUKE!', spin: 'SPIN MOVE!', dive: 'DIVES AHEAD!' };
+const movesShown = new WeakMap<object, number>();
+let moveTimer = 0;
+
+/** Calls out a broken tackle or a dive as it happens. */
+function showMoves(dt: number): void {
+  const el = $('moveTag');
+  if (moveTimer > 0 && (moveTimer -= dt) <= 0) el.classList.add('hidden');
+  const sim = viewReturn?.sim ?? viewSim;
+  if (!sim || speed === 0) return;
+  const seen = movesShown.get(sim) ?? 0;
+  if (sim.moves.length <= seen) return;
+  movesShown.set(sim, sim.moves.length);
+  const m = sim.moves[sim.moves.length - 1];
+  el.textContent = `${MOVE_WORDS[m.kind]} #${m.carrier.number}`;
+  el.classList.remove('hidden');
+  // Restart the pop.
+  el.style.animation = 'none';
+  void el.offsetWidth;
+  el.style.animation = '';
+  moveTimer = 750;
+  sfx.tackle();
 }
 
 function buildView(): FieldView {
@@ -371,6 +397,7 @@ function step(dt: number): FieldView | null {
     default:
       break;
   }
+  showMoves(dt);
   return buildView();
 }
 
@@ -513,6 +540,11 @@ function playClockExpired(): void {
   clockOn = false;
   if (mode !== 'choose' || net) return;
   closeSideline();
+  if (atLine) {
+    const l = atLine;
+    atLine = null;
+    return commit(l.off, l.def);
+  }
   if (game.state.phase === 'kickoff') return runKickoff(coach.offense(game));
   if (game.state.possession === user) commit(coach.offense(game)!, coach.defense(game)!);
   else commit(pendingOff!, coach.defense(game)!);
@@ -530,15 +562,17 @@ function commit(off: OffDecision, def: DefDecision): void {
   if (game.live) {
     viewSim = game.live;
     viewOffense = offTeam;
-    const play = off.kind === 'play' ? game.playOf(offTeam, off.playId) : null;
+    const checked = off.kind === 'play' && off.audible !== undefined && off.audible !== off.playId;
+    const play = off.kind === 'play' ? game.playOf(offTeam, off.audible ?? off.playId) : null;
     const called = game.defenseOf(other(offTeam), def);
     const defName = def.frontId === CUSTOM_FRONT ? called.scheme.name : `${called.front.name} ${called.scheme.name}`;
     const subs = game.lastSubs.filter((x) => x.team === user).map((x) => `${x.slot}: #${x.out.number} resting, #${x.in.number} in`);
     const calls = $('calls');
-    calls.innerHTML = `${teams[offTeam].abbr} <b>${play?.name ?? ''}</b><br>${teams[other(offTeam)].abbr} <b>${defName}</b>`
+    calls.innerHTML = `${teams[offTeam].abbr} <b>${play?.name ?? ''}</b>${checked ? ' <span class="aud">AUDIBLE</span>' : ''}<br>${teams[other(offTeam)].abbr} <b>${defName}</b>`
       + (game.caughtBlocking ? '<br>Caught going for the block!' : '') + (tb !== null ? `<br>Timeout ${teams[tb].abbr}` : '') + (subs.length ? `<br>${subs.slice(0, 3).join('<br>')}` : '');
     calls.classList.remove('hidden');
-    setPanelWaiting(`${play?.name ?? ''} against ${defName}`);
+    setPanelWaiting(`${checked ? 'Audible! ' : ''}${play?.name ?? ''} against ${defName}`);
+    if (checked) sfx.select();
     updateBug();
     mode = 'presnap';
     timer = speed === 0 ? 0 : speed === 1 ? 900 : 300;
@@ -847,12 +881,61 @@ function showDefensePanel(): void {
 
 /** A call made by the person at this screen. Offline it runs at once; online it goes to the server, hidden until the snap. */
 function submitOff(off: OffDecision): void {
-  if (net) void sendCall(off);
-  else commit(off, coach.defense(game)!);
+  if (net) return void sendCall(off.kind === 'play' ? ({ ...off, look: true } as OffDecision) : off);
+  const def = coach.defense(game)!;
+  if (off.kind !== 'play') return commit(off, def);
+  // A play goes to the line first: the defense shows its front and the call can still be changed.
+  atLine = { off, def };
+  const front = game.defenseOf(other(user), def).front;
+  showLinePanel(off.playId, front.name, front.desc, front, (to) => {
+    atLine = null;
+    commit(to ? { ...off, audible: to } : off, def);
+  });
 }
 function submitDef(def: DefDecision): void {
   if (net) void sendCall(def);
-  else commit(pendingOff!, def);
+  // The AI quarterback gets the same look at your front that you get at his.
+  else commit(coach.audible(game, pendingOff, def)!, def);
+}
+
+/**
+ * At the line. The defense has shown its front (never its call). Snap the play that was called, or check to
+ * another play from the formation already lined up. Changing the play risks a false start.
+ */
+function showLinePanel(playId: string, frontName: string, frontDesc: string, front: DefFront | null, go: (audible: string | null) => void): void {
+  const s = game.state;
+  const off = s.possession;
+  const called = game.playOf(off, playId);
+  const others = game.bookPlays(off).filter((p) => p.formation === called.formation && p.id !== called.id).slice(0, 9);
+  mode = 'choose';
+  // Draw both sides as they line up.
+  const los = s.phase === 'conversion' ? RULES.twoPointFrom : s.yardLine;
+  const shown: ViewPlayer[] = [];
+  for (const slot of formationOf(called).slots) {
+    const [x, y] = abs(off, los + slot.at[0], CY_YD + slot.at[1]);
+    shown.push({ team: off, x, y, moving: false, down: false, hasBall: false });
+  }
+  if (front) {
+    for (const slot of front.slots) {
+      const [x, y] = abs(off, Math.min(los + slot.at[0], 108), CY_YD + slot.at[1]);
+      shown.push({ team: other(off), x, y, moving: false, down: false, hasBall: false });
+    }
+    viewSim = null;
+    viewReturn = null;
+    lineup = shown;
+  }
+  showPlayClock();
+  $('prompt').textContent = `At the line: they show ${frontName}`;
+  $('panel').innerHTML = `<div class="wide line"><button class="act on" data-act="snap">Snap it: ${called.name} <kbd>[S]</kbd><small>${frontDesc || 'Run the play you called.'}</small></button></div>`
+    + (others.length ? `<div class="fronts"><span class="lbl">Audible</span><span class="hint">Same formation. Changing the play risks a false start.</span></div>` : '')
+    + others.map((p, i) => playCard(p, `a:${p.id}`, ` <kbd>[${i + 1}]</kbd>`)).join('');
+  const acts: Record<string, () => void> = { snap: () => go(null) };
+  for (const p of others) acts[`a:${p.id}`] = () => go(p.id);
+  bind(acts, (k) => {
+    const n = Number(k);
+    if (n >= 1 && n <= others.length) return `a:${others[n - 1].id}`;
+    return k === 's' ? 'snap' : null;
+  });
 }
 
 function bind(acts: Record<string, () => void>, keys: (k: string) => string | null): void {
@@ -1435,6 +1518,17 @@ function showOnlinePanel(): void {
   }
   clockOn = true;
   clockLeft = Math.max(0, v.deadlineInMs);
+  if (v.line) {
+    const mine = v.mine as OffDecision | null;
+    if (game.state.possession === user && mine && 'kind' in mine && mine.kind === 'play' && v.line.front !== null) {
+      const lib = v.line.front === CUSTOM_FRONT ? null : frontById(v.line.front);
+      showLinePanel(mine.playId, lib ? lib.name : 'a defense of their own design', lib ? lib.desc : '', lib, (to) => void sendCall((to ? { kind: 'audible', playId: to } : { kind: 'snap' }) as unknown as OffDecision, to ? 'Audible called. Here comes the snap…' : 'Here comes the snap…'));
+    } else {
+      mode = 'wait';
+      setPanelWaiting(game.state.possession === user ? 'Here comes the snap…' : 'The offense is at the line…');
+    }
+    return;
+  }
   if (v.mine) {
     mode = 'wait';
     setPanelWaiting('Your call is in. Waiting for the other sideline…');
@@ -1452,13 +1546,13 @@ function showOnlinePanel(): void {
   else showDefensePanel();
 }
 
-async function sendCall(call: OffDecision | DefDecision): Promise<void> {
+async function sendCall(call: OffDecision | DefDecision, waiting = 'Your call is in. Waiting for the other sideline…'): Promise<void> {
   if (!net) return;
   const mine = net;
   mode = 'wait';
   keyHandler = null;
   $('pclock').classList.add('hidden');
-  setPanelWaiting('Your call is in. Waiting for the other sideline…');
+  setPanelWaiting(waiting);
   const ok = await netRequest(() => online.call(mine.token, mine.pin, localTurn(), call, mine.received));
   // A refused call (the clock ran out first, say) simply leaves the server's result to arrive by polling.
   if (!ok && net === mine && mode === 'wait' && !mine.queue.length && mine.view.turn === localTurn() && !mine.view.mine) showOnlinePanel();

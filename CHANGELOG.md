@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.10.0 — 2026-11-26
+
+Audibles and ball-carrier moves.
+
+### Added
+- `OffDecision` play calls take `audible`: the play changed to at the line. It must be in the book and share the
+  formation of the play called. The engine runs the audible, marks the event `flags.audible`, and adds
+  `RULES.audibleFalseStart` to the false-start chance. The log keeps both the call and the check, so replays match.
+- `aiAudible` and `AutoCoach.audible`: the AI checks out of a run into a 5-2 or 4-4 and into a run against the
+  nickel, at `AUDIBLE_RATE`. It draws from its own `line:` stream, so play calling is undisturbed.
+- Online: a call sent with `look: true` opens a line phase once both calls are in (`Room.line`, `LINE_MS` 8 s).
+  The offense's view carries the front id only; the defense's carries nothing and its call is locked. The offense
+  answers with `{kind:'snap'}` or `{kind:'audible', playId}` through the same `call` action. A browser that never
+  sends `look` plays exactly as before.
+- Client: the line panel (snap, or audible cards for the formation), both sides drawn as they line up, an AUDIBLE
+  tag in the calls box.
+- Ball-carrier moves: `PlaySim.moves` and `ReturnSim.moves` record a stiff arm, truck, juke or spin on each missed
+  tackle (`moveFor`, from power against agility, no random draw) and a dive on a long fall forward. The client
+  shows a callout. Results are unchanged by the moves code.
+- `tests/audible.test.ts`, `tests/moves.test.ts`, `tools/line-shot.mjs`.
+
+### Changed
+- Browser check scripts snap or audible when the line panel is up.
+
 ## 0.9.0 — 2026-11-26
 
 Returns played out on the field.
