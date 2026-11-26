@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_BOOK, exhibitionTeams, type DefDecision, type OffDecision } from '@fnd/core';
+import { DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, draftFromFront, draftFromPlay, exhibitionTeams, playById, playFromDraft, validateDefPlay, validateOffPlay, type DefDecision, type OffDecision } from '@fnd/core';
 import { gameHash, replayGame } from '@fnd/match-sim';
 import { AWAY_MS, CALL_MS, LOBBY_TIMEOUT_MS, MemoryStore, createApi, type RoomView } from '@fnd/online';
 
@@ -173,7 +173,7 @@ describe('playing a game', () => {
     expect(logs[0]).toEqual(logs[1]);
     expect(logs[0].length).toBe(hv.logSize);
     // Each browser rebuilds the game from the seed and the public log, and must land on the server's result.
-    const local = replayGame(hv.seed, exhibitionTeams(hv.seed), logs[0] as never, { books: hv.books });
+    const local = replayGame(hv.seed, exhibitionTeams(hv.seed), logs[0] as never, { books: hv.books, plays: hv.designs.plays, defenses: hv.designs.defenses });
     expect(local.state.phase).toBe('final');
     expect(local.state.score).toEqual(hv.score);
     expect(gameHash(local)).toBe(hv.hash);
@@ -227,6 +227,130 @@ describe('playing a game', () => {
     expect(gv.log).toEqual(r.log);
     const plan = (await w.call({ action: 'plan', token: host, pin, plan: { passBias: 9, aggression: -4 } })).room!;
     expect(plan.plan).toEqual({ passBias: 2, aggression: 0 });
+  });
+});
+
+describe('coach profile and Hall of Fame', () => {
+  /** Plays a whole game between two signed-in coaches and returns the final view. */
+  async function playOut(w: ReturnType<typeof world>, hostToken: string, guestToken: string): Promise<RoomView> {
+    const pin = (await w.call({ action: 'host', token: hostToken, team: 0 })).room!.pin;
+    await w.call({ action: 'join', token: guestToken, pin });
+    await w.call({ action: 'start', token: hostToken, pin });
+    let hv = (await w.call({ action: 'game', token: hostToken, pin })).room!;
+    let gv = (await w.call({ action: 'game', token: guestToken, pin })).room!;
+    for (let i = 0; i < 400 && hv.state === 'playing'; i++) {
+      await w.call({ action: 'call', token: hostToken, pin, turn: hv.turn, call: callFor(hv) });
+      await w.call({ action: 'call', token: guestToken, pin, turn: gv.turn, call: callFor(gv) });
+      w.advance(1000);
+      hv = (await w.call({ action: 'game', token: hostToken, pin })).room!;
+      gv = (await w.call({ action: 'game', token: guestToken, pin })).room!;
+    }
+    // Both browsers keep polling after the whistle; the result must still count once.
+    for (let i = 0; i < 5; i++) {
+      await w.call({ action: 'game', token: hostToken, pin });
+      await w.call({ action: 'game', token: guestToken, pin });
+    }
+    return hv;
+  }
+  type Career = { name: string; games: number; wins: number; losses: number; ties: number; pointsFor: number; pointsAgainst: number; championships: number; streak: number; bestStreak: number };
+  const careerOf = async (w: ReturnType<typeof world>, token: string): Promise<Career> => ((await w.call({ action: 'profile', token })) as unknown as { career: Career }).career;
+
+  it('a new coach has an empty record, and nobody is in the Hall of Fame yet', async () => {
+    const w = world();
+    const a = await w.enter('ROOKIE');
+    expect(await careerOf(w, a)).toEqual({ name: 'ROOKIE', games: 0, wins: 0, losses: 0, ties: 0, pointsFor: 0, pointsAgainst: 0, championships: 0, streak: 0, bestStreak: 0 });
+    expect(((await w.call({ action: 'hall' })) as unknown as { hall: Career[] }).hall).toEqual([]);
+  });
+
+  it('a finished game is added to both coaches\' records exactly once, from the server\'s own score', async () => {
+    const w = world();
+    const a = await w.enter('ALPHA');
+    const b = await w.enter('BRAVO');
+    const final = await playOut(w, a, b);
+    expect(final.state).toBe('done');
+    const ca = await careerOf(w, a);
+    const cb = await careerOf(w, b);
+    expect(ca.games).toBe(1);
+    expect(cb.games).toBe(1);
+    expect([ca.pointsFor, ca.pointsAgainst]).toEqual(final.score);
+    expect([cb.pointsFor, cb.pointsAgainst]).toEqual([final.score[1], final.score[0]]);
+    expect(ca.wins + ca.losses + ca.ties).toBe(1);
+    expect(ca.wins).toBe(cb.losses);
+    expect(ca.ties).toBe(cb.ties);
+    expect(ca.streak).toBe(ca.wins);
+  });
+
+  it('a client cannot write a record: there is no such action, and extra fields are ignored', async () => {
+    const w = world();
+    const a = await w.enter('FAKER');
+    expect((await w.call({ action: 'recordResult', token: a, wins: 99 })).error!.code).toBe('bad_action');
+    await w.call({ action: 'profile', token: a, wins: 99, championships: 5 });
+    expect((await careerOf(w, a)).wins).toBe(0);
+    expect((await w.call({ action: 'profile', token: 'nope' })).error!.code).toBe('signed_out');
+  });
+
+  it('the Hall of Fame lists the best records, most wins first, at most ten', async () => {
+    const w = world();
+    const tokens: string[] = [];
+    for (let i = 0; i < 12; i++) tokens.push(await w.enter(`COACH ${i}`));
+    for (let i = 0; i < 12; i += 2) await playOut(w, tokens[i], tokens[i + 1]);
+    await playOut(w, tokens[0], tokens[2]);
+    const hall = ((await w.call({ action: 'hall' })) as unknown as { hall: Career[] }).hall;
+    expect(hall.length).toBe(10);
+    for (let i = 1; i < hall.length; i++) expect(hall[i - 1].wins).toBeGreaterThanOrEqual(hall[i].wins);
+    expect(hall.every((c) => c.games > 0)).toBe(true);
+    expect(new Set(hall.map((c) => c.name)).size).toBe(10);
+  });
+});
+
+describe('designed plays online', () => {
+  const design = () => {
+    const r = validateOffPlay(playFromDraft(draftFromPlay(playById('curls'), 'c_onlineplay1', 'Online Special')));
+    if (!r.ok) throw new Error(r.problems.join());
+    const d = validateDefPlay(draftFromFront(DEFENSE_FRONTS[0], DEFENSE_SCHEMES[0], 'c_onlinedef01', 'Online D'));
+    if (!d.ok) throw new Error(d.problems.join());
+    return { play: r.value, def: d.value };
+  };
+  it('a coach brings his designs, the server validates them, and both browsers receive them', async () => {
+    const w = world();
+    const { play, def } = design();
+    const host = await w.enter('DESIGNER');
+    const guest = await w.enter('PLAIN');
+    const book = [...DEFAULT_BOOK.slice(0, 7), play.id];
+    const made = await w.call({ action: 'host', token: host, team: 0, book, plays: [play], defenses: [def] });
+    expect(made.room!.books[0]).toEqual(book);
+    const pin = made.room!.pin;
+    const gv = (await w.call({ action: 'join', token: guest, pin })).room!;
+    expect(gv.designs.plays[0][0].name).toBe('Online Special');
+    expect(gv.designs.defenses[0][0].id).toBe(def.id);
+    expect(gv.designs.plays[1]).toEqual([]);
+  });
+  it('refuses an illegal design, a book that names a design the coach did not bring, and too many designs', async () => {
+    const w = world();
+    const { play } = design();
+    const host = await w.enter('CHEAT');
+    const illegal = { ...play, slots: play.slots!.map((s, i) => (i === 1 ? { ...s, at: [9, 0] } : s)) };
+    expect((await w.call({ action: 'host', token: host, team: 0, plays: [illegal] })).error!.code).toBe('bad_design');
+    expect((await w.call({ action: 'host', token: host, team: 0, book: [...DEFAULT_BOOK.slice(0, 7), play.id] })).error!.code).toBe('bad_book');
+    const many = Array.from({ length: 13 }, (_, i) => ({ ...play, id: `c_many${String(i).padStart(6, '0')}` }));
+    expect((await w.call({ action: 'host', token: host, team: 0, plays: many })).error!.code).toBe('bad_design');
+  });
+  it('a designed defense can only be called by the coach who brought it', async () => {
+    const w = world();
+    const { def } = design();
+    const host = await w.enter('HASDEF');
+    const guest = await w.enter('NODEF');
+    const pin = (await w.call({ action: 'host', token: host, team: 0, defenses: [def] })).room!.pin;
+    await w.call({ action: 'join', token: guest, pin });
+    await w.call({ action: 'start', token: host, pin });
+    const hv = (await w.call({ action: 'game', token: host, pin })).room!;
+    const call = { frontId: '@custom', callId: def.id };
+    if (hv.you === hv.need.offense) {
+      expect((await w.call({ action: 'call', token: guest, pin, turn: hv.turn, call })).error!.code).toBe('bad_call');
+    } else {
+      const r = (await w.call({ action: 'call', token: host, pin, turn: hv.turn, call })).room!;
+      expect(r.mine).toEqual({ ...call, timeout: false });
+    }
   });
 });
 

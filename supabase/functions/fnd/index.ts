@@ -12,7 +12,7 @@
  */
 // @ts-expect-error Deno resolves npm: specifiers at runtime.
 import postgres from 'npm:postgres@3.4.5';
-import { RoomError, createApi, type Coach, type Room, type Store } from '../../../packages/online/src/index';
+import { RoomError, createApi, type Career, type Coach, type GameResult, type Room, type Store } from '../../../packages/online/src/index';
 
 declare const Deno: { env: { get(name: string): string | undefined }; serve(handler: (req: Request) => Promise<Response> | Response): void };
 
@@ -100,7 +100,47 @@ const store: Store = {
   async dropRoomsOf(coachId: string, olderThan: number) {
     await sql`delete from fnd.rooms where host_id = ${coachId} or updated_at < to_timestamp(${olderThan / 1000})`;
   },
+
+  async recordResult(r: GameResult) {
+    for (const t of [0, 1] as const) {
+      const mine = r.score[t];
+      const theirs = r.score[t === 0 ? 1 : 0];
+      const win = mine > theirs ? 1 : 0;
+      const loss = mine < theirs ? 1 : 0;
+      await sql`
+        update fnd.coaches set
+          games = games + 1, wins = wins + ${win}, losses = losses + ${loss}, ties = ties + ${1 - win - loss},
+          points_for = points_for + ${mine}, points_against = points_against + ${theirs},
+          streak = case when ${win} = 1 then streak + 1 else 0 end,
+          best_streak = greatest(best_streak, case when ${win} = 1 then streak + 1 else 0 end)
+        where id = ${r.coaches[t]}`;
+    }
+  },
+
+  async careerOf(coachId: string) {
+    const rows: Row[] = await sql`
+      select name, games, wins, losses, ties, points_for, points_against, championships, streak, best_streak
+      from fnd.coaches where id = ${coachId}`;
+    return rows.length ? career(rows[0] as Row) : null;
+  },
+
+  async hallOfFame(limit: number) {
+    const rows: Row[] = await sql`
+      select name, games, wins, losses, ties, points_for, points_against, championships, streak, best_streak
+      from fnd.coaches where games > 0
+      order by wins desc, wins::float / games desc, points_for - points_against desc, name
+      limit ${limit}`;
+    return rows.map(career);
+  },
 };
+
+function career(r: Row): Career {
+  return {
+    name: r.name as string, games: Number(r.games), wins: Number(r.wins), losses: Number(r.losses), ties: Number(r.ties),
+    pointsFor: Number(r.points_for), pointsAgainst: Number(r.points_against), championships: Number(r.championships),
+    streak: Number(r.streak), bestStreak: Number(r.best_streak),
+  };
+}
 
 const api = createApi(store);
 

@@ -1,6 +1,6 @@
 import {
-  DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, clamp, exhibitionTeams, validateBook,
-  type DefDecision, type GamePlan, type ManageAction, type OffDecision,
+  CUSTOM_FRONT, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, clamp, exhibitionTeams, validateBook, validateDefPlay, validateOffPlay,
+  type DefDecision, type DefPlay, type GamePlan, type ManageAction, type OffDecision, type OffPlay,
 } from '@fnd/core';
 import { DEFAULT_PLAN } from '@fnd/football-ai';
 import { AutoCoach, Game, gameHash, replayGame, type LoggedDecision } from '@fnd/match-sim';
@@ -31,6 +31,8 @@ export interface Room {
   /** The team (0 home, 1 visitors) the host coaches. The guest takes the other. */
   hostTeam: 0 | 1;
   books: [string[], string[]];
+  /** Each coach's own designed plays and defenses, validated when he sat down. */
+  designs?: Designs;
   plans: [GamePlan, GamePlan];
   /** Every resolved decision, in order. Public: both browsers replay it to draw the game. */
   log: LoggedDecision[];
@@ -48,6 +50,25 @@ export interface Room {
   updatedAt: number;
   /** Voice chat mailbox. Audio never passes through the server, only these short connection messages. */
   voice?: VoiceBox;
+  /** Set once the final score has been written to both coaches' career records. */
+  recorded?: boolean;
+}
+
+/** A finished game, ready to be added to the two coaches' career records. */
+export interface GameResult {
+  /** Coach ids by team index. */
+  coaches: [string, string];
+  score: [number, number];
+}
+
+/** Hands over the result of a finished game exactly once. */
+export function takeResult(room: Room): GameResult | null {
+  if (room.state !== 'done' || room.recorded || !room.guest) return null;
+  room.recorded = true;
+  const coaches: [string, string] = ['', ''];
+  coaches[room.hostTeam] = room.host.id;
+  coaches[room.hostTeam === 0 ? 1 : 0] = room.guest.id;
+  return { coaches, score: [room.score[0], room.score[1]] };
 }
 
 export interface VoiceSignal {
@@ -67,6 +88,11 @@ export const VOICE_SIGNALS_MAX = 40;
 export const VOICE_SIGNAL_BYTES = 16000;
 const VOICE_SIGNAL_TTL_MS = 60000;
 
+export interface Designs {
+  plays: [OffPlay[], OffPlay[]];
+  defenses: [DefPlay[], DefPlay[]];
+}
+
 export class RoomError extends Error {
   constructor(readonly code: string, message: string, readonly status = 400) {
     super(message);
@@ -81,33 +107,64 @@ export function teamOf(room: Room, coachId: string): 0 | 1 {
   throw new RoomError('not_member', 'You are not in that game.', 403);
 }
 
-function cleanBook(book: unknown): string[] {
+function cleanBook(book: unknown, designed: readonly OffPlay[]): string[] {
   if (!Array.isArray(book) || book.some((x) => typeof x !== 'string')) return [...DEFAULT_BOOK];
-  const problem = validateBook(book as string[]);
+  const problem = validateBook(book as string[], designed);
   if (problem) throw new RoomError('bad_book', problem);
   return [...(book as string[])];
 }
 
-export function createRoom(pin: string, host: Coach, team: 0 | 1, book: unknown, seed: number, now: number): Room {
-  const books: [string[], string[]] = [[...DEFAULT_BOOK], [...DEFAULT_BOOK]];
-  books[team] = cleanBook(book);
-  return {
-    pin, state: 'lobby', seed: seed >>> 0, host, guest: null, hostTeam: team, books,
+/** Validates the designs a coach brings. The server never takes a design on trust. */
+function cleanDesigns(rawPlays: unknown, rawDefenses: unknown): { plays: OffPlay[]; defenses: DefPlay[] } {
+  const take = <T extends { id: string }>(raw: unknown, max: number, check: (x: unknown) => { ok: true; value: T } | { ok: false; problems: string[] }, what: string): T[] => {
+    if (raw === undefined || raw === null) return [];
+    if (!Array.isArray(raw) || raw.length > max) throw new RoomError('bad_design', `Bring at most ${max} designed ${what}.`);
+    const out = raw.map((x) => {
+      const r = check(x);
+      if (!r.ok) throw new RoomError('bad_design', `A designed ${what.slice(0, -1)} is not legal: ${r.problems[0]}`);
+      return r.value;
+    });
+    if (new Set(out.map((x) => x.id)).size !== out.length) throw new RoomError('bad_design', 'Two designs share an id.');
+    return out;
+  };
+  return { plays: take(rawPlays, MAX_CUSTOM_PLAYS, validateOffPlay, 'plays'), defenses: take(rawDefenses, MAX_CUSTOM_DEFENSES, validateDefPlay, 'defenses') };
+}
+
+export interface Bringing {
+  book?: unknown;
+  plays?: unknown;
+  defenses?: unknown;
+}
+
+function seat(room: Room, team: 0 | 1, bring: Bringing): void {
+  const d = cleanDesigns(bring.plays, bring.defenses);
+  const designs = (room.designs ??= { plays: [[], []], defenses: [[], []] });
+  designs.plays[team] = d.plays;
+  designs.defenses[team] = d.defenses;
+  room.books[team] = cleanBook(bring.book, d.plays);
+}
+
+export function createRoom(pin: string, host: Coach, team: 0 | 1, bring: Bringing, seed: number, now: number): Room {
+  const room: Room = {
+    pin, state: 'lobby', seed: seed >>> 0, host, guest: null, hostTeam: team, books: [[...DEFAULT_BOOK], [...DEFAULT_BOOK]],
+    designs: { plays: [[], []], defenses: [[], []] },
     plans: [{ ...DEFAULT_PLAN }, { ...DEFAULT_PLAN }], log: [], turn: 0, pending: {},
     need: { phase: 'none', offense: 0 }, deadline: 0, seen: [now, now], score: [0, 0], hash: '', createdAt: now, updatedAt: now,
   };
+  seat(room, team, bring);
+  return room;
 }
 
-export function joinRoom(room: Room, guest: Coach, book: unknown, now: number): void {
+export function joinRoom(room: Room, guest: Coach, bring: Bringing, now: number): void {
   if (room.host.id === guest.id || room.guest?.id === guest.id) {
     touch(room, guest.id, now);
     return;
   }
   if (room.state !== 'lobby') throw new RoomError('in_progress', 'That game has already started.');
   if (room.guest) throw new RoomError('full', 'That game already has two coaches.');
-  room.guest = guest;
   const team = other(room.hostTeam);
-  room.books[team] = cleanBook(book);
+  seat(room, team, bring);
+  room.guest = guest;
   room.seen[team] = now;
   room.updatedAt = now;
 }
@@ -124,7 +181,7 @@ export function touch(room: Room, coachId: string, now: number): void {
 }
 
 function buildGame(room: Room): Game {
-  return replayGame(room.seed, exhibitionTeams(room.seed), room.log, { books: room.books });
+  return replayGame(room.seed, exhibitionTeams(room.seed), room.log, { books: room.books, plays: room.designs?.plays, defenses: room.designs?.defenses });
 }
 
 /** Runs kickoffs (which need no decision), then records what the next decision is. */
@@ -177,8 +234,13 @@ function cleanOffense(room: Room, team: 0 | 1, raw: unknown): OffDecision {
   }
 }
 
-function cleanDefense(raw: unknown): DefDecision {
+function cleanDefense(room: Room, team: 0 | 1, raw: unknown): DefDecision {
   const c = (raw ?? {}) as Record<string, unknown>;
+  if (c['frontId'] === CUSTOM_FRONT) {
+    // A designed defense must be one of this coach's own.
+    if (typeof c['callId'] !== 'string' || !room.designs?.defenses[team].some((d) => d.id === c['callId'])) throw new RoomError('bad_call', 'That defense is not one of your designs.');
+    return { frontId: CUSTOM_FRONT, callId: c['callId'], timeout: c['timeout'] === true };
+  }
   if (!DEFENSE_FRONTS.some((f) => f.id === c['frontId']) || !DEFENSE_SCHEMES.some((s) => s.id === c['callId'])) throw new RoomError('bad_call', 'Unknown defensive call.');
   return { frontId: c['frontId'] as string, callId: c['callId'] as string, timeout: c['timeout'] === true };
 }
@@ -191,7 +253,7 @@ export function submitCall(room: Room, coachId: string, turn: number, call: unkn
   room.seen[team] = now;
   if (team === room.need.offense) {
     if (!room.pending.off) room.pending.off = cleanOffense(room, team, call);
-  } else if (!room.pending.def) room.pending.def = cleanDefense(call);
+  } else if (!room.pending.def) room.pending.def = cleanDefense(room, team, call);
   resolveIfReady(room, now);
 }
 
@@ -304,6 +366,8 @@ export interface RoomView {
   coaches: [string | null, string | null];
   seed: number;
   books: [string[], string[]];
+  /** Both coaches' designs. Each browser needs them to redraw the game. */
+  designs: Designs;
   turn: number;
   logSize: number;
   /** Log entries from the index the client asked for. */
@@ -332,7 +396,7 @@ export function viewRoom(room: Room, coachId: string, have: number, now: number)
   coaches[other(room.hostTeam)] = room.guest?.name ?? null;
   const iAmOffense = you === room.need.offense;
   return {
-    pin: room.pin, state: room.state, you, isHost: room.host.id === coachId, coaches, seed: room.seed, books: room.books,
+    pin: room.pin, state: room.state, you, isHost: room.host.id === coachId, coaches, seed: room.seed, books: room.books, designs: room.designs ?? { plays: [[], []], defenses: [[], []] },
     turn: room.turn, logSize: room.log.length, log: room.log.slice(clamp(Math.trunc(have) || 0, 0, room.log.length)),
     need: room.need, submitted: { off: !!room.pending.off, def: !!room.pending.def },
     mine: (iAmOffense ? room.pending.off : room.pending.def) ?? null,

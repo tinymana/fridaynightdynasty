@@ -1,7 +1,7 @@
 import { Rng } from '@fnd/core';
 import {
-  RoomError, createRoom, joinRoom, leaveRoom, manageRoom, setPlan, startRoom, submitCall, tickRoom, touch, viewRoom, voiceExchange,
-  type Coach, type Room,
+  RoomError, createRoom, joinRoom, leaveRoom, manageRoom, setPlan, startRoom, submitCall, takeResult, tickRoom, touch, viewRoom, voiceExchange,
+  type Coach, type GameResult, type Room,
 } from './room';
 
 /**
@@ -20,6 +20,25 @@ export interface Store {
   withRoom<T>(pin: string, fn: (room: Room) => T): Promise<T>;
   /** One open room per host; stale rooms are cleared at the same time. */
   dropRoomsOf(coachId: string, olderThan: number): Promise<void>;
+  /** Adds a finished game to both coaches' career records. */
+  recordResult(result: GameResult): Promise<void>;
+  careerOf(coachId: string): Promise<Career | null>;
+  /** The best records among all coaches: most wins first, then win rate, then point difference. */
+  hallOfFame(limit: number): Promise<Career[]>;
+}
+
+/** A coach's career record in online games. Championships arrive with dynasty seasons. */
+export interface Career {
+  name: string;
+  games: number;
+  wins: number;
+  losses: number;
+  ties: number;
+  pointsFor: number;
+  pointsAgainst: number;
+  championships: number;
+  streak: number;
+  bestStreak: number;
 }
 
 type Body = Record<string, unknown>;
@@ -65,6 +84,15 @@ export function createApi(store: Store, now: () => number = Date.now): (body: un
     return pin;
   };
   const have = (body: Body): number => (typeof body['have'] === 'number' ? body['have'] : 0);
+  /** Runs a room action and, if it ended the game, writes the result to both coaches' records (once). */
+  const inRoom = async <T>(pin: string, fn: (room: Room) => T): Promise<T> => {
+    const { out, result } = await store.withRoom(pin, (room) => {
+      const o = fn(room);
+      return { out: o, result: takeResult(room) };
+    });
+    if (result) await store.recordResult(result);
+    return out;
+  };
 
   const actions: Record<string, (body: Body) => Promise<Record<string, unknown>>> = {
     async enter(body) {
@@ -89,7 +117,7 @@ export function createApi(store: Store, now: () => number = Date.now): (body: un
       for (let attempt = 0; attempt < 12; attempt++) {
         const pin = String(10000 + (randomU32() % 90000));
         // The server picks the seed. Neither coach can choose or predict it.
-        const room = createRoom(pin, me, team, body['book'], Rng.stream(randomU32(), pin).u32(), now());
+        const room = createRoom(pin, me, team, { book: body['book'], plays: body['plays'], defenses: body['defenses'] }, Rng.stream(randomU32(), pin).u32(), now());
         if (await store.createRoom(room)) return { room: viewRoom(room, me.id, 0, now()) };
       }
       throw new RoomError('busy', 'Could not open a game. Try again.', 503);
@@ -97,16 +125,16 @@ export function createApi(store: Store, now: () => number = Date.now): (body: un
 
     async join(body) {
       const me = await auth(body);
-      return store.withRoom(pinOf(body), (room) => {
+      return inRoom(pinOf(body), (room) => {
         tickRoom(room, now());
-        joinRoom(room, me, body['book'], now());
+        joinRoom(room, me, { book: body['book'], plays: body['plays'], defenses: body['defenses'] }, now());
         return { room: viewRoom(room, me.id, have(body), now()) };
       });
     },
 
     async leave(body) {
       const me = await auth(body);
-      return store.withRoom(pinOf(body), (room) => {
+      return inRoom(pinOf(body), (room) => {
         leaveRoom(room, me.id, now());
         return {};
       });
@@ -114,7 +142,7 @@ export function createApi(store: Store, now: () => number = Date.now): (body: un
 
     async start(body) {
       const me = await auth(body);
-      return store.withRoom(pinOf(body), (room) => {
+      return inRoom(pinOf(body), (room) => {
         tickRoom(room, now());
         startRoom(room, me.id, now());
         return { room: viewRoom(room, me.id, have(body), now()) };
@@ -124,7 +152,7 @@ export function createApi(store: Store, now: () => number = Date.now): (body: un
     /** Polled by both coaches about once a second; doubles as the "still here" signal. */
     async game(body) {
       const me = await auth(body);
-      return store.withRoom(pinOf(body), (room) => {
+      return inRoom(pinOf(body), (room) => {
         touch(room, me.id, now());
         tickRoom(room, now());
         return { room: viewRoom(room, me.id, have(body), now()) };
@@ -135,7 +163,7 @@ export function createApi(store: Store, now: () => number = Date.now): (body: un
       const me = await auth(body);
       const turn = body['turn'];
       if (typeof turn !== 'number') throw new RoomError('bad_request', '"turn" is required.');
-      return store.withRoom(pinOf(body), (room) => {
+      return inRoom(pinOf(body), (room) => {
         tickRoom(room, now());
         submitCall(room, me.id, turn, body['call'], now());
         return { room: viewRoom(room, me.id, have(body), now()) };
@@ -144,21 +172,32 @@ export function createApi(store: Store, now: () => number = Date.now): (body: un
 
     async manage(body) {
       const me = await auth(body);
-      return store.withRoom(pinOf(body), (room) => {
+      return inRoom(pinOf(body), (room) => {
         manageRoom(room, me.id, body['change'], now());
         return { room: viewRoom(room, me.id, have(body), now()) };
       });
     },
 
+    /** The signed-in coach's career record. */
+    async profile(body) {
+      const me = await auth(body);
+      return { career: await store.careerOf(me.id) };
+    },
+
+    /** The Hall of Fame: the ten best records among all coaches. Public; no sign-in needed. */
+    async hall() {
+      return { hall: await store.hallOfFame(10) };
+    },
+
     /** Voice chat mailbox, polled by a coach who has voice on. No audio passes here. */
     async voice(body) {
       const me = await auth(body);
-      return store.withRoom(pinOf(body), (room) => voiceExchange(room, me.id, body['on'] !== false, body['send'], now()));
+      return inRoom(pinOf(body), (room) => voiceExchange(room, me.id, body['on'] !== false, body['send'], now()));
     },
 
     async plan(body) {
       const me = await auth(body);
-      return store.withRoom(pinOf(body), (room) => {
+      return inRoom(pinOf(body), (room) => {
         setPlan(room, me.id, body['plan']);
         return { room: viewRoom(room, me.id, have(body), now()) };
       });
