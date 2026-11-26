@@ -7,6 +7,7 @@ import { fieldGoalDistance } from '@fnd/football-ai';
 import { AutoCoach, Game, gameHash, replayGame, simulateGame, summarize, type LoggedDecision, type PlaySim } from '@fnd/match-sim';
 import type { RoomView } from '@fnd/online';
 import { OnlineError, online } from './net/online';
+import { voice } from './net/voice';
 import { FieldScene, createGame, type FieldView, type ViewPlayer } from './scene';
 import { setMuted, sfx, unlockAudio } from './audio';
 import titleUrl from './assets/title.jpg';
@@ -811,6 +812,7 @@ function openLobby(view: RoomView): void {
   net = { token: session!.token, pin: view.pin, view, queue: [...view.log], received: view.logSize, timer: 0, busy: false, sync: 'ok' };
   net.timer = window.setInterval(() => void poll(), turbo ? 120 : 1000);
   $('lobbyMsg').textContent = '';
+  renderVoice();
   if (view.state === 'lobby') {
     show('lobby');
     renderLobby();
@@ -818,9 +820,11 @@ function openLobby(view: RoomView): void {
 }
 
 function stopOnline(): void {
+  voice.leave();
   if (!net) return;
   window.clearInterval(net.timer);
   net = null;
+  renderVoice();
 }
 
 function renderLobby(): void {
@@ -877,6 +881,7 @@ function takeView(view: RoomView): void {
   }
   // An older reply must not replace a newer picture of the room.
   if (view.logSize >= net.view.logSize) net.view = view;
+  renderVoice();
   if (net.view.state === 'lobby') return renderLobby();
   if (was === 'lobby' || mode === 'menu') return enterOnlineGame();
   if (mode === 'choose' || mode === 'wait') {
@@ -997,6 +1002,43 @@ function checkSync(): void {
   }
 }
 
+// ------------------------------------------------------------------- voice
+
+/** Voice chat buttons and status line, in the lobby and during the game. Audio goes browser to browser. */
+function renderVoice(): void {
+  const on = voice.state === 'on';
+  const them = net ? (net.view.you === 0 ? 1 : 0) : 0;
+  const name = net?.view.coaches[them] ?? 'the other coach';
+  const peer = net ? voice.peerState(String(them)) : null;
+  let text = '';
+  let tone = '';
+  if (voice.state === 'asking') text = 'Allow the microphone to talk.';
+  else if (voice.state === 'blocked') { text = 'The microphone is blocked. Allow it in your browser settings to talk.'; tone = 'bad'; }
+  else if (voice.state === 'unsupported') { text = 'This browser cannot do voice chat here.'; tone = 'bad'; }
+  else if (on && peer === 'connected') { text = `Voice on: talking with ${name}${voice.micMuted ? ' (your mic is muted)' : ''}.`; tone = 'good'; }
+  else if (on && peer === 'failed') { text = `Voice on, but the call to ${name} cannot get through. Some networks block direct calls. Still trying.`; tone = 'bad'; }
+  else if (on && peer === 'connecting') text = `Voice on: connecting to ${name}\u2026`;
+  else if (on) text = `Voice on: waiting for ${name} to turn voice on.`;
+  else if (net?.view.voice[them]) text = `${name} has voice on. Press Voice chat to talk.`;
+  for (const [btn, mic, line] of [['voiceBtn', 'micBtn', 'voiceState'], ['lobbyVoice', 'lobbyMic', 'lobbyVoiceState']] as const) {
+    $(btn).classList.toggle('hidden', !net);
+    $(btn).textContent = on ? 'Leave voice' : 'Voice chat';
+    $(btn).classList.toggle('live', on);
+    $(mic).classList.toggle('hidden', !net || !on);
+    $(mic).textContent = voice.micMuted ? 'Unmute mic' : 'Mute mic';
+    $(line).textContent = net ? text : '';
+    $(line).className = `voice-state ${tone}`;
+  }
+}
+
+function toggleVoice(): void {
+  if (!net) return;
+  if (voice.state === 'on' || voice.state === 'asking') voice.leave();
+  else void voice.join(net.token, net.pin, String(net.view.you));
+}
+
+voice.onChange(renderVoice);
+
 // ---------------------------------------------------------------- wiring
 
 ($('titleArt') as HTMLImageElement).src = titleUrl;
@@ -1026,6 +1068,8 @@ $('lobbyLeave').addEventListener('click', () => {
   if (net) void online.leave(net.token, net.pin).catch(() => undefined);
   showSetup(false);
 });
+for (const id of ['voiceBtn', 'lobbyVoice']) $(id).addEventListener('click', toggleVoice);
+for (const id of ['micBtn', 'lobbyMic']) $(id).addEventListener('click', () => voice.toggleMic());
 $('sidelineBtn').addEventListener('click', openSideline);
 $('slClose').addEventListener('click', closeSideline);
 document.querySelectorAll<HTMLElement>('[data-speed]').forEach((el) => el.addEventListener('click', () => {
@@ -1058,7 +1102,7 @@ window.addEventListener('keydown', (ev) => {
 (window as unknown as Record<string, unknown>).__fnd = {
   selftest: (s: number): string => gameHash(simulateGame(s, exhibitionTeams(s))),
   state: () => ({ mode, phase: game?.state.phase, score: game?.state.score, quarter: game?.state.quarter, clock: game?.state.clock, sidelineOpen, playClock: clockOn ? Math.ceil(clockLeft / 1000) : null, book,
-    online: net ? { pin: net.pin, state: net.view.state, turn: net.view.turn, you: net.view.you, sync: net.sync, serverHash: net.view.hash, localHash: game ? gameHash(game) : '', queued: net.queue.length, serverScore: net.view.score, mine: !!net.view.mine } : null }),
+    online: net ? { pin: net.pin, state: net.view.state, turn: net.view.turn, you: net.view.you, sync: net.sync, serverHash: net.view.hash, localHash: game ? gameHash(game) : '', queued: net.queue.length, serverScore: net.view.score, mine: !!net.view.mine, voice: voice.state, peer: voice.peerState(String(net.view.you === 0 ? 1 : 0)), voiceSeen: net.view.voice } : null }),
   setSpeed: (n: number) => { speed = n; },
   setTurbo: (on: boolean) => { turbo = on; },
   setPlayClock: (on: boolean) => { useClock = on; clockOn = clockOn && on; },

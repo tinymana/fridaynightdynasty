@@ -46,7 +46,26 @@ export interface Room {
   hash: string;
   createdAt: number;
   updatedAt: number;
+  /** Voice chat mailbox. Audio never passes through the server, only these short connection messages. */
+  voice?: VoiceBox;
 }
+
+export interface VoiceSignal {
+  at: number;
+  data: Record<string, unknown>;
+}
+export interface VoiceBox {
+  /** When each team's coach last checked in to voice; 0 when not in voice. */
+  at: [number, number];
+  /** Messages waiting for each team's coach. */
+  inbox: [VoiceSignal[], VoiceSignal[]];
+}
+
+/** A coach who has not checked in to voice for this long has hung up. */
+export const VOICE_PRESENT_MS = 8000;
+export const VOICE_SIGNALS_MAX = 40;
+export const VOICE_SIGNAL_BYTES = 16000;
+const VOICE_SIGNAL_TTL_MS = 60000;
 
 export class RoomError extends Error {
   constructor(readonly code: string, message: string, readonly status = 400) {
@@ -244,6 +263,37 @@ export function setPlan(room: Room, coachId: string, raw: unknown): void {
   };
 }
 
+/**
+ * Voice mailbox: a coach in voice calls this about once a second. It marks him present, drops off
+ * connection messages for the other coach and picks up the ones addressed to him.
+ */
+export function voiceExchange(room: Room, coachId: string, on: boolean, send: unknown, now: number): { peers: string[]; signals: { from: string; data: Record<string, unknown> }[] } {
+  const team = teamOf(room, coachId);
+  const them = other(team);
+  const box = (room.voice ??= { at: [0, 0], inbox: [[], []] });
+  if (!on) {
+    box.at[team] = 0;
+    box.inbox[team] = [];
+    box.inbox[them] = [];
+    return { peers: [], signals: [] };
+  }
+  box.at[team] = now;
+  const themPresent = now - box.at[them] <= VOICE_PRESENT_MS && box.at[them] > 0;
+  if (Array.isArray(send) && themPresent) {
+    for (const item of send.slice(0, VOICE_SIGNALS_MAX)) {
+      const data = (item as { data?: unknown } | null)?.data;
+      if (typeof data !== 'object' || data === null) continue;
+      if (JSON.stringify(data).length > VOICE_SIGNAL_BYTES) continue;
+      if (box.inbox[them].length >= VOICE_SIGNALS_MAX * 2) break;
+      box.inbox[them].push({ at: now, data: data as Record<string, unknown> });
+    }
+  }
+  const got = box.inbox[team].filter((m) => now - m.at <= VOICE_SIGNAL_TTL_MS);
+  box.inbox[team] = [];
+  box.inbox[them] = box.inbox[them].filter((m) => now - m.at <= VOICE_SIGNAL_TTL_MS);
+  return { peers: themPresent ? [String(them)] : [], signals: got.map((m) => ({ from: String(them), data: m.data })) };
+}
+
 export interface RoomView {
   pin: string;
   state: Room['state'];
@@ -268,7 +318,11 @@ export interface RoomView {
   score: [number, number];
   hash: string;
   plan: GamePlan;
+  /** Whether each team's coach is in voice chat. */
+  voice: [boolean, boolean];
 }
+
+const inVoice = (room: Room, team: 0 | 1, now: number): boolean => !!room.voice && room.voice.at[team] > 0 && now - room.voice.at[team] <= VOICE_PRESENT_MS;
 
 /** What one coach is allowed to see. Built per coach so the opponent's pending call can never leak. */
 export function viewRoom(room: Room, coachId: string, have: number, now: number): RoomView {
@@ -285,5 +339,6 @@ export function viewRoom(room: Room, coachId: string, have: number, now: number)
     deadlineInMs: room.state === 'playing' ? room.deadline - now : 0,
     away: [room.state === 'playing' && now - room.seen[0] > AWAY_MS, room.state === 'playing' && now - room.seen[1] > AWAY_MS],
     score: room.score, hash: room.hash, plan: room.plans[you],
+    voice: [inVoice(room, 0, now), inVoice(room, 1, now)],
   };
 }

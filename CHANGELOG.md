@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.1 — 2026-11-25
+
+### Added
+- Voice chat between the two coaches of an online game, built like the Typlympics one: audio flows directly
+  between the browsers (WebRTC); the server only passes the short connection messages through a mailbox on the room.
+- `voice` API action with caps on message size and count, and a presence timeout. 3 new tests (146 in all).
+- `npm run check:voice`: two headless browsers with fake microphones connect, audio is confirmed arriving,
+  mute works, voice carries from lobby into game, and hanging up releases the microphone.
+
+### Known gaps
+- Only free public address helpers (STUN) are used, no relay. Two coaches on strict networks may fail to connect;
+  the status line says so and keeps retrying.
+
 ## 0.3.0 — 2026-11-25
 
 Milestone 2b release candidate: online head-to-head exhibition.
@@ -23,7 +36,7 @@ Milestone 2b release candidate: online head-to-head exhibition.
 - Each browser redraws the game from the seed and the public log and compares fingerprints with the server.
 
 ### Known gaps
-- No voice chat yet. No rematch button: host a new game from the menu.
+- No rematch button: host a new game from the menu.
 - Coach names are not filtered for offensive words.
 - An absent coach is covered by the AI immediately, rather than after the 90-second pause in the original design.
 - The Supabase storage adapter is exercised by the same API tests only through its in-memory twin; the deployed

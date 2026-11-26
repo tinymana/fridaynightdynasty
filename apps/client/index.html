@@ -143,6 +143,12 @@
   .team-card .coach { font-size: 15px; margin-top: 8px; color: var(--accent); min-height: 22px; }
   .team-card .coach.empty { color: var(--dim); animation: blink 1.2s steps(2) infinite; }
 
+  .voice-state { font-size: 11.5px; color: var(--dim); text-align: center; min-height: 0; margin: 2px 0 6px; }
+  .voice-state:empty { display: none; }
+  .voice-state.good { color: var(--good); }
+  .voice-state.bad { color: #ff8d85; }
+  .seg.live { border-color: var(--good); color: var(--good); }
+
   /* final */
   #final { text-align: center; }
   #final .result { font-size: 30px; font-weight: 700; margin: 6px 0 14px; font-variant-numeric: tabular-nums; }
@@ -200,6 +206,8 @@
     <p id="lobbyHelp">Tell the other coach to sign in, type this PIN and press Join.</p>
     <div class="teams" id="lobbySeats"></div>
     <div class="orow center"><button class="seg on" id="lobbyStart">Start the game</button><button class="seg" id="lobbyLeave">Leave</button></div>
+    <div class="orow center"><button class="seg" id="lobbyVoice">Voice chat</button><button class="seg hidden" id="lobbyMic">Mute mic</button></div>
+    <div id="lobbyVoiceState" class="voice-state" role="status" aria-live="polite"></div>
     <div id="lobbyMsg" role="status" aria-live="polite"></div>
   </section>
 
@@ -222,9 +230,12 @@
       <button class="seg" data-speed="0">Skip</button>
       <button class="seg" id="mute">Sound on</button>
       <button class="seg" id="sidelineBtn">Sideline <kbd>[S]</kbd></button>
+      <button class="seg hidden" id="voiceBtn">Voice chat</button>
+      <button class="seg hidden" id="micBtn">Mute mic</button>
       <span id="prompt"></span>
       <span id="pclock" class="hidden" aria-label="Play clock"></span>
     </div>
+    <div id="voiceState" class="voice-state" role="status" aria-live="polite"></div>
     <div id="panel"></div>
     <div id="sideline" class="hidden" role="dialog" aria-label="Sideline">
       <div class="sl-box">

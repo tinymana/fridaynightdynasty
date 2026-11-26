@@ -2,6 +2,25 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.3.1",
+      "date": "2026-11-25",
+      "title": "Sideline voice chat",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Talk to the other coach during an online game. Press Voice chat in the lobby or on the sideline bar and allow your microphone."
+        },
+        {
+          "tag": "new",
+          "text": "Audio goes straight from one browser to the other. It never passes through the game server, and it is free."
+        },
+        {
+          "tag": "new",
+          "text": "Mute your mic at any time; the status line shows whether you are connected. Voice carries on from the lobby into the game."
+        }
+      ]
+    },
+    {
       "version": "0.3",
       "date": "2026-11-25",
       "title": "Online head-to-head",
@@ -158,12 +177,12 @@
       "text": "Invite a friend with a game PIN and coach against each other live, with hidden play calls. Playable now on the website."
     },
     {
-      "status": "next",
+      "status": "testing",
       "title": "Sideline voice chat",
-      "text": "Talk to the other coach during an online game, free and straight from your browser."
+      "text": "Talk to the other coach during an online game, free and straight from your browser. Playable now on the website."
     },
     {
-      "status": "planned",
+      "status": "next",
       "title": "Design your own plays",
       "text": "Draw up offensive and defensive plays in an editor, test them on a practice field, and add them to your book."
     },
@@ -175,7 +194,7 @@
     {
       "status": "planned",
       "title": "Eight-school league",
-      "text": "Eight fictional schools with rosters, rivals, schedules and standings. Any school can be run by a person or the AI."
+      "text": "Pick a real state and get a generated league of eight fictional schools with rosters, rivals, schedules and standings. Any school can be run by a person or the AI."
     },
     {
       "status": "planned",

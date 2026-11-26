@@ -34,6 +34,12 @@ async function post<T>(body: Record<string, unknown>): Promise<T> {
   return data as T;
 }
 
+/** A WebRTC connection message for the other coach. */
+export interface VoiceSignal {
+  to: string;
+  data: Record<string, unknown>;
+}
+
 export interface Signed {
   token: string;
   created: boolean;
@@ -49,5 +55,6 @@ export const online = {
   game: (token: string, pin: string, have: number) => post<{ room: RoomView }>({ action: 'game', token, pin, have }),
   call: (token: string, pin: string, turn: number, call: OffDecision | DefDecision, have: number) => post<{ room: RoomView }>({ action: 'call', token, pin, turn, call, have }),
   manage: (token: string, pin: string, change: Record<string, unknown>, have: number) => post<{ room: RoomView }>({ action: 'manage', token, pin, change, have }),
+  voice: (token: string, pin: string, on: boolean, send: VoiceSignal[]) => post<{ peers: string[]; signals: { from: string; data: Record<string, unknown> }[] }>({ action: 'voice', token, pin, on, send }),
   plan: (token: string, pin: string, plan: GamePlan, have: number) => post<{ room: RoomView }>({ action: 'plan', token, pin, plan, have }),
 };

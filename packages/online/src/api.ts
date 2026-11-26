@@ -1,6 +1,6 @@
 import { Rng } from '@fnd/core';
 import {
-  RoomError, createRoom, joinRoom, leaveRoom, manageRoom, setPlan, startRoom, submitCall, tickRoom, touch, viewRoom,
+  RoomError, createRoom, joinRoom, leaveRoom, manageRoom, setPlan, startRoom, submitCall, tickRoom, touch, viewRoom, voiceExchange,
   type Coach, type Room,
 } from './room';
 
@@ -148,6 +148,12 @@ export function createApi(store: Store, now: () => number = Date.now): (body: un
         manageRoom(room, me.id, body['change'], now());
         return { room: viewRoom(room, me.id, have(body), now()) };
       });
+    },
+
+    /** Voice chat mailbox, polled by a coach who has voice on. No audio passes here. */
+    async voice(body) {
+      const me = await auth(body);
+      return store.withRoom(pinOf(body), (room) => voiceExchange(room, me.id, body['on'] !== false, body['send'], now()));
     },
 
     async plan(body) {

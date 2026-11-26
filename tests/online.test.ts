@@ -230,6 +230,56 @@ describe('playing a game', () => {
   });
 });
 
+describe('voice chat mailbox', () => {
+  const sig = (n: number) => ({ data: { candidate: { n } } });
+  it('passes connection messages between the two coaches once both are in voice, and nothing else', async () => {
+    const { w, host, guest, pin } = await started();
+    const hv = (await w.call({ action: 'game', token: host, pin })).room!;
+    // Alone in voice: nobody to talk to, and messages are not queued for an absent coach.
+    let a = (await w.call({ action: 'voice', token: host, pin, on: true, send: [sig(1)] })) as unknown as { peers: string[]; signals: { from: string; data: unknown }[] };
+    expect(a.peers).toEqual([]);
+    let b = (await w.call({ action: 'voice', token: guest, pin, on: true, send: [] })) as unknown as typeof a;
+    expect(b.peers).toEqual([String(hv.you)]);
+    expect(b.signals).toEqual([]);
+    a = (await w.call({ action: 'voice', token: host, pin, on: true, send: [sig(2), sig(3)] })) as unknown as typeof a;
+    expect(a.peers).toEqual([String(hv.you === 0 ? 1 : 0)]);
+    b = (await w.call({ action: 'voice', token: guest, pin, on: true, send: [sig(9)] })) as unknown as typeof a;
+    expect(b.signals).toEqual([{ from: String(hv.you), data: { candidate: { n: 2 } } }, { from: String(hv.you), data: { candidate: { n: 3 } } }]);
+    // Each message is delivered once.
+    b = (await w.call({ action: 'voice', token: guest, pin, on: true, send: [] })) as unknown as typeof a;
+    expect(b.signals).toEqual([]);
+    a = (await w.call({ action: 'voice', token: host, pin, on: true, send: [] })) as unknown as typeof a;
+    expect(a.signals.map((x) => x.data)).toEqual([{ candidate: { n: 9 } }]);
+    const view = (await w.call({ action: 'game', token: host, pin })).room!;
+    expect(view.voice).toEqual([true, true]);
+  });
+  it('a coach who stops checking in or hangs up is no longer in voice', async () => {
+    const { w, host, guest, pin } = await started();
+    await w.call({ action: 'voice', token: host, pin, on: true, send: [] });
+    await w.call({ action: 'voice', token: guest, pin, on: true, send: [] });
+    w.advance(9000);
+    let a = (await w.call({ action: 'voice', token: host, pin, on: true, send: [] })) as unknown as { peers: string[] };
+    expect(a.peers).toEqual([]);
+    await w.call({ action: 'voice', token: guest, pin, on: true, send: [] });
+    await w.call({ action: 'voice', token: guest, pin, on: false });
+    a = (await w.call({ action: 'voice', token: host, pin, on: true, send: [] })) as unknown as { peers: string[] };
+    expect(a.peers).toEqual([]);
+    expect((await w.call({ action: 'game', token: host, pin })).room!.voice.filter(Boolean).length).toBe(1);
+  });
+  it('refuses outsiders, oversized messages and floods', async () => {
+    const { w, host, guest, pin } = await started();
+    const spy = await w.enter('EAVESDROP');
+    expect((await w.call({ action: 'voice', token: spy, pin, on: true, send: [] })).error!.code).toBe('not_member');
+    await w.call({ action: 'voice', token: guest, pin, on: true, send: [] });
+    const big = { data: { blob: 'x'.repeat(20000) } };
+    const flood = Array.from({ length: 500 }, (_, i) => sig(i));
+    await w.call({ action: 'voice', token: host, pin, on: true, send: [big, 'junk', null, ...flood] });
+    const b = (await w.call({ action: 'voice', token: guest, pin, on: true, send: [] })) as unknown as { signals: { data: Record<string, unknown> }[] };
+    expect(b.signals.length).toBeLessThanOrEqual(40);
+    expect(b.signals.some((x) => 'blob' in x.data)).toBe(false);
+  });
+});
+
 describe('tamper resistance', () => {
   const setup = async () => {
     const s = await started();
