@@ -28,7 +28,7 @@ async function open(tag) {
 }
 const st = (p) => p.evaluate(() => window.__fnd.state());
 const text = (p, sel) => p.$eval(sel, (e) => e.textContent);
-const signIn = async (p, name, pin) => { await p.type('#oName', name); await p.type('#oPin', pin); await p.click('#oEnter'); await p.waitForSelector('#oSignedIn:not(.hidden)'); };
+const signIn = async (p, name, pin) => { await p.click('#goOnline').catch(() => {}); await p.type('#oName', name); await p.type('#oPin', pin); await p.click('#oEnter'); await p.waitForSelector('#oSignedIn:not(.hidden)'); };
 const until = async (f, ms = 30000) => { for (let t = 0; t < ms; t += 100) { if (await f()) return true; await sleep(100); } return false; };
 
 try {

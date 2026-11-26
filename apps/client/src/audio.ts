@@ -41,14 +41,11 @@ export const sfx = {
 };
 
 // ---------------------------------------------------------------- atmosphere
-// The stands, the band and the PA. All made on the spot with Web Audio; there are no sound files.
+// Chants, the band and the PA. All made on the spot with Web Audio; there are no sound files.
 
 interface NoteLike { f: number; t: number; d: number }
 
-let crowdGain: GainNode | null = null;
-let crowdTone: BiquadFilterNode | null = null;
 let noise: AudioBuffer | null = null;
-let level = 0;
 let paOn = true;
 
 function noiseBuffer(): AudioBuffer | null {
@@ -65,44 +62,6 @@ function noiseBuffer(): AudioBuffer | null {
     data[i] = last * 4.2 + white * 0.12;
   }
   return noise;
-}
-
-/** Starts the crowd murmur if it is not already running. Safe to call on every snap. */
-function ensureCrowd(): void {
-  if (!ctx || crowdGain) return;
-  const buf = noiseBuffer();
-  if (!buf) return;
-  const src = ctx.createBufferSource();
-  src.buffer = buf;
-  src.loop = true;
-  crowdTone = ctx.createBiquadFilter();
-  crowdTone.type = 'bandpass';
-  crowdTone.frequency.value = 700;
-  crowdTone.Q.value = 0.5;
-  crowdGain = ctx.createGain();
-  crowdGain.gain.value = 0;
-  // A slow swell so the murmur breathes instead of hissing.
-  const lfo = ctx.createOscillator();
-  const depth = ctx.createGain();
-  lfo.frequency.value = 0.23;
-  depth.gain.value = 0.012;
-  lfo.connect(depth).connect(crowdGain.gain);
-  src.connect(crowdTone).connect(crowdGain).connect(ctx.destination);
-  src.start();
-  lfo.start();
-}
-
-const CROWD_MAX = 0.16;
-
-/** Sets how loud the stands are, 0 to 1. The change is eased in over about a second. */
-export function setCrowd(to: number): void {
-  level = Math.max(0, Math.min(1, to));
-  if (!ctx) return;
-  ensureCrowd();
-  if (!crowdGain || !crowdTone) return;
-  const t = ctx.currentTime;
-  crowdGain.gain.setTargetAtTime(muted ? 0 : level * CROWD_MAX, t, 0.5);
-  crowdTone.frequency.setTargetAtTime(520 + level * 700, t, 0.5);
 }
 
 /** A burst of crowd: `bright` for a cheer, dark and falling for a groan. */
@@ -182,18 +141,10 @@ function shout(delay: number, dur: number, vowel: readonly [number, number], gai
 
 const EE = [320, 2400] as const;
 const EH = [560, 1850] as const;
-const OH = [480, 900] as const;
 
 export const crowd = {
-  /** A cheer. 1 is a touchdown roar; 0.3 is polite applause for a first down. */
-  cheer: (strength = 1): void => {
-    swell(0.26 * strength, 1.2 + strength * 2.2, 700, 1900);
-    swell(0.12 * strength, 0.8 + strength * 1.6, 1600, 2600, 0.08);
-  },
-  groan: (strength = 1): void => swell(0.2 * strength, 1.6, 620, 240),
-  /** Rising noise as the kicker runs up, for `secs` seconds. */
+  /** A drum roll as the kicker runs up, for `secs` seconds. */
   rise: (secs: number): void => {
-    swell(0.16, secs + 0.5, 420, 1700);
     for (let i = 0; i < 6; i++) snare(i * (secs / 7), 0.1 + i * 0.02);
   },
   /** "DE-FENSE" (stomp, stomp), three times. */
@@ -206,13 +157,9 @@ export const crowd = {
       stomp(t + 1.3);
     }
   },
-  /** Clap, clap, clap-clap-clap, twice, with a shout to finish. */
+  /** Clap, clap, clap-clap-clap, twice. */
   letsGo: (): void => {
-    for (let r = 0; r < 2; r++) {
-      const t = r * 2.1;
-      [0, 0.42, 0.84, 1.05, 1.26].forEach((d) => clap(t + d));
-      shout(t + 1.6, 0.32, OH, 0.035);
-    }
+    for (let r = 0; r < 2; r++) [0, 0.42, 0.84, 1.05, 1.26].forEach((d) => clap(r * 2.1 + d));
   },
 };
 
@@ -282,23 +229,44 @@ export function setPa(on: boolean): void {
   if (!on) try { window.speechSynthesis?.cancel(); } catch { /* no speech here */ }
 }
 
-/** The public address announcer, in whatever voice the browser has. Silent where there is none. */
+/** Voices that sound like a person, best first. What is installed differs on every phone and computer. */
+const GOOD_VOICES = [/natural/i, /neural/i, /premium/i, /enhanced/i, /^Google US English$/, /^Samantha$/, /^Alex$/, /^Daniel$/, /^Google UK English Male$/, /Aria|Guy|Jenny|Davis/];
+let voice: SpeechSynthesisVoice | null | undefined;
+function pickVoice(): SpeechSynthesisVoice | null {
+  const all = window.speechSynthesis.getVoices().filter((v) => /^en([-_]|$)/i.test(v.lang));
+  if (!all.length) return null;
+  for (const want of GOOD_VOICES) {
+    const hit = all.find((v) => want.test(v.name) && /US/i.test(v.lang)) ?? all.find((v) => want.test(v.name));
+    if (hit) return hit;
+  }
+  return all.find((v) => /US/i.test(v.lang)) ?? all[0];
+}
+
+/**
+ * The public address announcer. It speaks with the most natural English voice the browser has, at an
+ * ordinary pitch and pace. Silent where the browser has no speech.
+ */
 export function announce(text: string): void {
   if (muted || !paOn) return;
   try {
     const synth = window.speechSynthesis;
     if (!synth || typeof SpeechSynthesisUtterance === 'undefined') return;
+    // The list of voices arrives late in some browsers: look again until one turns up.
+    if (!voice) voice = pickVoice();
     synth.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    u.rate = 1.02;
-    u.pitch = 0.85;
-    u.volume = 0.85;
+    if (voice) {
+      u.voice = voice;
+      u.lang = voice.lang;
+    }
+    u.rate = 1;
+    u.pitch = 1;
+    u.volume = 0.9;
     synth.speak(u);
   } catch { /* no speech here */ }
 }
 
-/** Mute also stops the stands and the announcer; unmute brings the murmur back at its last level. */
+/** Mute also stops the announcer in mid-sentence. */
 export function refreshAtmosphere(): void {
   if (muted) try { window.speechSynthesis?.cancel(); } catch { /* no speech here */ }
-  setCrowd(level);
 }

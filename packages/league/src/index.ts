@@ -114,6 +114,45 @@ export function createLeague(stateCode: string, seed: number): League {
 }
 
 /** What a commissioner may change about a school: what it is called and what it wears. Not how good it is. */
+/** A school that needs a head coach: what you would be walking into. */
+export interface Opening {
+  school: number;
+  /** Last season's wins and losses under the old coach. */
+  lastRecord: [number, number];
+  /** Why the job is open. */
+  reason: string;
+  /** What the school expects of the new coach. */
+  expects: string;
+}
+
+/** How many of a league's eight schools are hiring when a dynasty starts. */
+export const OPENINGS = 5;
+const REASONS_GOOD = ['The coach retired after 24 seasons and three titles.', 'The coach left to be an assistant at a college.', 'The coach moved up to athletic director.', 'The coach took a bigger job two states away.'];
+const REASONS_MID = ['The coach stepped down to spend Fridays with his family.', 'The coach retired. Nobody remembers a season without him.', 'The coach left to teach at the junior high.', 'The coach and the school board agreed it was time.'];
+const REASONS_BAD = ['The coach was let go after another losing season.', 'The coach resigned in October. An assistant finished the year.', 'Three coaches in five years. They want someone who will stay.', 'The program nearly folded for lack of players. It is yours to rebuild.'];
+
+/**
+ * The head coaching jobs open in a league, strongest program first. Always the same five for the same league.
+ * Last season's record follows the school's strength, so a powerhouse is hiring after a good year and a
+ * rebuilding school after a bad one.
+ */
+export function openings(league: League): Opening[] {
+  const rng = Rng.stream(league.seed, 'openings');
+  const order = league.schools.map((_, i) => i);
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = rng.int(0, i);
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  return order.slice(0, OPENINGS).map((school) => {
+    const p = league.schools[school].prestige;
+    const wins = clamp(Math.round(3.5 + (p - PRESTIGE_MID) * 0.8 + rng.range(-1, 1)), 0, REGULAR_WEEKS);
+    const tier = p >= 60 ? 0 : p >= 57 ? 1 : 2;
+    const reason = rng.pick(tier === 0 ? REASONS_GOOD : tier === 1 ? REASONS_MID : REASONS_BAD);
+    const expects = tier === 0 ? 'The boosters expect to play for the state title. Soon.' : tier === 1 ? 'A winning season and a shot at the title game would do.' : 'Patience. Three or four wins would feel like a parade.';
+    return { school, lastRecord: [wins, REGULAR_WEEKS - wins] as [number, number], reason, expects };
+  }).sort((a, b) => league.schools[b.school].prestige - league.schools[a.school].prestige || a.school - b.school);
+}
+
 export interface SchoolIdentity {
   name: string;
   mascot: string;

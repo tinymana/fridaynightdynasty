@@ -15,7 +15,7 @@ const st = () => page.evaluate(() => window.__fnd.state());
 await sleep(400);
 await page.click('#title');
 await sleep(150);
-await page.click('[data-team="0"]');
+await page.click('#goExhibition').catch(() => {}); await page.click('[data-team=\"0\"]');
 await page.evaluate(() => { window.__fnd.setPlayClock(false); window.__fnd.setSpeed(1); });
 let line = false, move = false, audibles = 0;
 for (let i = 0; i < 4000 && !(line && move && audibles >= 2); i++) {

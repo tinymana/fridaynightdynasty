@@ -18,7 +18,9 @@ async function open(tag) {
   await page.setViewport({ width: 1000, height: 1000 });
   await page.evaluateOnNewDocument((url) => { window.__fndOnlineUrl = url; }, `http://localhost:${PORT}`);
   page.on('pageerror', (e) => errors.push(`${tag}: ${e}`));
-  page.on('console', (m) => { if (m.type() === 'error' && !/40[49]/.test(m.text())) errors.push(`${tag}: ${m.text()}`); });
+  // A call that arrives after the final whistle is refused; that is expected. Any other refusal is reported.
+  page.on('response', async (r) => { if (r.status() !== 400) return; const body = await r.text().catch(() => ''); if (!body.includes('not_playing')) errors.push(`${tag}: refused ${r.request().postData()} ${body}`); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/40[049]/.test(m.text())) errors.push(`${tag}: ${m.text()}`); });
   await page.goto(pathToFileURL('site/play/index.html').href);
   await sleep(300);
   await page.evaluate(() => window.__fnd.setTurbo(true));
@@ -27,7 +29,7 @@ async function open(tag) {
   return page;
 }
 const st = (p) => p.evaluate(() => window.__fnd.state());
-const signIn = async (p, name, pin) => { await p.type('#oName', name); await p.type('#oPin', pin); await p.click('#oEnter'); await p.waitForSelector('#oSignedIn:not(.hidden)'); };
+const signIn = async (p, name, pin) => { await p.click('#goOnline').catch(() => {}); await p.type('#oName', name); await p.type('#oPin', pin); await p.click('#oEnter'); await p.waitForSelector('#oSignedIn:not(.hidden)'); };
 
 try {
   const a = await open('host');

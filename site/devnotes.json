@@ -2,14 +2,49 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.13.0",
+      "date": "2026-11-26",
+      "title": "A real main menu, and schools that are hiring",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Main menu. Exhibition, Dynasty, Play online, Playbook and Hall of Fame each get their own row, built from the new start-screen art. Press 1 to 5 to pick one and Esc to come back."
+        },
+        {
+          "tag": "new",
+          "text": "Exhibition and Play online now have their own pages instead of sharing one crowded screen."
+        },
+        {
+          "tag": "new",
+          "text": "Starting a dynasty is a job hunt. Pick a state and five of its eight schools are looking for a head coach. Each posting tells you why the job is open, last season's record, how many seniors are back, the best player and what the school expects."
+        },
+        {
+          "tag": "new",
+          "text": "The huddle. Between plays both teams huddle up while you pick. Your offense breaks to the line when the call is made."
+        },
+        {
+          "tag": "improved",
+          "text": "The announcer now uses the most natural voice your browser has, at a normal pitch. How good it sounds still depends on your phone or computer."
+        },
+        {
+          "tag": "fixed",
+          "text": "Removed the crowd noise. It sounded like waves. The \"de-fense\" chant, the claps and the band stay."
+        },
+        {
+          "tag": "fixed",
+          "text": "The jump when a kick was caught. Players used to snap to new spots as the return began. Now everyone runs to where the return starts while the ball is in the air, and the ball comes down on the returner."
+        },
+        {
+          "tag": "fixed",
+          "text": "Punts and field goals are kicked from a formation, not from the huddle."
+        }
+      ]
+    },
+    {
       "version": "0.12.0",
       "date": "2026-11-26",
       "title": "Friday night atmosphere",
       "items": [
-        {
-          "tag": "new",
-          "text": "A crowd. The stands murmur through the game and get louder when it matters: third down for the visitors, the home team near the goal line, a close fourth quarter. They roar for a home touchdown and groan at a turnover."
-        },
         {
           "tag": "new",
           "text": "Chants. \"De-fense\" with stomps when the visitors have to convert, and a clap-along when the home team is driving."
@@ -20,7 +55,7 @@
         },
         {
           "tag": "new",
-          "text": "A public address announcer calls touchdowns, turnovers, some first downs, the half-time score and the final. It uses your browser's voice, and has its own on/off button next to Sound."
+          "text": "A public address announcer calls touchdowns, turnovers, some first downs, the half-time score and the final. It has its own on/off button next to Sound."
         },
         {
           "tag": "new",
@@ -28,15 +63,11 @@
         },
         {
           "tag": "new",
-          "text": "The dynasty screen tells you when this week is homecoming, senior night or a home opener, and those crowds are louder."
+          "text": "The dynasty screen tells you when this week is homecoming, senior night or a home opener."
         },
         {
           "tag": "note",
-          "text": "All of the sound is generated on the spot. There are no audio files, so it adds nothing to the download. It has been checked for errors but not by ear: tell us if anything is too loud, too quiet or just odd."
-        },
-        {
-          "tag": "note",
-          "text": "The king and queen are crowned at homecoming, which is the football-season dance. Prom is in the spring."
+          "text": "All of the sound is generated on the spot. There are no audio files."
         }
       ]
     },
@@ -623,12 +654,12 @@
     {
       "status": "testing",
       "title": "Friday night atmosphere",
-      "text": "Crowd, chants, a pep band with a fight song for every school, a PA announcer, and half-time shows with homecoming and senior night. Playable now."
+      "text": "Chants, a pep band with a fight song for every school, a PA announcer, and half-time shows with homecoming and senior night. Playable now."
     },
     {
-      "status": "planned",
+      "status": "next",
       "title": "A cleaner look",
-      "text": "A pass over every screen for spacing, type and touch targets."
+      "text": "The main menu is done. Still to come: the same pass over the game screen, the playbook and the dynasty pages."
     },
     {
       "status": "planned",

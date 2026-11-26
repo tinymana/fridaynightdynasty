@@ -10,7 +10,7 @@ await page.goto(pathToFileURL('site/play/index.html').href);
 await sleep(400); await page.click('#title'); await sleep(150);
 await page.select('#weatherPick', 'rain'); await page.select('#quarterPick', '6');
 await page.screenshot({ path: '/tmp/fnd-shots/setup.png' });
-await page.click('[data-team="0"]');
+await page.click('#goExhibition').catch(() => {}); await page.click('[data-team=\"0\"]');
 await page.evaluate(() => { window.__fnd.setSpeed(2); window.__fnd.setPlayClock(false); window.__fnd.setTurbo?.(false); });
 const seen = new Set(); let kickShot = false;
 for (let i = 0; i < 6000 && seen.size < 4; i++) {

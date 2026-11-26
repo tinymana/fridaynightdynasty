@@ -105,7 +105,7 @@ try {
   check('designs and the book survive a reload', s0.myPlays === 1 && s0.myDefs === 1 && s0.book.includes(id.slice(2)));
 
   // Call both in a game.
-  await page.click('[data-team="0"]');
+  await page.click('#goExhibition').catch(() => {}); await page.click('[data-team=\"0\"]');
   await page.evaluate(() => { window.__fnd.setSpeed(0); window.__fnd.setPlayClock(false); });
   let usedOff = false, usedDef = false;
   for (let i = 0; i < 4000 && !(usedOff && usedDef); i++) {

@@ -1,6 +1,6 @@
 import { GROUPS, WEATHER, overall, type GameSetup, type Team } from '@fnd/core';
 import {
-  CLASS_NAMES, CLASS_SHORT, MAX_CALL_UPS, REGULAR_WEEKS, STATES, career, incomingOf, occasionFor, programOf, recordOf, setCallUp, createDynasty, createLeague, editSchool, gameSeed, gameSetup, loadDynasty, nextSeason, playWeek, standings, stateByCode, teamFor, userGame, weekGames, winnerOf,
+  CLASS_NAMES, CLASS_SHORT, MAX_CALL_UPS, REGULAR_WEEKS, STATES, career, incomingOf, occasionFor, openings, programOf, recordOf, setCallUp, createDynasty, createLeague, editSchool, gameSeed, gameSetup, loadDynasty, nextSeason, playWeek, standings, stateByCode, teamFor, userGame, weekGames, winnerOf,
   type Dynasty, type GameResult, type ProgramPlayer,
 } from '@fnd/league';
 import { bindSchoolForm, schoolFormHtml } from './school-form';
@@ -88,11 +88,27 @@ export class DynastyScreen {
   private renderNew(): void {
     this.title.textContent = 'Start a dynasty';
     const league = createLeague(this.pickState, this.pickSeed);
-    this.root.innerHTML = `<p>Pick a state. Eight schools are drawn up for it; choose the one you will coach. Seven league games, then first plays second for the title.</p>
+    const jobs = openings(league);
+    const others = league.schools.map((s, i) => ({ s, i })).filter((x) => !jobs.some((j) => j.school === x.i));
+    const posting = (j: (typeof jobs)[number]): string => {
+      const s = league.schools[j.school];
+      const varsity = programOf({ league, year: 1 }, j.school).filter((p) => p.squad === 'varsity');
+      const seniors = varsity.filter((p) => p.year === 4).length;
+      const star = varsity.filter((p) => p.pos !== 'K' && p.pos !== 'P').sort((a, b) => overall(b) - overall(a))[0];
+      const tier = s.prestige >= 60 ? 'Powerhouse' : s.prestige >= 58 ? 'Contender' : s.prestige >= 56 ? 'Middle of the pack' : 'Rebuilding';
+      return `<div class="job"><div class="swatch" style="background:linear-gradient(90deg, ${css(s.colors.jersey)} 0 60%, ${css(s.colors.trim)} 60% 80%, ${css(s.colors.helmet)} 80%)"></div>
+        <div class="job-body"><div class="nm">${esc(s.name)} ${esc(s.mascot)} <span class="tier">${tier}</span></div>
+        <div class="why">${j.reason}</div>
+        <div class="facts">Last season ${j.lastRecord[0]}-${j.lastRecord[1]}. ${seniors} seniors on the varsity. Best player: ${CLASS_NAMES[star.year - 1].toLowerCase()} ${star.pos} ${esc(star.name)}, rated ${overall(star)}.</div>
+        <div class="facts">${j.expects}</div></div>
+        <button class="seg on" data-school="${j.school}">Take the job</button></div>`;
+    };
+    this.root.innerHTML = `<p>Pick a state and see who is hiring. Take a job and the program is yours: seven league games a season, then first plays second for the state title.</p>
       <div class="orow center"><label class="pick">State <select id="dyState">${STATES.map((s) => `<option value="${s.code}"${s.code === this.pickState ? ' selected' : ''}>${s.name}</option>`).join('')}</select></label>
       <button class="seg" id="dyShuffle">Draw new schools</button><button class="seg" id="dyBack">Back</button></div>
-      <h3>${esc(stateByCode(this.pickState).name)} league: choose your school</h3>
-      <div class="dy-pick">${league.schools.map((s, i) => `<button class="team-card" data-school="${i}"><div class="swatch" style="background:linear-gradient(90deg, ${css(s.colors.jersey)} 0 60%, ${css(s.colors.trim)} 60% 80%, ${css(s.colors.helmet)} 80%)"></div><div class="nm">${esc(s.name)} ${esc(s.mascot)}</div><div class="sub">${s.abbr} · ${s.prestige >= 60 ? 'Powerhouse' : s.prestige >= 58 ? 'Contender' : s.prestige >= 56 ? 'Middle of the pack' : 'Rebuilding'}</div></button>`).join('')}</div>`;
+      <h3>Head coach wanted: ${jobs.length} schools in ${esc(stateByCode(this.pickState).name)}</h3>
+      <div class="dy-pick jobs">${jobs.map(posting).join('')}</div>
+      <p class="sl-note" style="text-align:center">Also in the league, and not hiring: ${others.map((x) => `${esc(x.s.name)} ${esc(x.s.mascot)}`).join(', ')}.</p>`;
     const q = (id: string): HTMLElement => this.root.querySelector(`#${id}`) as HTMLElement;
     (q('dyState') as HTMLSelectElement).addEventListener('change', (e) => { this.pickState = (e.target as HTMLSelectElement).value; this.render(); });
     q('dyShuffle').addEventListener('click', () => { this.pickSeed = this.newSeed(); this.render(); });

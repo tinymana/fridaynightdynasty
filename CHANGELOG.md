@@ -1,13 +1,36 @@
 # Changelog
 
+## 0.13.0 — 2026-11-26
+
+Main menu, coaching jobs, and atmosphere changes after the first listen.
+
+### Added
+- Main menu (`#mainMenu`) with pages for Exhibition and Play online (`setupGo`). Keys 1 to 5 and Esc. Styled from
+  `art/source/png/friday_night_dynasty_start_screen.png`; the stadium header is cropped from it. Press Start 2P and
+  Pixelify Sans (OFL) are carried in the page.
+- `openings(league)`: five of a league's eight schools are hiring, with last season's record, a reason and an
+  expectation. The dynasty start screen lists them as job postings.
+
+- Both teams are drawn in a huddle between plays (`scrimmageLineup`); trying a front on the call sheet still shows it lined up.
+
+### Changed
+- The announcer picks the most natural English voice available and speaks at normal pitch.
+- Quarter length and weather pickers move between the Exhibition and Play online pages.
+
+### Fixed
+- Kick to return: during the flight every drawn player moves to his starting place in the `ReturnSim` that follows, so nothing jumps when the return begins. `tools/kick-jump.mjs` measures it (0 yards).
+
+### Removed
+- The crowd noise bed, cheers and groans, and `crowdLevel`. The chants, band and announcer remain.
+
 ## 0.12.0 — 2026-11-26
 
 Friday night atmosphere. Client only: no simulation or server change.
 
 ### Added
-- `apps/client/src/atmosphere.ts` (pure, tested): `crowdLevel`, `chantFor`, `fightSong` (a four-bar tune from the
+- `apps/client/src/atmosphere.ts` (pure, tested): `chantFor`, `fightSong` (a four-bar tune from the
   school's seed), `halftimeShow`.
-- `apps/client/src/audio.ts`: a looping crowd bed with eased level, cheers and groans, "de-fense" and clap chants,
+- `apps/client/src/audio.ts`: "de-fense" and clap chants,
   a brass section and drum line, and `announce` (browser speech synthesis). No audio files.
 - `occasionFor(week, home)` in the league package: home opener, homecoming, senior night, championship.
 - Half-time show card in the result banner; an Announcer button; the occasion on the dynasty screen.

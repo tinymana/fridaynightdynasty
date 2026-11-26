@@ -2,7 +2,7 @@ import { Rng, type Team } from '@fnd/core';
 import type { Occasion } from '@fnd/league';
 
 /**
- * Friday night atmosphere, the part that is pure data: how loud the crowd should be, each school's fight
+ * Friday night atmosphere, the part that is pure data: when the stands chant, each school's fight
  * song, and what happens at half time. No sound and no page here, so it can be tested. `audio.ts` plays it.
  */
 
@@ -64,24 +64,6 @@ export interface CrowdInput {
   /** Home score minus visitors' score. */
   homeLead: number;
   occasion: Occasion;
-}
-
-/** How loud the stands are before the snap, 0 (a murmur) to 1 (the roof is coming off). */
-export function crowdLevel(c: CrowdInput): number {
-  let level = 0.28;
-  const homeBall = c.possession === 0;
-  // A home crowd gets loud when the visitors have to convert.
-  if (!homeBall && c.down >= 3) level += 0.22;
-  // And when its own team is knocking on the door, or backed up against its goal.
-  if (homeBall && c.yardLine >= 80) level += 0.16;
-  if (!homeBall && c.yardLine >= 90) level += 0.12;
-  const margin = Math.abs(c.homeLead);
-  if (c.quarter >= 4 && margin <= 8) level += 0.2;
-  if (c.quarter > 4) level += 0.1;
-  if (margin >= 22) level -= c.homeLead < 0 ? 0.16 : 0.06;
-  if (c.occasion === 'homecoming' || c.occasion === 'championship') level += 0.1;
-  if (c.occasion === 'seniorNight' || c.occasion === 'opener') level += 0.05;
-  return Math.max(0.08, Math.min(1, level));
 }
 
 /** The chant, if any, for this snap. `n` is the snap number: chants come and go, they do not run on every play. */

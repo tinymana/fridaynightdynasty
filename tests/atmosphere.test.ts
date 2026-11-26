@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { LEAGUE_SIZE, REGULAR_WEEKS, createDynasty, occasionFor, schedule, teamFor } from '@fnd/league';
 import { exhibitionTeams } from '@fnd/core';
-import { FIGHT_SONG_BEAT, chantFor, crowdLevel, fightSong, halftimeShow, type CrowdInput } from '../apps/client/src/atmosphere';
+import { FIGHT_SONG_BEAT, chantFor, fightSong, halftimeShow, type CrowdInput } from '../apps/client/src/atmosphere';
 
 const base: CrowdInput = { possession: 0, down: 1, yardLine: 40, quarter: 2, homeLead: 0, occasion: null };
 
@@ -23,23 +23,7 @@ describe('the season calendar', () => {
   });
 });
 
-describe('the crowd', () => {
-  it('gets loud when the visitors face third down, when the home team is near the goal, and late in a close game', () => {
-    const quietest = crowdLevel(base);
-    expect(crowdLevel({ ...base, possession: 1, down: 3 })).toBeGreaterThan(quietest + 0.15);
-    expect(crowdLevel({ ...base, yardLine: 92 })).toBeGreaterThan(quietest + 0.1);
-    expect(crowdLevel({ ...base, quarter: 4, homeLead: -3 })).toBeGreaterThan(quietest + 0.15);
-    expect(crowdLevel({ ...base, occasion: 'homecoming' })).toBeGreaterThan(quietest);
-  });
-  it('goes flat when the home team is being blown out, and always stays between a murmur and full voice', () => {
-    expect(crowdLevel({ ...base, homeLead: -28 })).toBeLessThan(crowdLevel(base));
-    expect(crowdLevel({ ...base, homeLead: -28 })).toBeLessThan(crowdLevel({ ...base, homeLead: 28 }));
-    for (const possession of [0, 1] as const) for (let down = 1; down <= 4; down++) for (const yardLine of [5, 50, 95]) for (const quarter of [1, 4, 5]) for (const homeLead of [-30, -3, 0, 3, 30]) {
-      const l = crowdLevel({ possession, down, yardLine, quarter, homeLead, occasion: 'championship' });
-      expect(l).toBeGreaterThanOrEqual(0.08);
-      expect(l).toBeLessThanOrEqual(1);
-    }
-  });
+describe('chants', () => {
   it('chants defense only when the visitors must convert, and not on every snap', () => {
     let defense = 0;
     for (let n = 0; n < 30; n++) {

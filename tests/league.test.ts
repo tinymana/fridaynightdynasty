@@ -165,3 +165,25 @@ describe('renaming a school in a solo dynasty', () => {
     expect(loadDynasty(bad)!.league.schools[3].name).toBe(d.league.schools[3].name);
   });
 });
+
+describe('head coaching jobs', () => {
+  it('lists the same five schools for the same league, strongest first, with a believable last season', async () => {
+    const { OPENINGS, openings } = await import('@fnd/league');
+    for (let seed = 1; seed <= 25; seed++) {
+      const league = createLeague('GA', seed);
+      const jobs = openings(league);
+      expect(jobs).toEqual(openings(createLeague('GA', seed)));
+      expect(jobs.length).toBe(OPENINGS);
+      expect(new Set(jobs.map((j) => j.school)).size).toBe(OPENINGS);
+      for (let i = 0; i < jobs.length; i++) {
+        const j = jobs[i];
+        expect(j.lastRecord[0] + j.lastRecord[1]).toBe(7);
+        expect(j.reason.length).toBeGreaterThan(10);
+        if (i) expect(league.schools[j.school].prestige).toBeLessThanOrEqual(league.schools[jobs[i - 1].school].prestige);
+        // A powerhouse is not hiring after a winless year, and a rebuilding school is not hiring after a perfect one.
+        if (league.schools[j.school].prestige >= 61) expect(j.lastRecord[0]).toBeGreaterThanOrEqual(4);
+        if (league.schools[j.school].prestige <= 55) expect(j.lastRecord[0]).toBeLessThanOrEqual(3);
+      }
+    }
+  });
+});

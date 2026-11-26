@@ -15,7 +15,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 await sleep(400);
 await page.click('#title');
 await sleep(150);
-await page.click('[data-team="0"]');
+await page.click('#goExhibition').catch(() => {}); await page.click('[data-team=\"0\"]');
 await page.evaluate(() => { window.__fnd.setPlayClock(false); window.__fnd.setSpeed(2); });
 let shown = false;
 for (let i = 0; i < 20000 && !shown; i++) {

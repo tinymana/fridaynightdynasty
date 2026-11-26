@@ -24,21 +24,23 @@ try {
   await page.click('#dynastyBtn');
   await page.select('#dyState', 'OH');
   await sleep(100);
-  check('eight schools are offered for the state', (await page.$$('#dyBody [data-school]')).length === 8 && (await text('#dyBody')).includes('Ohio league'));
+  check('five schools in the state are hiring a head coach', (await page.$$('#dyBody .job [data-school]')).length === 5 && (await text('#dyBody')).includes('Head coach wanted: 5 schools in Ohio') && (await text('#dyBody')).includes('Last season'));
   const before = await text('#dyBody .dy-pick');
   await page.click('#dyShuffle');
   await sleep(100);
   check('drawing new schools changes the league', (await text('#dyBody .dy-pick')) !== before);
   await page.screenshot({ path: `${out}/dynasty-new.png` });
-  await page.click('#dyBody [data-school="2"]');
+  await page.screenshot({ path: `${out}/dynasty-jobs.png`, fullPage: true });
+  const job = await page.$eval('#dyBody .job [data-school]', (e) => e.dataset.school);
+  await page.click(`#dyBody [data-school="${job}"]`);
   await sleep(150);
   let s = await st();
-  check('the dynasty starts in year 1, week 1', s.dynasty && s.dynasty.year === 1 && s.dynasty.week === 0 && s.dynasty.user === 2);
+  check('the dynasty starts in year 1, week 1', s.dynasty && s.dynasty.year === 1 && s.dynasty.week === 0 && s.dynasty.user === Number(job));
   check('standings list all eight schools', (await page.$$('#dyBody table tr')).length === 9);
   await page.screenshot({ path: `${out}/dynasty-week1.png` });
 
   // Rename my school and change its colours.
-  await page.select('#dyEdit', '2');
+  await page.select('#dyEdit', job);
   await page.$eval('#sfName', (e) => { e.value = ''; });
   await page.type('#sfName', 'x');
   await page.click('#sfSave');
@@ -114,10 +116,10 @@ try {
   check('the new name survives a reload', (await text('#dyBody')).includes('Tiny Mana Prep'));
   await page.click('#dyBack');
   await sleep(100);
-  check('the dynasty survives a reload', s.dynasty && s.dynasty.year === 2 && s.dynasty.history === 1 && (await text('#dynastyBtn')) === 'Continue dynasty');
+  check('the dynasty survives a reload', s.dynasty && s.dynasty.year === 2 && s.dynasty.history === 1 && (await text('#dynastyName')) === 'Continue dynasty');
   check('the menu shows the career line', /year 2/.test(await text('#dynastyLine')));
   // An exhibition game still works after a dynasty game.
-  await page.click('[data-team="1"]');
+  await page.click('#goExhibition').catch(() => {}); await page.click('[data-team=\"1\"]');
   await sleep(200);
   check('an exhibition can still be started', (await st()).mode !== 'menu' && (await text('#s0 .ab')).includes('MCW'));
 } catch (e) {
