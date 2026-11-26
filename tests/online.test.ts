@@ -238,8 +238,10 @@ describe('playing a game', () => {
     const back = (await w.call({ action: 'join', token: again, pin, have: 0 })).room!;
     expect(back.state).toBe('playing');
     expect(back.log.length).toBe(back.logSize);
-    const mine = (await w.call({ action: 'call', token: again, pin, turn: back.turn, call: callFor(back) })).room!;
-    expect(mine.mine).not.toBeNull();
+    const mine = await w.call({ action: 'call', token: again, pin, turn: back.turn, call: callFor(back) });
+    // After a score the next turn can be a kickoff that is the other coach's call; then he has nothing to send.
+    if (back.need.phase === 'kickoff' && back.you !== back.need.offense) expect(mine.error!.code).toBe('bad_call');
+    else expect(mine.room!.mine).not.toBeNull();
     void guest;
   });
 

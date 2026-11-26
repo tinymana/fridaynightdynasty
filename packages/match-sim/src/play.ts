@@ -126,6 +126,8 @@ export class PlaySim {
   /** +1 when the defensive call guessed the play type, -1 when it guessed wrong, else 0. */
   private readonly edge: number;
   private readonly wx: WeatherEffect;
+  private goingDown: { c: SimPlayer; d: SimPlayer; toX: number; touchdown: boolean; sack: boolean; fumble: boolean; at: number } | null = null;
+  private endTick: number | null = null;
   private thrown = false;
   private throwTick = 0;
   private hurried = false;
@@ -231,6 +233,22 @@ export class PlaySim {
     for (const p of P) {
       p.px = p.x;
       p.py = p.y;
+    }
+    if (this.goingDown) {
+      // Wrapped up: the carrier drives forward to the spot with the tackler on him. Nothing else is decided here.
+      const g = this.goingDown;
+      const stepX = Math.max(yd(0.08), Math.trunc((g.toX - g.c.x) / 8));
+      g.c.x = Math.min(g.toX, g.c.x + stepX);
+      g.d.x = g.c.x + yd(0.5);
+      g.d.y += Math.trunc((g.c.y - g.d.y) / 3);
+      this.ball.x = g.c.x;
+      this.ball.y = g.c.y;
+      for (let i = 0; i < 11; i++) {
+        this.hx[i].push(P[i].x);
+        this.hy[i].push(P[i].y);
+      }
+      if (g.c.x >= g.toX) this.land();
+      return;
     }
 
     for (let i = 0; i < 11; i++) this.moveOffense(P[i]);
@@ -711,10 +729,12 @@ export class PlaySim {
       // A carrier moving forward falls forward: stronger runners drag the tackle further.
       const fall = Math.trunc(this.rng.range(0, 2.6 + cr.power / 25) * U);
       if (made) {
-        if (!inPocket && c.x > c.px) c.x += fall;
-        if (c.x >= yd(100)) return this.finish(c, null, { touchdown: true });
-        const fumble = !inPocket && this.rng.chance(0.012 * this.wx.fumble) && this.rng.chance(0.5);
-        this.finish(c, d, { sack: inPocket, fumble });
+        const forward = !inPocket && c.x > c.px ? fall : 0;
+        const touchdown = c.x + forward >= yd(100);
+        const fumble = !touchdown && !inPocket && this.rng.chance(0.012 * this.wx.fumble) && this.rng.chance(0.5);
+        // The result is decided here. The carrier then falls forward over a few ticks instead of jumping to the spot.
+        this.goingDown = { c, d, toX: c.x + forward, touchdown, sack: inPocket, fumble, at: this.tick };
+        if (forward < yd(0.5)) this.land();
         return;
       }
       d.stunUntil = this.tick + 36;
@@ -724,6 +744,16 @@ export class PlaySim {
   }
 
   // ------------------------------------------------------------------ ending
+
+  /** Ends a tackled play at the spot the carrier fell to. The play's length is counted to the tackle, not the fall. */
+  private land(): void {
+    const g = this.goingDown!;
+    this.goingDown = null;
+    g.c.x = g.toX;
+    this.endTick = g.at;
+    if (g.touchdown) this.finish(g.c, null, { touchdown: true });
+    else this.finish(g.c, g.d, { sack: g.sack, fumble: g.fumble });
+  }
 
   private finish(c: SimPlayer, tackler: SimPlayer | null, f: { touchdown?: boolean; outOfBounds?: boolean; sack?: boolean; fumble?: boolean }): void {
     const isPass = this.play.kind === 'pass';
@@ -746,7 +776,7 @@ export class PlaySim {
       rusher: completed ? undefined : c.player,
       receiver: completed ? c.player : undefined,
       tackler: tackler?.player,
-      ticks: this.tick,
+      ticks: this.endTick ?? this.tick,
     });
   }
 

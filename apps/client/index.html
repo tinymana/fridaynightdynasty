@@ -166,12 +166,16 @@
   .pick select { font-family: inherit; font-size: 13px; background: #000; color: var(--ink); border: 2px solid var(--line); border-radius: 4px; padding: 5px 8px; }
   #weatherNote { font-size: 12px; color: var(--dim); }
   /* dynasty */
-  #dynasty h2 { font-size: 18px; letter-spacing: 3px; text-transform: uppercase; margin: 18px 0 6px; text-align: center; }
-  #dynasty h3 { font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); margin: 16px 0 6px; }
-  #dynasty p { color: var(--dim); font-size: 13px; text-align: center; margin: 4px 0 10px; }
-  #dynasty table { font-size: 13.5px; }
-  #dynasty tr.me td { background: var(--panel-2); color: var(--accent); }
-  #dynasty td:nth-child(2) { text-align: left; }
+  .sh-code { font-size: 20px; letter-spacing: 4px; color: var(--accent); }
+  #shared h2, #dynasty h2 { font-size: 18px; letter-spacing: 3px; text-transform: uppercase; margin: 18px 0 6px; text-align: center; }
+  #shared h3, #dynasty h3 { font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); margin: 16px 0 6px; }
+  #shared p, #dynasty p { color: var(--dim); font-size: 13px; text-align: center; margin: 4px 0 10px; }
+  #shared table, #dynasty table { font-size: 13.5px; }
+  #shared tr.me td, #dynasty tr.me td { background: var(--panel-2); color: var(--accent); }
+  #shared td small { color: var(--dim); }
+  #shared .team-card.me { border-color: var(--accent); }
+  #shared .team-card:disabled { opacity: 0.55; cursor: default; }
+  #shared td:nth-child(2), #dynasty td:nth-child(2) { text-align: left; }
   .dy-cols { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; align-items: start; }
   @media (max-width: 700px) { .dy-cols { grid-template-columns: 1fr; } }
   .dy-game { display: flex; justify-content: space-between; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--line); font-size: 13px; }
@@ -274,6 +278,13 @@
           <input id="oJoinPin" maxlength="5" inputmode="numeric" placeholder="Game PIN" autocomplete="off" aria-label="Five-digit game PIN">
           <button class="seg on" id="oJoin">Join a game</button>
         </div>
+        <div class="orow" id="oLeagueRow">
+          <span class="lbl">Dynasty with friends</span>
+          <button class="seg" id="lgNew">Start a league</button>
+          <input id="lgCode" maxlength="5" placeholder="League code" autocomplete="off" aria-label="Five-letter league code" style="text-transform:uppercase;width:120px">
+          <button class="seg" id="lgJoin">Open league</button>
+          <button class="seg hidden" id="lgMine"></button>
+        </div>
       </div>
       <div id="oMsg" role="status" aria-live="polite"></div>
       <div class="note">Pick a coach name and a PIN you will remember. The name is yours once you use it.</div>
@@ -347,6 +358,11 @@
     <p>The ten best records among all online coaches. Most wins first; win rate, then point margin, break ties.</p>
     <div id="hallBody"></div>
     <div class="orow center"><button class="seg on" id="hallBack">Back</button></div>
+  </section>
+
+  <section id="shared" class="hidden">
+    <h2 id="shTitle">Dynasty with friends</h2>
+    <div id="shBody"></div>
   </section>
 
   <section id="dynasty" class="hidden">

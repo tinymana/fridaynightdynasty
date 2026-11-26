@@ -1,7 +1,7 @@
 {
   "name": "friday-night-dynasty",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.7.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -18,7 +18,8 @@
     "check:online": "node tools/online-check.mjs",
     "check:voice": "node tools/voice-check.mjs",
     "check:designer": "node tools/designer-check.mjs",
-    "check:dynasty": "node tools/dynasty-check.mjs"
+    "check:dynasty": "node tools/dynasty-check.mjs",
+    "check:league": "node tools/league-check.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.10",

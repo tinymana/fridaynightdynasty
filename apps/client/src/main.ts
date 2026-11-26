@@ -6,10 +6,11 @@ import {
 } from '@fnd/core';
 import { fieldGoalDistance } from '@fnd/football-ai';
 import { AutoCoach, Game, gameHash, replayGame, simulateGame, summarize, type LoggedDecision, type PlaySim } from '@fnd/match-sim';
-import type { Career, RoomView } from '@fnd/online';
+import { leagueTeams, type Career, type RoomView } from '@fnd/online';
 import { OnlineError, online } from './net/online';
 import { cutinFor } from './cutins';
 import { DynastyScreen, type DynastyGame } from './dynasty';
+import { SharedLeagueScreen } from './shared-league';
 import { openDefenseDesigner, openOffenseDesigner, practiceTeams, type DesignerHost } from './designer';
 import { voice } from './net/voice';
 import { FieldScene, createGame, type FieldView, type ViewPlayer } from './scene';
@@ -931,11 +932,40 @@ function bookSummary(): void {
 
 // --------------------------------------------------------------- screens
 
-function show(id: 'title' | 'setup' | 'game' | 'final' | 'bookScreen' | 'lobby' | 'designer' | 'hall' | 'dynasty'): void {
-  for (const s of ['title', 'setup', 'game', 'final', 'bookScreen', 'lobby', 'designer', 'hall', 'dynasty']) $(s).classList.toggle('hidden', s !== id);
+function show(id: 'title' | 'setup' | 'game' | 'final' | 'bookScreen' | 'lobby' | 'designer' | 'hall' | 'dynasty' | 'shared'): void {
+  for (const s of ['title', 'setup', 'game', 'final', 'bookScreen', 'lobby', 'designer', 'hall', 'dynasty', 'shared']) $(s).classList.toggle('hidden', s !== id);
 }
 
 let dynastyDone = false;
+/** The league to go back to after a league game. */
+let leagueReturn: string | null = null;
+const shared = new SharedLeagueScreen($('shBody'), $('shTitle'), {
+  api: {
+    create: async (state, s) => (await online.leagueCreate(session!.token, state, s)).league,
+    get: async (code) => (await online.league(session!.token, code)).league,
+    claim: async (code, school) => (await online.leagueClaim(session!.token, code, school)).league,
+    start: async (code) => (await online.leagueStart(session!.token, code)).league,
+    force: async (code) => (await online.leagueForce(session!.token, code)).league,
+    next: async (code) => (await online.leagueNext(session!.token, code)).league,
+    play: async (code) => (await online.leaguePlay(session!.token, code, book, myPlays, myDefs)).room,
+  },
+  setup: () => setup,
+  openRoom: (room) => openLobby(room),
+  back: () => showSetup(false),
+  errorText: (e) => (e instanceof OnlineError ? e.message : 'Something went wrong.'),
+  pollMs: () => (turbo ? 150 : 2000),
+  remember: (code) => {
+    store.set('fnd.league.v1', code);
+    renderLeagueRow();
+  },
+});
+
+function renderLeagueRow(): void {
+  const code = store.get<string | null>('fnd.league.v1', null);
+  const el = $('lgMine');
+  el.classList.toggle('hidden', !code);
+  el.textContent = code ? `My league ${code}` : '';
+}
 const dynasty = new DynastyScreen($('dyBody'), $('dyTitle'), {
   load: () => store.get<unknown>('fnd.dynasty.v1', null),
   save: (d) => store.set('fnd.dynasty.v1', d),
@@ -1028,7 +1058,8 @@ function showFinal(): void {
   $('finalMeta').textContent = `Seed ${seed} · ${game.log.length} decisions · game fingerprint ${gameHash(game)}${official}`;
   if (net) window.clearInterval(net.timer);
   $('finalCareer').textContent = '';
-  $('again').textContent = dynastyGame ? 'Back to the dynasty' : 'New game';
+  $('again').textContent = dynastyGame ? 'Back to the dynasty' : net?.view.league ? 'Back to the league' : 'New game';
+  leagueReturn = net?.view.league?.code ?? null;
   if (net) void loadCareer(true);
   if (dynastyGame && !dynastyDone) {
     dynastyDone = true;
@@ -1164,16 +1195,18 @@ function stopOnline(): void {
 function renderLobby(): void {
   if (!net) return;
   const v = net.view;
-  const lobbyTeams = exhibitionTeams(v.seed);
+  const lobbyTeams = v.league ? leagueTeams(v.league) : exhibitionTeams(v.seed);
   $('lobbyPin').textContent = v.pin;
   $('lobbySetup').textContent = setupLine(cleanSetup(v.setup));
   $('lobbySeats').innerHTML = lobbyTeams.map((t, i) => `<div class="team-card seat${i === v.you ? ' me' : ''}"><div class="swatch" style="background:linear-gradient(90deg, ${css(t.colors.jersey)} 0 60%, ${css(t.colors.trim)} 60% 80%, ${css(t.colors.helmet)} 80%)"></div><div class="nm">${t.name} ${t.mascot}</div><div class="coach${v.coaches[i] ? '' : ' empty'}">${v.coaches[i] ? `${v.coaches[i]}${i === v.you ? ' (you)' : ''}` : 'Waiting for a coach…'}</div></div>`).join('');
   const ready = !!v.coaches[0] && !!v.coaches[1];
   const start = $('lobbyStart') as HTMLButtonElement;
-  start.classList.toggle('hidden', !v.isHost);
+  start.classList.toggle('hidden', !v.isHost || !!v.league);
   start.disabled = !ready;
   start.style.opacity = ready ? '1' : '0.4';
-  $('lobbyHelp').textContent = v.isHost
+  $('lobbyHelp').textContent = v.league
+    ? 'League game. It starts as soon as the other coach sits down: you both have to be here.'
+    : v.isHost
     ? (ready ? 'Both coaches are here. Start when you are ready.' : 'Tell the other coach to sign in, type this PIN and press Join.')
     : 'You are in. Waiting for the host to start the game.';
 }
@@ -1232,7 +1265,7 @@ function enterOnlineGame(): void {
   const v = net.view;
   unlockAudio();
   seed = v.seed;
-  teams = exhibitionTeams(seed);
+  teams = v.league ? leagueTeams(v.league) : exhibitionTeams(seed);
   user = v.you;
   coach = new AutoCoach(seed, [v.plan, v.plan]);
   const catchUp = net.queue.length > 1 ? net.queue.splice(0, net.queue.length) : [];
@@ -1385,6 +1418,15 @@ voice.onChange(renderVoice);
 $('version').textContent = `v${devnotes.notes[0].version} · ${devnotes.notes[0].title}`;
 $('title').addEventListener('click', () => showSetup());
 $('again').addEventListener('click', () => {
+  if (leagueReturn && session) {
+    const code = leagueReturn;
+    leagueReturn = null;
+    stopOnline();
+    mode = 'menu';
+    show('shared');
+    void shared.open(code);
+    return;
+  }
   if (!dynastyGame) return showSetup();
   dynastyGame = null;
   mode = 'menu';
@@ -1427,6 +1469,23 @@ const readSetupPicks = (): void => {
 quarterPick.addEventListener('change', readSetupPicks);
 weatherPick.addEventListener('change', readSetupPicks);
 showSetupPicks();
+$('lgNew').addEventListener('click', () => {
+  if (!session) return;
+  show('shared');
+  shared.openNew();
+});
+const openLeague = (code: string): void => {
+  if (!session || !/^[A-Za-z]{5}$/.test(code)) {
+    $('oMsg').textContent = 'A league code is five letters.';
+    return;
+  }
+  $('oMsg').textContent = '';
+  show('shared');
+  void shared.open(code.toUpperCase());
+};
+$('lgJoin').addEventListener('click', () => openLeague(($('lgCode') as HTMLInputElement).value.trim()));
+$('lgMine').addEventListener('click', () => openLeague(store.get<string | null>('fnd.league.v1', null) ?? ''));
+renderLeagueRow();
 for (const id of ['hallBtn', 'hallBtn2']) $(id).addEventListener('click', () => void showHall());
 $('hallBack').addEventListener('click', () => showSetup(false));
 $('oOut').addEventListener('click', () => { session = null; career = null; store.set('fnd.session.v1', null); renderOnlineBox(); });
@@ -1470,7 +1529,7 @@ window.addEventListener('keydown', (ev) => {
 /** Debug hooks used by the browser checks. */
 (window as unknown as Record<string, unknown>).__fnd = {
   selftest: (s: number): string => gameHash(simulateGame(s, exhibitionTeams(s))),
-  state: () => ({ mode, dynasty: dynasty.active ? { year: dynasty.active.year, week: dynasty.active.week, user: dynasty.active.user, results: dynasty.active.results.length, history: dynasty.active.history.length } : null, cutin: $('cutin').classList.contains('hidden') ? null : ($('cutin') as HTMLImageElement).alt, setup: game?.setup ?? setup, myPlays: myPlays.length, myDefs: myDefs.length, career, practice: practiceRun ? { n: practiceRun.n, done: !!viewSim?.done } : null, phase: game?.state.phase, score: game?.state.score, quarter: game?.state.quarter, clock: game?.state.clock, sidelineOpen, playClock: clockOn ? Math.ceil(clockLeft / 1000) : null, book,
+  state: () => ({ mode, league: shared.current ? { code: shared.current.code, state: shared.current.state, year: shared.current.year, week: shared.current.week, you: shared.current.you, over: shared.current.over, played: shared.current.games.filter((g) => g.score).length } : null, dynasty: dynasty.active ? { year: dynasty.active.year, week: dynasty.active.week, user: dynasty.active.user, results: dynasty.active.results.length, history: dynasty.active.history.length } : null, cutin: $('cutin').classList.contains('hidden') ? null : ($('cutin') as HTMLImageElement).alt, setup: game?.setup ?? setup, myPlays: myPlays.length, myDefs: myDefs.length, career, practice: practiceRun ? { n: practiceRun.n, done: !!viewSim?.done } : null, phase: game?.state.phase, score: game?.state.score, quarter: game?.state.quarter, clock: game?.state.clock, sidelineOpen, playClock: clockOn ? Math.ceil(clockLeft / 1000) : null, book,
     online: net ? { pin: net.pin, state: net.view.state, turn: net.view.turn, you: net.view.you, sync: net.sync, serverHash: net.view.hash, localHash: game ? gameHash(game) : '', queued: net.queue.length, serverScore: net.view.score, mine: !!net.view.mine, voice: voice.state, peer: voice.peerState(String(net.view.you === 0 ? 1 : 0)), voiceSeen: net.view.voice } : null }),
   setSpeed: (n: number) => { speed = n; },
   setTurbo: (on: boolean) => { turbo = on; },

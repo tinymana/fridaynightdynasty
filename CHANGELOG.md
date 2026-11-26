@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.7.0 — 2026-11-26
+
+Dynasty with friends.
+
+### Added
+- `packages/online/src/shared.ts`: a shared league as pure state transitions. Coaches claim schools, the
+  commissioner starts the season, AI-only games are simulated one per check-in, the week closes when every game
+  is in, the commissioner can force a week, and a title is credited to its coach exactly once.
+- League game rooms: the two schools are rebuilt from league details carried in the room; the home school is
+  team 0; quarter length and weather come from the league. A game between two coaches starts only when both
+  have checked in within eight seconds of each other. A game against an AI school seats `AI_COACH`.
+- API actions `leagueCreate`, `league`, `leagueClaim`, `leagueStart`, `leagueForce`, `leagueNext`, `leaguePlay`.
+- Store methods `createLeague`, `withLeague`, `addChampionship`; migration `0003_fnd_leagues.sql`.
+- `@fnd/league`: `addResult`, `closeWeek`, `weekComplete`, `recordOf`.
+- Client: shared-league screen, league row in the online box, `check:league` (two browsers).
+
+### Fixed
+- The ball carrier jumped up to six yards forward at the tackle. The fall is now played out over a few ticks.
+  Results, yardage and game fingerprints are unchanged.
+- An online test assumed the turn after a rejoin was never a kickoff; it failed about one run in five.
+
+### Known gaps
+- A league has one season history but no per-coach history across seasons beyond the career record.
+- A coach cannot join a league after its season has started, or hand over a school.
+- Leagues are found only by code; there is no list of the leagues a coach is in beyond the last one opened.
+- Not tested against the live server.
+
 ## 0.6.0 — 2026-11-26
 
 Dynasty, special teams, game setup and cut-ins.

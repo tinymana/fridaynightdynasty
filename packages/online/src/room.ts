@@ -19,6 +19,8 @@ export const KICK_MS = 20000;
 export const AWAY_MS = 12000;
 /** A guest who stops checking in to the lobby for this long has left. */
 export const LOBBY_TIMEOUT_MS = 20000;
+/** Both coaches of a league game must have checked in this recently for it to start. */
+export const LEAGUE_HERE_MS = 8000;
 
 export interface Coach {
   id: string;
@@ -189,15 +191,19 @@ export function createLeagueRoom(pin: string, host: Coach, team: 0 | 1, bring: B
   return room;
 }
 
-/** The second coach of a league game sits down: the game starts as soon as both are there. */
+/** A coach sits down to a league game. It starts once both coaches are in the room at the same time. */
 export function joinLeagueRoom(room: Room, guest: Coach, bring: Bringing, now: number): void {
-  if (room.state === 'lobby' && room.host.id !== guest.id && !room.guest) {
-    joinRoom(room, guest, bring, now);
-    room.state = 'playing';
-    room.log = [];
-    room.seen = [now, now];
-    settle(room, buildGame(room), now);
-  } else joinRoom(room, guest, bring, now);
+  joinRoom(room, guest, bring, now);
+  startWhenBothHere(room, now);
+}
+
+/** A league game has no start button: it kicks off when both coaches have checked in within the last few seconds. */
+function startWhenBothHere(room: Room, now: number): void {
+  if (!room.league || room.state !== 'lobby' || !room.guest) return;
+  if (now - room.seen[0] > LEAGUE_HERE_MS || now - room.seen[1] > LEAGUE_HERE_MS) return;
+  room.state = 'playing';
+  room.log = [];
+  settle(room, buildGame(room), now);
 }
 
 export function joinRoom(room: Room, guest: Coach, bring: Bringing, now: number): void {
@@ -345,6 +351,7 @@ export function tickRoom(room: Room, now: number): void {
     room.guest = null;
     room.updatedAt = now;
   }
+  startWhenBothHere(room, now);
   resolveIfReady(room, now);
 }
 

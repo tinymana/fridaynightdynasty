@@ -2,6 +2,41 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.7.0",
+      "date": "2026-11-26",
+      "title": "Dynasty with friends",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Dynasty with friends. Sign in, start a league in any state and share its five-letter code. Each friend takes a school; the AI runs the rest."
+        },
+        {
+          "tag": "new",
+          "text": "When two coaches meet, both have to be there. The first to arrive waits in the game room and it kicks off the moment the second sits down. Voice chat works in league games too."
+        },
+        {
+          "tag": "new",
+          "text": "Games against AI schools can be played whenever you like. Games between two AI schools play themselves."
+        },
+        {
+          "tag": "new",
+          "text": "The week moves on when every game is in. If someone is away, the commissioner can let the AI finish the week."
+        },
+        {
+          "tag": "new",
+          "text": "Win the state title in a shared league and it goes on your coach profile as a championship."
+        },
+        {
+          "tag": "fixed",
+          "text": "Tackles no longer make the ball carrier jump forward. He now drives ahead with the tackler on him and goes down at the spot."
+        },
+        {
+          "tag": "note",
+          "text": "League games against AI schools count in the league but not in the Hall of Fame, which is for games between two coaches."
+        }
+      ]
+    },
+    {
       "version": "0.6.0",
       "date": "2026-11-26",
       "title": "Dynasty, special teams, weather and cut-ins",
@@ -361,9 +396,9 @@
       "text": "Season after season with one school: a state title game, rosters that turn over, a trophy case. Playable now."
     },
     {
-      "status": "next",
+      "status": "testing",
       "title": "Dynasty with friends",
-      "text": "Friends coach rival schools in the same league. When two coaches meet, both have to be online to play; the week moves on when everyone is ready."
+      "text": "Friends coach rival schools in the same league. When two coaches meet, both have to be online to play; the week moves on when every game is in. Playable now."
     },
     {
       "status": "next",

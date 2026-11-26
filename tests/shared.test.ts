@@ -122,6 +122,19 @@ describe('a week with coaches in it', () => {
     expect((await w.call({ action: 'leaguePlay', token: a, code })).error!.code).toBe('bad_request');
   });
 
+  it('a coach who opened the game and walked away does not get an AI playing for him: it waits until both are there', async () => {
+    const { w, a, b, code } = await league();
+    await w.call({ action: 'leagueStart', token: a, code });
+    const first = (await w.call({ action: 'leaguePlay', token: a, code })).room!;
+    w.advance(15_000);
+    const second = (await w.call({ action: 'leaguePlay', token: b, code })).room!;
+    expect(second.state).toBe('lobby');
+    w.advance(1000);
+    expect((await w.call({ action: 'game', token: b, pin: first.pin })).room!.state).toBe('lobby');
+    // The first coach comes back: now both are here and it kicks off.
+    expect((await w.call({ action: 'game', token: a, pin: first.pin })).room!.state).toBe('playing');
+  });
+
   it('a game against an AI school starts at once, counts in the league, and stays out of the Hall of Fame', async () => {
     const { w, a, c, code } = await league();
     await w.call({ action: 'leagueStart', token: a, code });
@@ -192,10 +205,12 @@ describe('a whole shared season', () => {
     const { w, a, b, c, code } = await league();
     await w.call({ action: 'leagueStart', token: a, code });
     let v = await poll(w, a, code);
-    for (let week = 0; week <= REGULAR_WEEKS; week++) {
-      expect(v.week).toBe(week);
+    // A title game between two AI schools plays itself; every other week needs the commissioner to move it on.
+    for (let n = 0; n <= REGULAR_WEEKS && !v.over; n++) {
+      const week = v.week;
       await w.call({ action: 'leagueForce', token: a, code });
       v = await poll(w, a, code, 7);
+      expect(v.week).toBeGreaterThan(week);
     }
     expect(v.over).toBe(true);
     expect(v.history.length).toBe(1);
