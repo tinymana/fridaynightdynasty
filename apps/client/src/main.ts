@@ -1,8 +1,8 @@
 import {
-  BOOK_MIN, BOOK_SIZE, CUSTOM_FRONT, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, FORMATIONS, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, OFFENSE_PLAYS, RULES, U,
+  BOOK_MIN, BOOK_SIZE, CUSTOM_FRONT, QUARTER_MINUTES, WEATHER, WEATHERS, cleanSetup, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, FORMATIONS, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, OFFENSE_PLAYS, RULES, U,
   defAssignment, draftFromDefense, draftFromFront, draftFromPlay, exhibitionTeams, formationOf, frontById, newDesignId, overall, playById, schemeById,
   toFront, toScheme, validateBook, validateDefPlay, validateOffPlay,
-  type DefDecision, type DefFront, type DefPlay, type DefScheme, type Group, type KickStyle, type ManageAction, type OffAssign, type OffDecision, type OffPlay, type PlayEvent, type Team,
+  type DefDecision, type DefFront, type DefPlay, type DefScheme, type GameSetup, type Group, type KickStyle, type ManageAction, type OffAssign, type OffDecision, type OffPlay, type PlayEvent, type Team,
 } from '@fnd/core';
 import { fieldGoalDistance } from '@fnd/football-ai';
 import { AutoCoach, Game, gameHash, replayGame, simulateGame, summarize, type LoggedDecision, type PlaySim } from '@fnd/match-sim';
@@ -106,6 +106,9 @@ let book: string[] = (() => {
 let practiceRun: { make: (seed: number) => PlaySim; n: number; pause: number; told: boolean } | null = null;
 let career: Career | null = null;
 let bookDraft: string[] = [];
+/** Quarter length and weather for the next game this coach starts or hosts. */
+let setup: GameSetup = cleanSetup(store.get<unknown>('fnd.setup.v1', null));
+const setupLine = (s: GameSetup): string => `${s.quarterMinutes}-minute quarters \u00b7 ${WEATHER[s.weather].name}`;
 /** The formation tab open on the offense panel. */
 let offTab = FORMATIONS[0].id;
 let frontId: string = DEFENSE_FRONTS[0].id;
@@ -942,7 +945,7 @@ function startGame(team: 0 | 1): void {
   const defenses: [DefPlay[], DefPlay[]] = [[], []];
   plays[user] = myPlays;
   defenses[user] = myDefs;
-  game = new Game(seed, teams, { books, plays, defenses });
+  game = new Game(seed, teams, { books, plays, defenses, setup });
   coach = new AutoCoach(seed);
   lastQuarter = 1;
   kick = null;
@@ -955,7 +958,7 @@ function startGame(team: 0 | 1): void {
   updateBug();
   const receiving = other(game.state.kicking);
   $('banner').className = '';
-  $('banner').innerHTML = `${teams[receiving].name} will receive the opening kickoff.<small>You are coaching the ${teams[user].name} ${teams[user].mascot}.</small>`;
+  $('banner').innerHTML = `${teams[receiving].name} will receive the opening kickoff.<small>You are coaching the ${teams[user].name} ${teams[user].mascot}. ${setupLine(game.setup)}.</small>`;
   $('banner').classList.remove('hidden');
   setPanelWaiting('Kickoff');
   timer = 2200;
@@ -1003,7 +1006,7 @@ function renderOnlineBox(): void {
   $('oHostRow').innerHTML = teams.map((t, i) => `<button class="seg" data-host="${i}">Host as ${t.name}</button>`).join('');
   $('oHostRow').querySelectorAll<HTMLElement>('[data-host]').forEach((el) => el.addEventListener('click', async () => {
     try {
-      openLobby((await online.host(session!.token, Number(el.dataset.host) as 0 | 1, book, myPlays, myDefs)).room);
+      openLobby((await online.host(session!.token, Number(el.dataset.host) as 0 | 1, book, myPlays, myDefs, setup)).room);
     } catch (e) {
       signedOutCheck(e);
       onlineMessage('oMsg', e);
@@ -1104,6 +1107,7 @@ function renderLobby(): void {
   const v = net.view;
   const lobbyTeams = exhibitionTeams(v.seed);
   $('lobbyPin').textContent = v.pin;
+  $('lobbySetup').textContent = setupLine(v.setup);
   $('lobbySeats').innerHTML = lobbyTeams.map((t, i) => `<div class="team-card seat${i === v.you ? ' me' : ''}"><div class="swatch" style="background:linear-gradient(90deg, ${css(t.colors.jersey)} 0 60%, ${css(t.colors.trim)} 60% 80%, ${css(t.colors.helmet)} 80%)"></div><div class="nm">${t.name} ${t.mascot}</div><div class="coach${v.coaches[i] ? '' : ' empty'}">${v.coaches[i] ? `${v.coaches[i]}${i === v.you ? ' (you)' : ''}` : 'Waiting for a coach…'}</div></div>`).join('');
   const ready = !!v.coaches[0] && !!v.coaches[1];
   const start = $('lobbyStart') as HTMLButtonElement;
@@ -1173,7 +1177,7 @@ function enterOnlineGame(): void {
   user = v.you;
   coach = new AutoCoach(seed, [v.plan, v.plan]);
   const catchUp = net.queue.length > 1 ? net.queue.splice(0, net.queue.length) : [];
-  game = replayGame(seed, teams, catchUp, { books: v.books, plays: v.designs.plays, defenses: v.designs.defenses });
+  game = replayGame(seed, teams, catchUp, { books: v.books, plays: v.designs.plays, defenses: v.designs.defenses, setup: v.setup });
   lastQuarter = game.state.quarter;
   kick = null;
   viewSim = null;
@@ -1270,7 +1274,7 @@ function pump(): void {
 function checkSync(): void {
   if (!net || net.queue.length || game.log.length !== net.view.logSize) return;
   // The play just begun is still being drawn here, so compare a finished copy built from the same log.
-  const probe = replayGame(seed, teams, game.log, { books: net.view.books, plays: net.view.designs.plays, defenses: net.view.designs.defenses });
+  const probe = replayGame(seed, teams, game.log, { books: net.view.books, plays: net.view.designs.plays, defenses: net.view.designs.defenses, setup: net.view.setup });
   if (gameHash(probe) !== net.view.hash) {
     net.sync = 'bad';
     console.error('out of sync with the server', gameHash(probe), net.view.hash);
@@ -1335,6 +1339,23 @@ $('clockToggle').addEventListener('change', (ev) => {
 });
 $('oEnter').addEventListener('click', () => void signIn());
 $('oPin').addEventListener('keydown', (ev) => { if ((ev as KeyboardEvent).key === 'Enter') void signIn(); });
+const quarterPick = $('quarterPick') as HTMLSelectElement;
+const weatherPick = $('weatherPick') as HTMLSelectElement;
+quarterPick.innerHTML = QUARTER_MINUTES.map((m) => `<option value="${m}">${m} minutes${m === 12 ? ' (standard)' : ''}</option>`).join('');
+weatherPick.innerHTML = WEATHERS.map((w) => `<option value="${w}">${WEATHER[w].name}</option>`).join('');
+const showSetupPicks = (): void => {
+  quarterPick.value = String(setup.quarterMinutes);
+  weatherPick.value = setup.weather;
+  $('weatherNote').textContent = WEATHER[setup.weather].desc;
+};
+const readSetupPicks = (): void => {
+  setup = cleanSetup({ quarterMinutes: Number(quarterPick.value), weather: weatherPick.value });
+  store.set('fnd.setup.v1', setup);
+  showSetupPicks();
+};
+quarterPick.addEventListener('change', readSetupPicks);
+weatherPick.addEventListener('change', readSetupPicks);
+showSetupPicks();
 for (const id of ['hallBtn', 'hallBtn2']) $(id).addEventListener('click', () => void showHall());
 $('hallBack').addEventListener('click', () => showSetup(false));
 $('oOut').addEventListener('click', () => { session = null; career = null; store.set('fnd.session.v1', null); renderOnlineBox(); });
@@ -1378,7 +1399,7 @@ window.addEventListener('keydown', (ev) => {
 /** Debug hooks used by the browser checks. */
 (window as unknown as Record<string, unknown>).__fnd = {
   selftest: (s: number): string => gameHash(simulateGame(s, exhibitionTeams(s))),
-  state: () => ({ mode, myPlays: myPlays.length, myDefs: myDefs.length, career, practice: practiceRun ? { n: practiceRun.n, done: !!viewSim?.done } : null, phase: game?.state.phase, score: game?.state.score, quarter: game?.state.quarter, clock: game?.state.clock, sidelineOpen, playClock: clockOn ? Math.ceil(clockLeft / 1000) : null, book,
+  state: () => ({ mode, setup: game?.setup ?? setup, myPlays: myPlays.length, myDefs: myDefs.length, career, practice: practiceRun ? { n: practiceRun.n, done: !!viewSim?.done } : null, phase: game?.state.phase, score: game?.state.score, quarter: game?.state.quarter, clock: game?.state.clock, sidelineOpen, playClock: clockOn ? Math.ceil(clockLeft / 1000) : null, book,
     online: net ? { pin: net.pin, state: net.view.state, turn: net.view.turn, you: net.view.you, sync: net.sync, serverHash: net.view.hash, localHash: game ? gameHash(game) : '', queued: net.queue.length, serverScore: net.view.score, mine: !!net.view.mine, voice: voice.state, peer: voice.peerState(String(net.view.you === 0 ? 1 : 0)), voiceSeen: net.view.voice } : null }),
   setSpeed: (n: number) => { speed = n; },
   setTurbo: (on: boolean) => { turbo = on; },

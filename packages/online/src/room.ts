@@ -1,6 +1,6 @@
 import {
-  CUSTOM_FRONT, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, KICK_STYLES, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, clamp, exhibitionTeams, validateBook, validateDefPlay, validateOffPlay,
-  type DefDecision, type DefPlay, type GamePlan, type KickStyle, type ManageAction, type OffDecision, type OffPlay,
+  CUSTOM_FRONT, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, KICK_STYLES, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, clamp, cleanSetup, exhibitionTeams, validateBook, validateDefPlay, validateOffPlay,
+  type DefDecision, type DefPlay, type GamePlan, type GameSetup, type KickStyle, type ManageAction, type OffDecision, type OffPlay,
 } from '@fnd/core';
 import { DEFAULT_PLAN } from '@fnd/football-ai';
 import { AutoCoach, Game, gameHash, replayGame, type LoggedDecision } from '@fnd/match-sim';
@@ -44,6 +44,8 @@ export interface Room {
   pending: { off?: OffDecision; def?: DefDecision };
   /** On a kickoff, `offense` is the kicking team and only that coach has a call to make. */
   need: { phase: 'scrimmage' | 'conversion' | 'kickoff' | 'none'; offense: 0 | 1 };
+  /** Quarter length and weather, chosen by the host. Absent in rooms made before this existed. */
+  setup?: GameSetup;
   deadline: number;
   /** When each team's coach last checked in, by team index. */
   seen: [number, number];
@@ -134,6 +136,8 @@ function cleanDesigns(rawPlays: unknown, rawDefenses: unknown): { plays: OffPlay
 }
 
 export interface Bringing {
+  /** Host only: quarter length and weather. */
+  setup?: unknown;
   book?: unknown;
   plays?: unknown;
   defenses?: unknown;
@@ -155,6 +159,7 @@ export function createRoom(pin: string, host: Coach, team: 0 | 1, bring: Bringin
     need: { phase: 'none', offense: 0 }, deadline: 0, seen: [now, now], score: [0, 0], hash: '', createdAt: now, updatedAt: now,
   };
   seat(room, team, bring);
+  room.setup = cleanSetup(bring.setup);
   return room;
 }
 
@@ -184,7 +189,7 @@ export function touch(room: Room, coachId: string, now: number): void {
 }
 
 function buildGame(room: Room): Game {
-  return replayGame(room.seed, exhibitionTeams(room.seed), room.log, { books: room.books, plays: room.designs?.plays, defenses: room.designs?.defenses });
+  return replayGame(room.seed, exhibitionTeams(room.seed), room.log, { books: room.books, plays: room.designs?.plays, defenses: room.designs?.defenses, setup: room.setup });
 }
 
 /** Records what the next decision is. */
@@ -378,6 +383,7 @@ export interface RoomView {
   books: [string[], string[]];
   /** Both coaches' designs. Each browser needs them to redraw the game. */
   designs: Designs;
+  setup: GameSetup;
   turn: number;
   logSize: number;
   /** Log entries from the index the client asked for. */
@@ -406,7 +412,7 @@ export function viewRoom(room: Room, coachId: string, have: number, now: number)
   coaches[other(room.hostTeam)] = room.guest?.name ?? null;
   const iAmOffense = you === room.need.offense;
   return {
-    pin: room.pin, state: room.state, you, isHost: room.host.id === coachId, coaches, seed: room.seed, books: room.books, designs: room.designs ?? { plays: [[], []], defenses: [[], []] },
+    pin: room.pin, state: room.state, you, isHost: room.host.id === coachId, coaches, seed: room.seed, books: room.books, designs: room.designs ?? { plays: [[], []], defenses: [[], []] }, setup: cleanSetup(room.setup),
     turn: room.turn, logSize: room.log.length, log: room.log.slice(clamp(Math.trunc(have) || 0, 0, room.log.length)),
     need: room.need, submitted: { off: !!room.pending.off, def: !!room.pending.def },
     mine: (iAmOffense ? room.pending.off : room.pending.def) ?? null,

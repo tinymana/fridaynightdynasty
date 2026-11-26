@@ -66,8 +66,8 @@ export interface PuntResult {
   touchback: boolean;
 }
 
-export function resolvePunt(rng: Rng, punter: Player, los: number): PuntResult {
-  const grossYards = Math.round(26 + punter.ratings.kicking * 0.16 + rng.range(-9, 9));
+export function resolvePunt(rng: Rng, punter: Player, los: number, distance = 1): PuntResult {
+  const grossYards = Math.round((26 + punter.ratings.kicking * 0.16 + rng.range(-9, 9)) * distance);
   const fairCatch = rng.chance(0.45);
   const returnRoll = rng.range(-1, 12);
   const land = 100 - (los + grossYards);

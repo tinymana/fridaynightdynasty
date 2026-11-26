@@ -1,6 +1,6 @@
 import {
-  FIELD_W, U, clamp, defAssignment, dist, yd,
-  type DefAssign, type DefFront, type DefScheme, type OffAssign, type OffFormation, type OffPlay, type Player, type Rng,
+  FIELD_W, U, WEATHER, clamp, defAssignment, dist, yd,
+  type DefAssign, type DefFront, type DefScheme, type OffAssign, type OffFormation, type OffPlay, type Player, type Rng, type Weather, type WeatherEffect,
 } from '@fnd/core';
 import { carrierTarget, contestDistance, matchCoverage, qbRead, type CoverDefender, type CoverReceiver, type FieldDefender, type ReadReceiver } from '@fnd/football-ai';
 
@@ -94,6 +94,8 @@ export interface PlayContext {
   defEnergy: readonly number[];
   /** Line of scrimmage, yards from the offense's own goal line (1 to 99). */
   los: number;
+  /** Conditions; clear when absent. */
+  weather?: Weather;
   rng: Rng;
 }
 
@@ -123,6 +125,7 @@ export class PlaySim {
   private readonly qb: SimPlayer;
   /** +1 when the defensive call guessed the play type, -1 when it guessed wrong, else 0. */
   private readonly edge: number;
+  private readonly wx: WeatherEffect;
   private thrown = false;
   private throwTick = 0;
   private hurried = false;
@@ -135,6 +138,7 @@ export class PlaySim {
   private readEvery: number;
 
   constructor(ctx: PlayContext) {
+    this.wx = WEATHER[ctx.weather ?? 'clear'];
     this.play = ctx.play;
     this.scheme = ctx.scheme;
     this.rng = ctx.rng;
@@ -475,7 +479,8 @@ export class PlaySim {
     }
     const d = dist(this.qb.x, this.qb.y, ax, ay);
     const deep = Math.max(0, d - yd(18));
-    const err = Math.trunc(d * (0.03 + ((100 - q.throwAccuracy) / 100) * 0.13) + deep * 0.2) + (this.hurried ? yd(1.4) : 0);
+    const wind = this.wx.throwError * (d >= yd(15) ? this.wx.deepError : 1);
+    const err = Math.trunc((d * (0.03 + ((100 - q.throwAccuracy) / 100) * 0.13) + deep * 0.2) * wind) + (this.hurried ? yd(1.4) : 0);
     ax += Math.trunc(this.rng.range(-err, err));
     ay += Math.trunc(this.rng.range(-err, err));
     b.toX = clamp(ax, yd(-8), yd(112));
@@ -507,7 +512,7 @@ export class PlaySim {
     if (nearest && dD < 1.6) pInt = ((1.6 - dD) / 1.6) * (0.02 + cov * 0.0006 + 0.02 * this.edge);
     if (nearest && dR > 2 && dD < 1) pInt = 0.15;
     const throwDist = dist(b.fromX, b.fromY, b.toX, b.toY) / U;
-    let pCatch = 0.6 + r.player.ratings.hands * 0.0033 - dR * 0.09;
+    let pCatch = 0.6 + r.player.ratings.hands * 0.0033 - dR * 0.09 + this.wx.catching;
     if (dD < 2.2) pCatch -= (2.2 - dD) * (0.1 + cov * 0.0012 + blitzCov) * (1 + 0.25 * this.edge);
     if (throwDist > 25) pCatch -= (throwDist - 25) * 0.006;
     if (dR > 2) pCatch = 0;
@@ -708,7 +713,7 @@ export class PlaySim {
       if (made) {
         if (!inPocket && c.x > c.px) c.x += fall;
         if (c.x >= yd(100)) return this.finish(c, null, { touchdown: true });
-        const fumble = !inPocket && this.rng.chance(0.012) && this.rng.chance(0.5);
+        const fumble = !inPocket && this.rng.chance(0.012 * this.wx.fumble) && this.rng.chance(0.5);
         this.finish(c, d, { sack: inPocket, fumble });
         return;
       }

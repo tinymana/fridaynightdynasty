@@ -1,8 +1,8 @@
 import {
-  CUSTOM_FRONT, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, GROUPS, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, OFFENSE_PLAYS, RULES, Rng, U, clamp, formationOf, frontById, hashString,
+  CUSTOM_FRONT, DEFAULT_BOOK, DEFAULT_SETUP, DEFENSE_FRONTS, DEFENSE_SCHEMES, GROUPS, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, OFFENSE_PLAYS, RULES, Rng, U, WEATHER, clamp, cleanSetup, formationOf, frontById, hashString,
   schemeById, toFront, toScheme, validateBook, validateDefPlay, validateOffPlay,
   type DefFront, type DefPlay, type DefScheme, type OffPlay,
-  type DefDecision, type GamePlan, type Group, type KickStyle, type ManageAction, type OffDecision, type PlayEvent, type PlayFlags, type PlayType,
+  type DefDecision, type GamePlan, type GameSetup, type Group, type KickStyle, type ManageAction, type OffDecision, type PlayEvent, type PlayFlags, type PlayType,
   type Player, type Situation, type Slot, type Team,
 } from '@fnd/core';
 import { DEFAULT_PLAN, aiDefense, aiKickoff, aiOffense, fieldGoalDistance } from '@fnd/football-ai';
@@ -40,6 +40,8 @@ export interface GameOptions {
   /** Each coach's own designed plays and defenses. Re-validated here: nothing illegal reaches the field. */
   plays?: readonly [readonly OffPlay[], readonly OffPlay[]];
   defenses?: readonly [readonly DefPlay[], readonly DefPlay[]];
+  /** Quarter length and weather. Twelve-minute quarters on a clear night when absent. */
+  setup?: Partial<GameSetup>;
 }
 
 /** A substitution made because a starter is resting. */
@@ -91,10 +93,15 @@ export class Game {
   private calls: { off?: string; front?: string; def?: string } = {};
   private lastSnap: { offense: 0 | 1; n: number; ctx: Omit<PlayContext, 'rng'> } | null = null;
 
+  readonly setup: GameSetup;
+  private readonly quarterSeconds: number;
+
   constructor(readonly seed: number, readonly teams: readonly [Team, Team], opts: GameOptions = {}) {
+    this.setup = cleanSetup({ ...DEFAULT_SETUP, ...opts.setup });
+    this.quarterSeconds = this.setup.quarterMinutes * 60;
     const receiver = Rng.stream(seed, 'toss').int(0, 1) as 0 | 1;
     this.state = {
-      quarter: 1, clock: RULES.quarterSeconds, score: [0, 0], possession: receiver, down: 1, distance: 10, yardLine: 20,
+      quarter: 1, clock: this.quarterSeconds, score: [0, 0], possession: receiver, down: 1, distance: 10, yardLine: 20,
       phase: 'kickoff', kicking: other(receiver), kickFrom: RULES.kickoffFrom,
       timeouts: [RULES.timeoutsPerHalf, RULES.timeoutsPerHalf], clockRunning: false, openingReceiver: receiver,
     };
@@ -294,6 +301,7 @@ export class Game {
       offEnergy: offPlayers.map((p) => this.energy[p.id]),
       defEnergy: defPlayers.map((p) => this.energy[p.id]),
       los: this.twoPoint ? RULES.twoPointFrom : s.yardLine,
+      weather: this.setup.weather,
     };
     this.calls = { off: play.id, front: front.id, def: scheme.id };
     this.lastSnap = { offense: offTeam, n, ctx };
@@ -333,7 +341,7 @@ export class Game {
       const id = p.player.id;
       played.add(id);
       const work = 1 + p.moved / (U * 14) + (p.contact ? 2.5 : 0) + (p.engaged >= 0 ? 0.5 : 0);
-      this.energy[id] = Math.max(0, this.energy[id] - (work * (140 - p.player.ratings.stamina)) / 80);
+      this.energy[id] = Math.max(0, this.energy[id] - ((work * (140 - p.player.ratings.stamina)) / 80) * WEATHER[this.setup.weather].drain);
     }
     for (const id of Object.keys(this.energy)) {
       if (!played.has(id)) this.energy[id] = Math.min(100, this.energy[id] + 1.5);
@@ -387,7 +395,7 @@ export class Game {
     s.clockRunning = false;
     if (s.quarter === 2) {
       s.quarter = 3;
-      s.clock = RULES.quarterSeconds;
+      s.clock = this.quarterSeconds;
       s.timeouts = [RULES.timeoutsPerHalf, RULES.timeoutsPerHalf];
       this.setKickoff(s.openingReceiver, RULES.kickoffFrom);
       this.rest(40);
@@ -396,7 +404,7 @@ export class Game {
       s.phase = 'final';
     } else {
       s.quarter++;
-      s.clock = RULES.quarterSeconds;
+      s.clock = this.quarterSeconds;
       this.rest(10);
     }
   }
@@ -461,7 +469,7 @@ export class Game {
     const before = this.snapshot();
     const off = s.possession;
     const punter = this.starter(off, 'P');
-    const r = resolvePunt(rng, punter, s.yardLine);
+    const r = resolvePunt(rng, punter, s.yardLine, WEATHER[this.setup.weather].puntDistance);
     const fate = rushed ? blockOutcome(rng.range(0, 1)) : 'none';
     this.runClock(8);
     if (fate === 'blocked') {
@@ -490,7 +498,7 @@ export class Game {
     const off = s.possession;
     const kicker = this.starter(off, 'K');
     const dist = fieldGoalDistance(s.yardLine);
-    const made = rng.chance(fieldGoalChance(kicker, s.yardLine));
+    const made = rng.chance(clamp(fieldGoalChance(kicker, s.yardLine) + WEATHER[this.setup.weather].kicking, 0.01, 0.97));
     const fate = rushed ? blockOutcome(rng.range(0, 1)) : 'none';
     const good = made && fate !== 'blocked';
     this.runClock(5);
@@ -525,7 +533,7 @@ export class Game {
     const before = this.snapshot();
     const off = s.possession;
     const kicker = this.starter(off, 'K');
-    const good = rng.chance(patChance(kicker));
+    const good = rng.chance(clamp(patChance(kicker) + WEATHER[this.setup.weather].kicking / 2, 0.3, 0.98));
     const points: [number, number] = [0, 0];
     if (good) {
       s.score[off] += 1;

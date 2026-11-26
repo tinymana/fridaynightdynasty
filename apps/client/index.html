@@ -149,6 +149,9 @@
   .voice-state.bad { color: #ff8d85; }
   .seg.live { border-color: var(--good); color: var(--good); }
 
+  .pick { font-size: 12px; color: var(--dim); letter-spacing: 1px; text-transform: uppercase; display: inline-flex; gap: 6px; align-items: center; }
+  .pick select { font-family: inherit; font-size: 13px; background: #000; color: var(--ink); border: 2px solid var(--line); border-radius: 4px; padding: 5px 8px; }
+  #weatherNote { font-size: 12px; color: var(--dim); }
   /* designer */
   #designer h2, #hall h2 { font-size: 18px; letter-spacing: 3px; text-transform: uppercase; margin: 18px 0 10px; text-align: center; }
   .ds-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
@@ -219,6 +222,11 @@
       <span id="bookSummary"></span>
       <label class="chk"><input type="checkbox" id="clockToggle"> 20-second play clock</label>
     </div>
+    <div class="setup-opts">
+      <label class="pick">Quarters <select id="quarterPick" aria-label="Quarter length"></select></label>
+      <label class="pick">Weather <select id="weatherPick" aria-label="Weather"></select></label>
+      <span id="weatherNote"></span>
+    </div>
     <div id="onlineBox">
       <h3>Play a friend online</h3>
       <div id="oSignedOut" class="orow">
@@ -245,6 +253,7 @@
   <section id="lobby" class="hidden">
     <h2>Game PIN</h2>
     <div id="lobbyPin" aria-label="Game PIN"></div>
+    <p id="lobbySetup" style="color:var(--accent);margin:0 0 6px"></p>
     <p id="lobbyHelp">Tell the other coach to sign in, type this PIN and press Join.</p>
     <div class="teams" id="lobbySeats"></div>
     <div class="orow center"><button class="seg on" id="lobbyStart">Start the game</button><button class="seg" id="lobbyLeave">Leave</button></div>
