@@ -17,7 +17,8 @@
     "mock:online": "tsx tools/mock-online.ts",
     "check:online": "node tools/online-check.mjs",
     "check:voice": "node tools/voice-check.mjs",
-    "check:designer": "node tools/designer-check.mjs"
+    "check:designer": "node tools/designer-check.mjs",
+    "check:dynasty": "node tools/dynasty-check.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.10",

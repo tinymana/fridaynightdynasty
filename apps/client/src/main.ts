@@ -9,6 +9,7 @@ import { AutoCoach, Game, gameHash, replayGame, simulateGame, summarize, type Lo
 import type { Career, RoomView } from '@fnd/online';
 import { OnlineError, online } from './net/online';
 import { cutinFor } from './cutins';
+import { DynastyScreen, type DynastyGame } from './dynasty';
 import { openDefenseDesigner, openOffenseDesigner, practiceTeams, type DesignerHost } from './designer';
 import { voice } from './net/voice';
 import { FieldScene, createGame, type FieldView, type ViewPlayer } from './scene';
@@ -107,6 +108,8 @@ let book: string[] = (() => {
 let practiceRun: { make: (seed: number) => PlaySim; n: number; pause: number; told: boolean } | null = null;
 let career: Career | null = null;
 let bookDraft: string[] = [];
+/** The dynasty game being played, if this game is one. */
+let dynastyGame: DynastyGame | null = null;
 /** Cut-in artwork after big plays. Off in tests that only want the football. */
 let showCutins = true;
 /** Quarter length and weather for the next game this coach starts or hosts. */
@@ -928,19 +931,38 @@ function bookSummary(): void {
 
 // --------------------------------------------------------------- screens
 
-function show(id: 'title' | 'setup' | 'game' | 'final' | 'bookScreen' | 'lobby' | 'designer' | 'hall'): void {
-  for (const s of ['title', 'setup', 'game', 'final', 'bookScreen', 'lobby', 'designer', 'hall']) $(s).classList.toggle('hidden', s !== id);
+function show(id: 'title' | 'setup' | 'game' | 'final' | 'bookScreen' | 'lobby' | 'designer' | 'hall' | 'dynasty'): void {
+  for (const s of ['title', 'setup', 'game', 'final', 'bookScreen', 'lobby', 'designer', 'hall', 'dynasty']) $(s).classList.toggle('hidden', s !== id);
 }
+
+let dynastyDone = false;
+const dynasty = new DynastyScreen($('dyBody'), $('dyTitle'), {
+  load: () => store.get<unknown>('fnd.dynasty.v1', null),
+  save: (d) => store.set('fnd.dynasty.v1', d),
+  quarterMinutes: () => setup.quarterMinutes,
+  play: (g) => {
+    stopOnline();
+    seed = g.seed;
+    teams = g.teams;
+    dynastyGame = g;
+    dynastyDone = false;
+    startGame(g.user, g.setup);
+  },
+  back: () => showSetup(),
+}, () => (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0);
 
 function showSetup(fresh = true): void {
   unlockAudio();
   mode = 'menu';
   closeSideline();
   stopOnline();
-  if (fresh) {
+  dynastyGame = null;
+  if (fresh || !teams || teams[0].id !== 'sch_0001') {
     seed = (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0;
     teams = exhibitionTeams(seed);
   }
+  $('dynastyLine').textContent = dynasty.summary();
+  $('dynastyBtn').textContent = dynasty.active ? 'Continue dynasty' : 'Dynasty';
   const qb = (t: Team) => t.roster.find((p) => p.id === t.depth.QB[0])!;
   $('teams').innerHTML = teams.map((t, i) => `<button class="team-card" data-team="${i}"><div class="swatch" style="background:linear-gradient(90deg, ${css(t.colors.jersey)} 0 60%, ${css(t.colors.trim)} 60% 80%, ${css(t.colors.helmet)} 80%)"></div><div class="nm">${t.name} ${t.mascot}</div><div class="sub">${i === 0 ? 'Home' : 'Visitors'} · QB ${qb(t).name} #${qb(t).number}</div></button>`).join('');
   $('teams').querySelectorAll<HTMLElement>('[data-team]').forEach((el) => el.addEventListener('click', () => startGame(Number(el.dataset.team) as 0 | 1)));
@@ -950,7 +972,7 @@ function showSetup(fresh = true): void {
   show('setup');
 }
 
-function startGame(team: 0 | 1): void {
+function startGame(team: 0 | 1, conditions: GameSetup = setup): void {
   unlockAudio();
   sfx.select();
   user = team;
@@ -960,8 +982,9 @@ function startGame(team: 0 | 1): void {
   const defenses: [DefPlay[], DefPlay[]] = [[], []];
   plays[user] = myPlays;
   defenses[user] = myDefs;
-  game = new Game(seed, teams, { books, plays, defenses, setup });
+  game = new Game(seed, teams, { books, plays, defenses, setup: conditions });
   coach = new AutoCoach(seed);
+  showWeather();
   lastQuarter = 1;
   kick = null;
   viewSim = null;
@@ -978,6 +1001,14 @@ function startGame(team: 0 | 1): void {
   setPanelWaiting('Kickoff');
   timer = 2200;
   mode = 'post';
+}
+
+/** Rain, snow, wind or heat over the field, and a small tag naming it. */
+function showWeather(): void {
+  const w = game.setup.weather;
+  $('wx').className = w === 'clear' ? '' : w;
+  $('wxTag').textContent = WEATHER[w].name;
+  $('wxTag').classList.toggle('hidden', w === 'clear');
 }
 
 function showFinal(): void {
@@ -997,7 +1028,20 @@ function showFinal(): void {
   $('finalMeta').textContent = `Seed ${seed} · ${game.log.length} decisions · game fingerprint ${gameHash(game)}${official}`;
   if (net) window.clearInterval(net.timer);
   $('finalCareer').textContent = '';
+  $('again').textContent = dynastyGame ? 'Back to the dynasty' : 'New game';
   if (net) void loadCareer(true);
+  if (dynastyGame && !dynastyDone) {
+    dynastyDone = true;
+    const g = dynastyGame;
+    const score: [number, number] = [s.score[0], s.score[1]];
+    $('finalCareer').textContent = 'Playing the rest of the league\u2026';
+    ($('again') as HTMLButtonElement).disabled = true;
+    // Let the final score paint before the other games are worked out.
+    window.setTimeout(() => {
+      $('finalCareer').textContent = dynasty.finishGame(g, score).text;
+      ($('again') as HTMLButtonElement).disabled = false;
+    }, 60);
+  }
   $('log').innerHTML = game.events.filter((e) => e.points[0] + e.points[1] > 0).map((e) => `<div><b>Q${e.quarter} ${Math.floor(e.clock / 60)}:${String(e.clock % 60).padStart(2, '0')}</b> ${e.text} <b>${e.scoreAfter[0]}–${e.scoreAfter[1]}</b></div>`).join('') || '<div>No scoring.</div>';
   show('final');
 }
@@ -1193,6 +1237,7 @@ function enterOnlineGame(): void {
   coach = new AutoCoach(seed, [v.plan, v.plan]);
   const catchUp = net.queue.length > 1 ? net.queue.splice(0, net.queue.length) : [];
   game = replayGame(seed, teams, catchUp, { books: v.books, plays: v.designs.plays, defenses: v.designs.defenses, setup: v.setup });
+  showWeather();
   lastQuarter = game.state.quarter;
   kick = null;
   viewSim = null;
@@ -1339,7 +1384,18 @@ voice.onChange(renderVoice);
 ($('setupLogo') as HTMLImageElement).src = logoUrl;
 $('version').textContent = `v${devnotes.notes[0].version} · ${devnotes.notes[0].title}`;
 $('title').addEventListener('click', () => showSetup());
-$('again').addEventListener('click', () => showSetup());
+$('again').addEventListener('click', () => {
+  if (!dynastyGame) return showSetup();
+  dynastyGame = null;
+  mode = 'menu';
+  dynasty.render();
+  show('dynasty');
+});
+$('dynastyBtn').addEventListener('click', () => {
+  unlockAudio();
+  dynasty.render();
+  show('dynasty');
+});
 $('editBook').addEventListener('click', showBookScreen);
 $('bookReset').addEventListener('click', () => { bookDraft = [...DEFAULT_BOOK]; renderBook(); });
 $('bookSave').addEventListener('click', () => {
@@ -1414,7 +1470,7 @@ window.addEventListener('keydown', (ev) => {
 /** Debug hooks used by the browser checks. */
 (window as unknown as Record<string, unknown>).__fnd = {
   selftest: (s: number): string => gameHash(simulateGame(s, exhibitionTeams(s))),
-  state: () => ({ mode, cutin: $('cutin').classList.contains('hidden') ? null : ($('cutin') as HTMLImageElement).alt, setup: game?.setup ?? setup, myPlays: myPlays.length, myDefs: myDefs.length, career, practice: practiceRun ? { n: practiceRun.n, done: !!viewSim?.done } : null, phase: game?.state.phase, score: game?.state.score, quarter: game?.state.quarter, clock: game?.state.clock, sidelineOpen, playClock: clockOn ? Math.ceil(clockLeft / 1000) : null, book,
+  state: () => ({ mode, dynasty: dynasty.active ? { year: dynasty.active.year, week: dynasty.active.week, user: dynasty.active.user, results: dynasty.active.results.length, history: dynasty.active.history.length } : null, cutin: $('cutin').classList.contains('hidden') ? null : ($('cutin') as HTMLImageElement).alt, setup: game?.setup ?? setup, myPlays: myPlays.length, myDefs: myDefs.length, career, practice: practiceRun ? { n: practiceRun.n, done: !!viewSim?.done } : null, phase: game?.state.phase, score: game?.state.score, quarter: game?.state.quarter, clock: game?.state.clock, sidelineOpen, playClock: clockOn ? Math.ceil(clockLeft / 1000) : null, book,
     online: net ? { pin: net.pin, state: net.view.state, turn: net.view.turn, you: net.view.you, sync: net.sync, serverHash: net.view.hash, localHash: game ? gameHash(game) : '', queued: net.queue.length, serverScore: net.view.score, mine: !!net.view.mine, voice: voice.state, peer: voice.peerState(String(net.view.you === 0 ? 1 : 0)), voiceSeen: net.view.voice } : null }),
   setSpeed: (n: number) => { speed = n; },
   setTurbo: (on: boolean) => { turbo = on; },

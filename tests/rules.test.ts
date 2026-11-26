@@ -12,13 +12,14 @@ const files = (dir: string): string[] =>
   });
 
 const ALLOWED: Record<string, string[]> = {
+  league: ['core', 'match-sim'],
   core: [],
   'football-ai': ['core'],
   'match-sim': ['core', 'football-ai'],
   online: ['core', 'football-ai', 'match-sim'],
 };
 /** Packages that must be deterministic. The online package is allowed a clock and real randomness. */
-const SIM_PACKAGES = ['core', 'football-ai', 'match-sim'];
+const SIM_PACKAGES = ['core', 'football-ai', 'match-sim', 'league'];
 
 describe('simulation packages', () => {
   it('never use ambient randomness, wall-clock time, or non-portable math', () => {
