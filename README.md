@@ -2,7 +2,7 @@
 
 A coach-only high school football dynasty simulator by Tiny Mana Studios. You call the plays; the players carry them out.
 
-Current state: **Milestone 1 release candidate** (exhibition game). See `CHANGELOG.md`.
+Current state: **Milestone 2 release candidate** (playbooks, fronts, fatigue, game plans). See `CHANGELOG.md`.
 
 ## Run it
 
@@ -11,7 +11,10 @@ Current state: **Milestone 1 release candidate** (exhibition game). See `CHANGEL
     npm run build      # single-file build in dist/index.html
     npm test           # automated tests
     npm run sim -- 200 # 200 headless AI-versus-AI games with a balance report
-    node tools/browser-check.mjs   # after a build: plays a full game in headless Chrome
+    npm run probe -- mesh          # one play against every front and call
+    npm run build:site             # build the game into site/play/
+    node tools/browser-check.mjs   # after build:site: plays a full game in headless Chrome
+    npm run check:ui               # after build:site: playbook builder, sideline, fronts, play clock
 
 ## Layout
 

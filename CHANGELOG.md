@@ -1,5 +1,130 @@
 # Changelog
 
+## 0.5.0 — 2026-11-25
+
+The big playbook.
+
+### Added
+- 16 offensive plays (40 in the library, eight per formation). The starter book is the whole library.
+- `BOOK_MIN` (8) and `BOOK_SIZE` (52): a book is 8 to 52 plays, so designed plays add to the 40.
+- 4-4 front; Man Free, Cover 2, Zone Blitz and Prevent calls. Five fronts by eight calls is 40 defenses.
+- Offense panel grouped by formation tabs. `tools/probe-all.ts` and `tools/probe-def.ts` for measuring every
+  play and every defense.
+- `art/source`: artwork sheets from the creative director, not yet used.
+
+### Changed
+- The AI's defensive lean is shared among the calls of a kind, so a longer call sheet does not change its mix.
+  Prevent is reserved for protecting a late lead.
+- The home-win balance test samples 400 games; at 200 the 45-55 band was narrower than chance.
+- Playbook storage key is now `fnd.book.v2`.
+
+### Known gaps
+- New plays were tuned by measurement against the AI, not by human play. Spread Counter is weak (about 3 yards);
+  Tight End Pop completes about three in four.
+- Special teams are still automatic apart from punt, field goal and the extra point.
+- Everything listed under 0.4.0 still stands.
+
+## 0.4.0 — 2026-11-25
+
+Play designer, coach careers and the Hall of Fame.
+
+### Added
+- Play designer for offense and defense (`apps/client/src/designer.ts`): drag players, assign jobs, draw paths,
+  live legality messages, and a practice field that runs a design against any front and call (or any library play)
+  and can show a run on the real field.
+- Designed plays and defenses are plain validated data (`packages/core/src/designer.ts`). They are checked when
+  loaded from the browser, again by the engine, and again by the server when a coach sits down. Up to 12 plays
+  and 6 defenses per coach.
+- Online games carry both coaches' designs; each browser replays them from the room and still matches the
+  server's game fingerprint.
+- Coach careers: games, wins, losses, ties, points, current and best winning streak, championships (always 0
+  until dynasty seasons exist). A finished online game is recorded exactly once.
+- Hall of Fame: `hall` API action and screen, top ten by wins, then win rate, then point margin.
+- `profile` API action; record shown in the sign-in box and on the final screen.
+- Migration `0002_fnd_careers.sql` (adds columns to `fnd.coaches`).
+- `npm run check:designer` and an extended `check:online`. 195 automated tests.
+
+### Changed
+- Man coverage is assigned from the formation actually on the field; corners take the widest receivers.
+- Handoffs and pitches need the carrier within reach of the quarterback.
+
+### Known gaps
+- Designer balance target not met: the best design found by random search gains about 2.8 times the library
+  average against the AI; the target is 2 times or less.
+- The live server function has still not been called from a real browser by us; the sandbox cannot reach it.
+- No human playtest yet for any milestone.
+
+## 0.3.1 — 2026-11-25
+
+### Added
+- Voice chat between the two coaches of an online game, built like the Typlympics one: audio flows directly
+  between the browsers (WebRTC); the server only passes the short connection messages through a mailbox on the room.
+- `voice` API action with caps on message size and count, and a presence timeout. 3 new tests (146 in all).
+- `npm run check:voice`: two headless browsers with fake microphones connect, audio is confirmed arriving,
+  mute works, voice carries from lobby into game, and hanging up releases the microphone.
+
+### Known gaps
+- Only free public address helpers (STUN) are used, no relay. Two coaches on strict networks may fail to connect;
+  the status line says so and keeps retrying.
+
+## 0.3.0 — 2026-11-25
+
+Milestone 2b release candidate: online head-to-head exhibition.
+
+### Added
+- `online` package: room rules as pure state transitions (lobby, hidden calls, play clock, AI cover for an absent
+  coach, sideline changes), an API router behind a storage interface, and in-memory storage for tests.
+- `supabase/`: the `fnd` schema (coaches, sessions, rooms; not exposed through the public API, row level security on
+  with no policies) and the `fnd` Edge Function, which is the only way in. `npm run bundle:function` bundles it.
+- `client`: coach sign-in (name plus four-digit PIN), host and join by five-digit game PIN, lobby, hidden calls with
+  the server's play clock, rejoin, and a sync check of the local replay against the server's fingerprint.
+- Tests: 23 online tests (sign-in, lobby, hidden calls, a whole game agreeing between two browsers and the server,
+  clock expiry, disconnect and rejoin, tamper resistance). 143 tests in all.
+- Tools: `npm run mock:online` (the real API with in-memory storage), `npm run check:online` (two headless browsers
+  play a whole game, one of them dropping out and rejoining).
+- `.github/workflows/pages.yml`: typecheck, test, build and publish `site/` on every push to main.
+
+### How results stay honest
+- The server picks the seed, holds both calls until the snap, runs the play and stores the log. A browser can only
+  submit a call for its own sideline and the current turn, from its own playbook.
+- Each browser redraws the game from the seed and the public log and compares fingerprints with the server.
+
+### Known gaps
+- No rematch button: host a new game from the menu.
+- Coach names are not filtered for offensive words.
+- An absent coach is covered by the AI immediately, rather than after the 90-second pause in the original design.
+- The Supabase storage adapter is exercised by the same API tests only through its in-memory twin; the deployed
+  function has not been called from the build machine, which cannot reach it.
+
+## 0.2.0 — 2026-11-25
+
+Milestone 2 release candidate: playbooks, fronts and smarter football.
+
+### Added
+- `core`: slot-based formations (5), a 24-play library, 4 defensive fronts combined with 4 calls, 39-player rosters
+  with depth charts, playbook validation. Plays, formations and fronts are all data, in the shape a play designer will write.
+- `match-sim`: man coverage matched to the offensive formation at the snap, lead blockers, quarterback runs,
+  fatigue (energy drains with distance and contact, tired players are slower), automatic substitution with a
+  threshold and a return margin, depth chart and threshold changes as logged decisions, kneel-downs, per-team playbooks.
+- `football-ai`: game plans (run-pass lean, fourth-down aggression), situational play weights by tag, front selection,
+  kneel-out arithmetic, prevent defense, a two-point chart.
+- `client`: playbook builder, front picker, 20-second play clock with AI fallback, sideline menu (depth chart with
+  energy, game plan, substitution threshold), kneel button.
+- Tests: 119 in all, including a 42-case coach suite, a 40-case on-field suite and the 200-game balance criteria.
+- Tools: `npm run probe -- <playId>` (one play against every front and call), `npm run check:ui`.
+
+### Changed
+- `DefDecision` is now a front plus a call. `Team` holds a roster and depth chart instead of fixed starters.
+- Retuned tackling, blocking, catching and pass rush for the larger library.
+
+### Balance baseline (300 AI-versus-AI games rotating through all 24 plays)
+- 18.7 points and 55.8 plays per team; 4.3 yards per carry; 60% completions; 0.6 sacks and 0.9 turnovers per team.
+- Highest-averaging play is 1.35 times the playbook average. Home side won 51.9% of decided games.
+
+### Known gaps
+- Sacks are lower than intended (target about 2 per team). Quarterback Draw and Quick Slants are the weakest plays.
+- Featured players in the game plan, and penalties, are not implemented.
+
 ## 0.1.1 — 2026-11-25
 
 ### Added

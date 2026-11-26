@@ -1,12 +1,15 @@
 import {
-  DEFENSE_CALLS, OFFENSE_PLAYS, RULES, Rng, callById, clamp, hashString, playById,
-  type DefDecision, type OffDecision, type PlayEvent, type PlayFlags, type PlayType, type Player, type Situation, type Team,
+  CUSTOM_FRONT, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, GROUPS, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, OFFENSE_PLAYS, RULES, Rng, U, clamp, formationOf, frontById, hashString,
+  schemeById, toFront, toScheme, validateBook, validateDefPlay, validateOffPlay,
+  type DefFront, type DefPlay, type DefScheme, type OffPlay,
+  type DefDecision, type GamePlan, type Group, type ManageAction, type OffDecision, type PlayEvent, type PlayFlags, type PlayType,
+  type Player, type Situation, type Slot, type Team,
 } from '@fnd/core';
-import { aiDefense, aiOffense, fieldGoalDistance } from '@fnd/football-ai';
-import { PlaySim, type PlayResult } from './play';
+import { DEFAULT_PLAN, aiDefense, aiOffense, fieldGoalDistance } from '@fnd/football-ai';
+import { PlaySim, type PlayContext, type PlayResult } from './play';
 import { fieldGoalChance, patChance, resolveKickoff, resolvePunt } from './special';
 
-/** Game rules: downs, clock, scoring, possession. Turns coaching decisions into play events. */
+/** Game rules: downs, clock, scoring, possession, fatigue and substitutions. Turns coaching decisions into play events. */
 
 export type Phase = 'kickoff' | 'scrimmage' | 'conversion' | 'final';
 
@@ -27,10 +30,29 @@ export interface GameState {
   openingReceiver: 0 | 1;
 }
 
-export interface LoggedDecision {
-  off: OffDecision | null;
-  def: DefDecision | null;
+export type LoggedDecision =
+  | { off: OffDecision | null; def: DefDecision | null }
+  | { manage: ManageAction };
+
+export interface GameOptions {
+  /** The eight offensive plays each team carries. Defaults to the starter book. */
+  books?: readonly [readonly string[], readonly string[]];
+  /** Each coach's own designed plays and defenses. Re-validated here: nothing illegal reaches the field. */
+  plays?: readonly [readonly OffPlay[], readonly OffPlay[]];
+  defenses?: readonly [readonly DefPlay[], readonly DefPlay[]];
 }
+
+/** A substitution made because a starter is resting. */
+export interface SubNotice {
+  team: 0 | 1;
+  slot: string;
+  out: Player;
+  in: Player;
+}
+
+export const DEFAULT_SUB_THRESHOLD = 55;
+/** A resting player comes back once he has recovered this much above the threshold. */
+const RETURN_MARGIN = 20;
 
 const short = (p: Player | undefined): string => {
   if (!p) return '';
@@ -45,23 +67,62 @@ export class Game {
   readonly events: PlayEvent[] = [];
   /** Every decision submitted, in order. With the seed, this reproduces the game exactly. */
   readonly log: LoggedDecision[] = [];
+  readonly books: readonly [readonly string[], readonly string[]];
+  readonly designed: readonly [readonly OffPlay[], readonly OffPlay[]];
+  readonly defenses: readonly [readonly DefPlay[], readonly DefPlay[]];
+  /** Depth charts for this game. Changed only through `manage`. */
+  readonly depth: [Record<Group, string[]>, Record<Group, string[]>];
+  /** Energy 0 to 100 per player ID. */
+  readonly energy: Record<string, number> = {};
+  readonly subThreshold: [number, number] = [DEFAULT_SUB_THRESHOLD, DEFAULT_SUB_THRESHOLD];
   live: PlaySim | null = null;
   lastEvent: PlayEvent | null = null;
   /** Set when a timeout was used on the most recent `begin`. */
   lastTimeoutBy: 0 | 1 | null = null;
+  /** Substitutions for fatigue on the most recent snap. */
+  lastSubs: SubNotice[] = [];
 
+  private readonly byId = new Map<string, Player>();
+  private readonly resting = new Set<string>();
   private instant = false;
   private twoPoint = false;
-  private calls: { off?: string; def?: string } = {};
-  private lastSnap: { offense: 0 | 1; los: number; n: number } | null = null;
+  private calls: { off?: string; front?: string; def?: string } = {};
+  private lastSnap: { offense: 0 | 1; n: number; ctx: Omit<PlayContext, 'rng'> } | null = null;
 
-  constructor(readonly seed: number, readonly teams: readonly [Team, Team]) {
+  constructor(readonly seed: number, readonly teams: readonly [Team, Team], opts: GameOptions = {}) {
     const receiver = Rng.stream(seed, 'toss').int(0, 1) as 0 | 1;
     this.state = {
       quarter: 1, clock: RULES.quarterSeconds, score: [0, 0], possession: receiver, down: 1, distance: 10, yardLine: 20,
       phase: 'kickoff', kicking: other(receiver), kickFrom: RULES.kickoffFrom,
       timeouts: [RULES.timeoutsPerHalf, RULES.timeoutsPerHalf], clockRunning: false, openingReceiver: receiver,
     };
+    const checkAll = <T>(list: readonly unknown[], max: number, check: (x: unknown) => { ok: true; value: T } | { ok: false; problems: string[] }): T[] => {
+      if (list.length > max) throw new Error('too many designed plays');
+      const out = list.map((x) => {
+        const r = check(x);
+        if (!r.ok) throw new Error(r.problems[0]);
+        return r.value;
+      });
+      if (new Set(out.map((x) => (x as { id: string }).id)).size !== out.length) throw new Error('two designs share an id');
+      return out;
+    };
+    this.designed = [checkAll(opts.plays?.[0] ?? [], MAX_CUSTOM_PLAYS, validateOffPlay), checkAll(opts.plays?.[1] ?? [], MAX_CUSTOM_PLAYS, validateOffPlay)];
+    this.defenses = [checkAll(opts.defenses?.[0] ?? [], MAX_CUSTOM_DEFENSES, validateDefPlay), checkAll(opts.defenses?.[1] ?? [], MAX_CUSTOM_DEFENSES, validateDefPlay)];
+    this.books = opts.books ?? [DEFAULT_BOOK, DEFAULT_BOOK];
+    this.books.forEach((book, t) => {
+      const problem = validateBook(book, this.designed[t]);
+      if (problem) throw new Error(problem);
+    });
+    const copy = (t: Team): Record<Group, string[]> => {
+      const out = {} as Record<Group, string[]>;
+      for (const g of GROUPS) out[g] = [...t.depth[g]];
+      return out;
+    };
+    this.depth = [copy(teams[0]), copy(teams[1])];
+    for (const t of teams) for (const p of t.roster) {
+      this.byId.set(p.id, p);
+      this.energy[p.id] = 100;
+    }
   }
 
   /** Which team is on offense (or kicking off) for the next decision. */
@@ -69,14 +130,85 @@ export class Game {
     return this.state.phase === 'kickoff' ? this.state.kicking : this.state.possession;
   }
 
+  /** A play by id for one team: its coach's designs first, then the library. */
+  playOf(team: 0 | 1, id: string): OffPlay {
+    const p = this.designed[team].find((x) => x.id === id) ?? OFFENSE_PLAYS.find((x) => x.id === id);
+    if (!p) throw new Error(`unknown play ${id}`);
+    return p;
+  }
+
+  /** The plays in a team's book. */
+  bookPlays(team: 0 | 1): OffPlay[] {
+    return this.books[team].map((id) => this.playOf(team, id));
+  }
+
+  /** The front and call a defensive decision stands for. */
+  defenseOf(team: 0 | 1, def: DefDecision): { front: DefFront; scheme: DefScheme } {
+    if (def.frontId === CUSTOM_FRONT) {
+      const d = this.defenses[team].find((x) => x.id === def.callId);
+      if (!d) throw new Error('that defense is not one of this team\'s designs');
+      return { front: toFront(d), scheme: toScheme(d) };
+    }
+    return { front: frontById(def.frontId), scheme: schemeById(def.callId) };
+  }
+
+  player(id: string): Player {
+    const p = this.byId.get(id);
+    if (!p) throw new Error(`unknown player ${id}`);
+    return p;
+  }
+
   situation(team: 0 | 1): Situation {
     const s = this.state;
     return {
       phase: s.phase === 'conversion' ? 'conversion' : 'scrimmage',
       quarter: s.quarter, clock: s.clock, down: s.down, distance: s.distance, yardLine: s.yardLine,
-      scoreDiff: s.score[team] - s.score[other(team)], timeouts: s.timeouts[team], clockRunning: s.clockRunning,
-      kicking: this.teams[team].kicker.ratings.kicking,
+      scoreDiff: s.score[team] - s.score[other(team)], timeouts: s.timeouts[team], oppTimeouts: s.timeouts[other(team)],
+      clockRunning: s.clockRunning, kicking: this.starter(team, 'K').ratings.kicking,
     };
+  }
+
+  starter(team: 0 | 1, group: Group, rank = 1): Player {
+    const ids = this.depth[team][group];
+    return this.player(ids[Math.min(rank, ids.length) - 1]);
+  }
+
+  /** Between-play management: reorder a depth chart or change the substitution threshold. */
+  manage(action: ManageAction): void {
+    if (this.state.phase === 'final') throw new Error('game is over');
+    if (action.kind === 'depth') {
+      const current = this.depth[action.team][action.group];
+      const same = action.order.length === current.length && new Set(action.order).size === current.length && action.order.every((id) => current.includes(id));
+      if (!same) throw new Error('a depth chart must list the same players');
+      this.depth[action.team][action.group] = [...action.order];
+    } else {
+      this.subThreshold[action.team] = clamp(Math.round(action.value), 0, 90);
+    }
+    this.log.push({ manage: action });
+  }
+
+  /** The players who would take the field for these slots right now, with tired starters resting. */
+  lineup(team: 0 | 1, slots: readonly Slot[], notices?: SubNotice[]): Player[] {
+    const threshold = this.subThreshold[team];
+    const orderFor = new Map<Group, string[]>();
+    const out: Player[] = [];
+    for (const slot of slots) {
+      let order = orderFor.get(slot.group);
+      const chart = this.depth[team][slot.group];
+      if (!order) {
+        for (const id of chart) {
+          if (this.energy[id] < threshold) this.resting.add(id);
+          else if (this.resting.has(id) && this.energy[id] >= Math.min(100, threshold + RETURN_MARGIN)) this.resting.delete(id);
+        }
+        order = [...chart.filter((id) => !this.resting.has(id)), ...chart.filter((id) => this.resting.has(id))];
+        orderFor.set(slot.group, order);
+      }
+      const pick = this.player(order[Math.min(slot.rank, order.length) - 1]);
+      const nominal = this.player(chart[Math.min(slot.rank, chart.length) - 1]);
+      if (notices && pick.id !== nominal.id && this.resting.has(nominal.id)) notices.push({ team, slot: slot.id, out: nominal, in: pick });
+      out.push(pick);
+    }
+    return out;
   }
 
   /** Starts the next play. Kickoffs need no decisions. Call `tick` until it returns true. */
@@ -88,6 +220,7 @@ export class Game {
     this.live = null;
     this.lastEvent = null;
     this.lastTimeoutBy = null;
+    this.lastSubs = [];
     this.instant = false;
     this.twoPoint = false;
     this.calls = {};
@@ -101,7 +234,7 @@ export class Game {
     const offTeam = s.possession;
 
     if (s.phase === 'scrimmage' && s.clockRunning) {
-      if (off.kind !== 'patKick' && off.timeout && s.timeouts[offTeam] > 0) {
+      if ((off.kind === 'play' || off.kind === 'punt' || off.kind === 'fieldGoal') && off.timeout && s.timeouts[offTeam] > 0) {
         s.timeouts[offTeam]--;
         this.lastTimeoutBy = offTeam;
       } else if (def?.timeout && s.timeouts[other(offTeam)] > 0) {
@@ -135,29 +268,36 @@ export class Game {
       this.fieldGoal(Rng.stream(this.seed, `special:${n}`));
       this.instant = true;
       return;
+    } else if (off.kind === 'kneel') {
+      this.kneel();
+      this.instant = true;
+      return;
     }
     if (off.kind !== 'play') throw new Error(`invalid offensive decision ${off.kind}`);
     if (!def) throw new Error('defense decision required');
-    this.calls = { off: off.playId, def: def.callId };
-    this.lastSnap = { offense: offTeam, los: this.twoPoint ? RULES.twoPointFrom : s.yardLine, n };
-    this.live = new PlaySim({
-      offense: this.teams[offTeam], defense: this.teams[other(offTeam)],
-      play: playById(off.playId), call: callById(def.callId),
+    if (!this.books[offTeam].includes(off.playId)) throw new Error(`play ${off.playId} is not in this team's playbook`);
+
+    const play = this.playOf(offTeam, off.playId);
+    const formation = formationOf(play);
+    const { front, scheme } = this.defenseOf(other(offTeam), def);
+    const offPlayers = this.lineup(offTeam, formation.slots, this.lastSubs);
+    const defPlayers = this.lineup(other(offTeam), front.slots, this.lastSubs);
+    const ctx: Omit<PlayContext, 'rng'> = {
+      play, formation, front, scheme, offPlayers, defPlayers,
+      offEnergy: offPlayers.map((p) => this.energy[p.id]),
+      defEnergy: defPlayers.map((p) => this.energy[p.id]),
       los: this.twoPoint ? RULES.twoPointFrom : s.yardLine,
-      rng: Rng.stream(this.seed, `play:${n}`),
-    });
+    };
+    this.calls = { off: play.id, front: front.id, def: scheme.id };
+    this.lastSnap = { offense: offTeam, n, ctx };
+    this.live = new PlaySim({ ...ctx, rng: Rng.stream(this.seed, `play:${n}`) });
   }
 
   /** A fresh copy of the most recent scrimmage play, for instant replay. It reproduces the play exactly. */
   replayLast(): { sim: PlaySim; offense: 0 | 1 } | null {
     const snap = this.lastSnap;
-    if (!snap || !this.calls.off || !this.calls.def) return null;
-    const sim = new PlaySim({
-      offense: this.teams[snap.offense], defense: this.teams[other(snap.offense)],
-      play: playById(this.calls.off), call: callById(this.calls.def), los: snap.los,
-      rng: Rng.stream(this.seed, `play:${snap.n}`),
-    });
-    return { sim, offense: snap.offense };
+    if (!snap) return null;
+    return { sim: new PlaySim({ ...snap.ctx, rng: Rng.stream(this.seed, `play:${snap.n}`) }), offense: snap.offense };
   }
 
   /** Advances the current play one step. Returns true when the play is over and the state is updated. */
@@ -171,18 +311,38 @@ export class Game {
       this.live.step();
       if (!this.live.done) return false;
     }
-    if (this.lastEvent === null && this.live.result) this.applyPlay(this.live.result);
+    if (this.lastEvent === null && this.live.result) {
+      this.applyFatigue(this.live);
+      this.applyPlay(this.live.result);
+    }
     return true;
   }
 
   // ------------------------------------------------------------- internals
+
+  private applyFatigue(sim: PlaySim): void {
+    const played = new Set<string>();
+    for (const p of sim.players) {
+      const id = p.player.id;
+      played.add(id);
+      const work = 1 + p.moved / (U * 14) + (p.contact ? 2.5 : 0) + (p.engaged >= 0 ? 0.5 : 0);
+      this.energy[id] = Math.max(0, this.energy[id] - (work * (140 - p.player.ratings.stamina)) / 80);
+    }
+    for (const id of Object.keys(this.energy)) {
+      if (!played.has(id)) this.energy[id] = Math.min(100, this.energy[id] + 1.5);
+    }
+  }
+
+  private rest(amount: number): void {
+    for (const id of Object.keys(this.energy)) this.energy[id] = Math.min(100, this.energy[id] + amount);
+  }
 
   private emit(type: PlayType, offense: 0 | 1, before: { down: number; distance: number; yardLine: number; quarter: number; clock: number },
     yards: number, flags: PlayFlags, points: [number, number], seconds: number, text: string, who: Partial<PlayEvent> = {}): void {
     const e: PlayEvent = {
       seq: this.events.length + 1, quarter: before.quarter, clock: before.clock, offense,
       down: before.down, distance: before.distance, yardLine: before.yardLine, type,
-      offCall: this.calls.off, defCall: this.calls.def, yards, flags, points,
+      offCall: this.calls.off, defFront: this.calls.front, defCall: this.calls.def, yards, flags, points,
       scoreAfter: [this.state.score[0], this.state.score[1]], seconds, text, ...who,
     };
     this.events.push(e);
@@ -223,12 +383,14 @@ export class Game {
       s.clock = RULES.quarterSeconds;
       s.timeouts = [RULES.timeoutsPerHalf, RULES.timeoutsPerHalf];
       this.setKickoff(s.openingReceiver, RULES.kickoffFrom);
+      this.rest(40);
     } else if (s.quarter >= RULES.quarters) {
       s.clock = 0;
       s.phase = 'final';
     } else {
       s.quarter++;
       s.clock = RULES.quarterSeconds;
+      this.rest(10);
     }
   }
 
@@ -242,8 +404,8 @@ export class Game {
     const before = { down: 0, distance: 0, yardLine: s.kickFrom, quarter: s.quarter, clock: s.clock };
     const kick = s.kicking;
     const recv = other(kick);
-    const kicker = this.teams[kick].kicker;
-    const returner = this.teams[recv].offense.WR3;
+    const kicker = this.starter(kick, 'K');
+    const returner = this.starter(recv, 'WR', 3);
     const r = resolveKickoff(rng, kicker, returner, s.kickFrom);
     this.runClock(r.touchback ? 0 : 6);
     const points: [number, number] = [0, 0];
@@ -269,7 +431,7 @@ export class Game {
     const s = this.state;
     const before = this.snapshot();
     const off = s.possession;
-    const punter = this.teams[off].punter;
+    const punter = this.starter(off, 'P');
     const r = resolvePunt(rng, punter, s.yardLine);
     this.runClock(8);
     this.firstDownAt(other(off), r.startYard);
@@ -284,8 +446,8 @@ export class Game {
     const s = this.state;
     const before = this.snapshot();
     const off = s.possession;
-    const kicker = this.teams[off].kicker;
-    const d = fieldGoalDistance(s.yardLine);
+    const kicker = this.starter(off, 'K');
+    const dist = fieldGoalDistance(s.yardLine);
     const good = rng.chance(fieldGoalChance(kicker, s.yardLine));
     this.runClock(5);
     const points: [number, number] = [0, 0];
@@ -297,7 +459,7 @@ export class Game {
       this.firstDownAt(other(off), Math.max(RULES.touchbackAt, 100 - s.yardLine));
       s.clockRunning = false;
     }
-    this.emit('fieldGoal', off, before, d, { good }, points, 5, `${short(kicker)} ${d}-yard field goal is ${good ? 'GOOD!' : 'no good.'}`, { kicker: kicker.id });
+    this.emit('fieldGoal', off, before, dist, { good }, points, 5, `${short(kicker)} ${dist}-yard field goal is ${good ? 'GOOD!' : 'no good.'}`, { kicker: kicker.id });
     this.afterPlayClock();
   }
 
@@ -305,7 +467,7 @@ export class Game {
     const s = this.state;
     const before = this.snapshot();
     const off = s.possession;
-    const kicker = this.teams[off].kicker;
+    const kicker = this.starter(off, 'K');
     const good = rng.chance(patChance(kicker));
     const points: [number, number] = [0, 0];
     if (good) {
@@ -314,6 +476,19 @@ export class Game {
     }
     this.setKickoff(off, RULES.kickoffFrom);
     this.emit('pat', off, before, 0, { good }, points, 0, `Extra point by ${short(kicker)} is ${good ? 'good.' : 'NO GOOD.'}`, { kicker: kicker.id });
+    this.afterPlayClock();
+  }
+
+  private kneel(): void {
+    const s = this.state;
+    const before = this.snapshot();
+    const off = s.possession;
+    const qb = this.starter(off, 'QB');
+    this.runClock(3);
+    const flags: PlayFlags = {};
+    this.advanceDown(off, Math.max(1, s.yardLine - 1), flags);
+    s.clockRunning = !flags.turnoverOnDowns && s.phase === 'scrimmage';
+    this.emit('kneel', off, before, -1, flags, [0, 0], 3, `${short(qb)} takes a knee.${flags.turnoverOnDowns ? ' Turnover on downs.' : ''}`, { rusher: qb.id });
     this.afterPlayClock();
   }
 
@@ -425,28 +600,30 @@ export function gameHash(game: Game): string {
   return hashString(JSON.stringify([game.state.score, game.events])).toString(16).padStart(8, '0');
 }
 
-/** AI decisions for whichever sides are passed in `sides`. Each side has its own random stream. */
+/** AI decisions for either sideline. Each team has its own random stream and its own game plan. */
 export class AutoCoach {
   private readonly rng: [Rng, Rng];
-  constructor(seed: number) {
+  readonly plans: [GamePlan, GamePlan];
+  constructor(seed: number, plans?: readonly [GamePlan, GamePlan]) {
     this.rng = [Rng.stream(seed, 'coach:0'), Rng.stream(seed, 'coach:1')];
+    this.plans = plans ? [{ ...plans[0] }, { ...plans[1] }] : [{ ...DEFAULT_PLAN }, { ...DEFAULT_PLAN }];
   }
   offense(game: Game): OffDecision | null {
     if (game.state.phase === 'kickoff') return null;
     const t = game.state.possession;
-    return aiOffense(game.situation(t), OFFENSE_PLAYS, this.rng[t]);
+    return aiOffense(game.situation(t), game.bookPlays(t), this.rng[t], this.plans[t]);
   }
   defense(game: Game): DefDecision | null {
     if (game.state.phase === 'kickoff') return null;
     const t = other(game.state.possession);
-    return aiDefense(game.situation(t), DEFENSE_CALLS, this.rng[t]);
+    return aiDefense(game.situation(t), DEFENSE_FRONTS, DEFENSE_SCHEMES, this.rng[t]);
   }
 }
 
 /** Plays a whole game with AI coaches on both sides and no rendering. */
-export function simulateGame(seed: number, teams: readonly [Team, Team]): Game {
-  const game = new Game(seed, teams);
-  const coach = new AutoCoach(seed);
+export function simulateGame(seed: number, teams: readonly [Team, Team], opts: GameOptions & { plans?: readonly [GamePlan, GamePlan] } = {}): Game {
+  const game = new Game(seed, teams, opts);
+  const coach = new AutoCoach(seed, opts.plans);
   while (game.state.phase !== 'final') {
     game.begin(coach.offense(game), coach.defense(game));
     while (!game.tick()) { /* step */ }
@@ -455,10 +632,14 @@ export function simulateGame(seed: number, teams: readonly [Team, Team]): Game {
 }
 
 /** Re-runs a game from its seed and recorded decisions. */
-export function replayGame(seed: number, teams: readonly [Team, Team], log: readonly LoggedDecision[]): Game {
-  const game = new Game(seed, teams);
+export function replayGame(seed: number, teams: readonly [Team, Team], log: readonly LoggedDecision[], opts: GameOptions = {}): Game {
+  const game = new Game(seed, teams, opts);
   for (const d of log) {
     if (game.state.phase === 'final') break;
+    if ('manage' in d) {
+      game.manage(d.manage);
+      continue;
+    }
     game.begin(d.off, d.def);
     while (!game.tick()) { /* step */ }
   }

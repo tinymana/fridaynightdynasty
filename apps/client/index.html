@@ -87,6 +87,108 @@
   .act.on small { color: #333; }
   .waiting { grid-column: 1 / -1; text-align: center; color: var(--dim); font-size: 12px; padding: 14px; }
 
+  /* setup options, playbook builder, sideline */
+  .setup-opts { display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap; margin-top: 14px; font-size: 12px; color: var(--dim); }
+  .chk { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+  .chk input { width: 16px; height: 16px; accent-color: var(--accent); }
+  #pclock { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; background: #000; border: 2px solid var(--line); border-radius: 4px; padding: 2px 8px; min-width: 44px; text-align: center; }
+  #pclock.low { border-color: var(--red); color: #ff8d85; }
+  #bookScreen h2 { font-size: 18px; letter-spacing: 3px; text-transform: uppercase; margin: 18px 0 6px; text-align: center; }
+  #bookScreen p { text-align: center; color: var(--dim); font-size: 13px; margin: 0 0 12px; }
+  #bookBar { display: flex; gap: 8px; align-items: center; justify-content: center; margin-bottom: 12px; position: sticky; top: 0; background: var(--bg); padding: 8px 0; z-index: 2; }
+  #bookCount { font-size: 14px; font-weight: 700; color: var(--accent); margin-right: 8px; }
+  #bookList h3 { font-size: 13px; letter-spacing: 2px; text-transform: uppercase; color: var(--dim); margin: 16px 0 6px; }
+  .book-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  @media (max-width: 640px) { .book-grid { grid-template-columns: repeat(2, 1fr); } }
+  .card.sel { border-color: var(--accent); background: var(--panel-2); box-shadow: inset 0 0 0 2px var(--accent); }
+  .card .form { font-size: 9px; color: var(--dim); letter-spacing: 1px; text-transform: uppercase; }
+  .fronts { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .fronts .lbl { font-size: 11px; color: var(--dim); letter-spacing: 1px; text-transform: uppercase; }
+  .fronts .act { padding: 6px 8px; min-width: 90px; }
+  #game { position: relative; }
+  #sideline { position: absolute; inset: 0; background: rgba(8, 9, 20, 0.92); z-index: 5; display: flex; align-items: flex-start; justify-content: center; padding: 10px; overflow: auto; }
+  .sl-box { width: 100%; max-width: 760px; background: var(--panel); border: 3px solid var(--accent); border-radius: 6px; padding: 12px; }
+  .sl-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .sl-head strong { font-size: 15px; letter-spacing: 2px; text-transform: uppercase; }
+  .sl-tabs { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
+  .sl-row { display: grid; grid-template-columns: 26px 1fr 44px 110px 64px; gap: 8px; align-items: center; padding: 5px 4px; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+  .sl-row .rk { color: var(--dim); }
+  .sl-row.start .rk { color: var(--accent); font-weight: 700; }
+  .bar { height: 8px; background: #000; border: 1px solid var(--line); border-radius: 2px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--good); }
+  .bar.mid i { background: var(--accent); }
+  .bar.low i { background: var(--red); }
+  .sl-row .mv { display: flex; gap: 3px; }
+  .sl-row .mv button { background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px; padding: 1px 7px; font-size: 12px; }
+  .sl-row .mv button:disabled { opacity: 0.3; cursor: default; }
+  .sl-groups { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
+  .sl-note { font-size: 11.5px; color: var(--dim); margin: 8px 0; line-height: 1.45; }
+  .sl-field { margin: 12px 0; }
+  .sl-field .t { font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); margin-bottom: 6px; }
+  .sl-field .opts { display: flex; gap: 4px; flex-wrap: wrap; }
+
+  /* online */
+  #onlineBox { margin-top: 18px; background: var(--panel); border: 3px solid var(--line); border-radius: 6px; padding: 12px 14px; }
+  #onlineBox h3 { margin: 0 0 10px; font-size: 14px; letter-spacing: 2px; text-transform: uppercase; text-align: center; }
+  .orow { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; margin: 8px 0; font-size: 13px; }
+  .orow input { font-family: inherit; font-size: 14px; background: #000; color: var(--ink); border: 2px solid var(--line); border-radius: 4px; padding: 6px 8px; width: 150px; text-transform: uppercase; }
+  .orow input:focus { outline: none; border-color: var(--accent); }
+  #oMsg, #lobbyMsg { min-height: 18px; text-align: center; font-size: 12.5px; color: #ff8d85; margin-top: 4px; }
+  #lobby h2 { font-size: 16px; letter-spacing: 4px; text-transform: uppercase; margin: 22px 0 4px; text-align: center; color: var(--dim); }
+  #lobbyPin { text-align: center; font-size: 72px; font-weight: 700; letter-spacing: 12px; color: var(--accent); text-shadow: 0 4px 0 #000; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  #lobby p { text-align: center; color: var(--dim); font-size: 13px; margin: 6px 0 16px; }
+  .team-card.seat { cursor: default; }
+  .team-card.seat:hover { border-color: var(--line); }
+  .team-card.seat.me { border-color: var(--accent); }
+  .team-card .coach { font-size: 15px; margin-top: 8px; color: var(--accent); min-height: 22px; }
+  .team-card .coach.empty { color: var(--dim); animation: blink 1.2s steps(2) infinite; }
+
+  .voice-state { font-size: 11.5px; color: var(--dim); text-align: center; min-height: 0; margin: 2px 0 6px; }
+  .voice-state:empty { display: none; }
+  .voice-state.good { color: var(--good); }
+  .voice-state.bad { color: #ff8d85; }
+  .seg.live { border-color: var(--good); color: var(--good); }
+
+  /* designer */
+  #designer h2, #hall h2 { font-size: 18px; letter-spacing: 3px; text-transform: uppercase; margin: 18px 0 10px; text-align: center; }
+  .ds-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+  .ds-bar input, .ds-bar select, .ds-practice select { font-family: inherit; font-size: 13px; background: #000; color: var(--ink); border: 2px solid var(--line); border-radius: 4px; padding: 6px 8px; }
+  .ds-bar input { flex: 1; min-width: 140px; }
+  .ds-main { display: grid; grid-template-columns: 1fr 230px; gap: 10px; align-items: start; }
+  @media (max-width: 700px) { .ds-main { grid-template-columns: 1fr; } }
+  .ds-field { width: 100%; display: block; border: 3px solid var(--line); border-radius: 6px; touch-action: none; user-select: none; background: #226f30; }
+  .ds-side { background: var(--panel); border: 2px solid var(--line); border-radius: 6px; padding: 10px; }
+  .ds-side .t { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); margin: 10px 0 5px; }
+  .ds-side .t:first-child { margin-top: 0; }
+  .ds-side .opts { display: flex; gap: 4px; flex-wrap: wrap; }
+  .ds-side input[type=range] { width: 100%; }
+  .ds-problems { min-height: 22px; font-size: 12.5px; color: #ff8d85; margin: 8px 0; line-height: 1.5; }
+  .ds-problems .good { color: var(--good); }
+  .ds-practice { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; border-top: 2px solid var(--line); padding-top: 10px; }
+  .ds-practice .lbl { font-size: 11px; color: var(--dim); letter-spacing: 1px; text-transform: uppercase; }
+  table.pr { margin: 10px 0 0; }
+  #bookList h3 .count { color: var(--accent); margin-left: 6px; }
+  #bookList p.sub { text-align: left; font-size: 12px; margin: 0 0 8px; }
+  .mine { display: flex; flex-direction: column; gap: 4px; }
+  .mine .card { flex: 1; }
+  .mine-tools { display: flex; gap: 4px; }
+  .mine-tools .seg { flex: 1; padding: 3px 4px; font-size: 11px; }
+  .card.still { cursor: default; }
+  .card.new { border-style: dashed; align-items: center; justify-content: center; text-align: center; min-height: 120px; }
+  .card.new .plus { font-size: 34px; line-height: 1; color: var(--accent); }
+  #game.practice #bug, #game.practice #bar, #game.practice #voiceState, #game.practice #calls { display: none; }
+
+  /* career and hall of fame */
+  #oCareer { text-align: center; font-size: 12.5px; color: var(--dim); margin: 4px 0; }
+  #oCareer b { color: var(--accent); }
+  #finalCareer { font-size: 14px; color: var(--accent); margin: 0 0 12px; min-height: 18px; }
+  #hall { text-align: center; }
+  #hall p { color: var(--dim); font-size: 13px; }
+  #hall table { font-size: 14px; }
+  #hall td:first-child { color: var(--accent); font-weight: 700; }
+  #hall td:nth-child(2) { text-align: left; text-transform: uppercase; letter-spacing: 1px; }
+  #hall tr.me td { background: var(--panel-2); }
+
   /* final */
   #final { text-align: center; }
   #final .result { font-size: 30px; font-weight: 700; margin: 6px 0 14px; font-variant-numeric: tabular-nums; }
@@ -112,7 +214,43 @@
     <h2>Exhibition</h2>
     <p>Pick the team you will coach. You call every play; your players carry it out.</p>
     <div class="teams" id="teams"></div>
-    <div class="note">Milestone 1 build. School names, colours and field art are placeholders.</div>
+    <div class="setup-opts">
+      <button class="seg" id="editBook">Edit playbook</button>
+      <span id="bookSummary"></span>
+      <label class="chk"><input type="checkbox" id="clockToggle"> 20-second play clock</label>
+    </div>
+    <div id="onlineBox">
+      <h3>Play a friend online</h3>
+      <div id="oSignedOut" class="orow">
+        <input id="oName" maxlength="12" placeholder="Coach name" autocomplete="nickname" aria-label="Coach name">
+        <input id="oPin" maxlength="4" inputmode="numeric" placeholder="4-digit PIN" autocomplete="off" aria-label="Your four-digit PIN">
+        <button class="seg on" id="oEnter">Sign in</button>
+        <button class="seg" id="hallBtn">Hall of Fame</button>
+      </div>
+      <div id="oSignedIn" class="hidden">
+        <div class="orow"><span id="oWho"></span><button class="seg" id="hallBtn2">Hall of Fame</button><button class="seg" id="oOut">Sign out</button></div>
+        <div id="oCareer" aria-live="polite"></div>
+        <div class="orow" id="oHostRow"></div>
+        <div class="orow">
+          <input id="oJoinPin" maxlength="5" inputmode="numeric" placeholder="Game PIN" autocomplete="off" aria-label="Five-digit game PIN">
+          <button class="seg on" id="oJoin">Join a game</button>
+        </div>
+      </div>
+      <div id="oMsg" role="status" aria-live="polite"></div>
+      <div class="note">Pick a coach name and a PIN you will remember. The name is yours once you use it.</div>
+    </div>
+    <div class="note">Early build. School names, colours and field art are placeholders.</div>
+  </section>
+
+  <section id="lobby" class="hidden">
+    <h2>Game PIN</h2>
+    <div id="lobbyPin" aria-label="Game PIN"></div>
+    <p id="lobbyHelp">Tell the other coach to sign in, type this PIN and press Join.</p>
+    <div class="teams" id="lobbySeats"></div>
+    <div class="orow center"><button class="seg on" id="lobbyStart">Start the game</button><button class="seg" id="lobbyLeave">Leave</button></div>
+    <div class="orow center"><button class="seg" id="lobbyVoice">Voice chat</button><button class="seg hidden" id="lobbyMic">Mute mic</button></div>
+    <div id="lobbyVoiceState" class="voice-state" role="status" aria-live="polite"></div>
+    <div id="lobbyMsg" role="status" aria-live="polite"></div>
   </section>
 
   <section id="game" class="hidden">
@@ -133,14 +271,45 @@
       <button class="seg" data-speed="4">Fast</button>
       <button class="seg" data-speed="0">Skip</button>
       <button class="seg" id="mute">Sound on</button>
+      <button class="seg" id="sidelineBtn">Sideline <kbd>[S]</kbd></button>
+      <button class="seg hidden" id="voiceBtn">Voice chat</button>
+      <button class="seg hidden" id="micBtn">Mute mic</button>
       <span id="prompt"></span>
+      <span id="pclock" class="hidden" aria-label="Play clock"></span>
     </div>
+    <div id="voiceState" class="voice-state" role="status" aria-live="polite"></div>
     <div id="panel"></div>
+    <div id="sideline" class="hidden" role="dialog" aria-label="Sideline">
+      <div class="sl-box">
+        <div class="sl-head"><strong>Sideline</strong><span class="sl-tabs" id="slTabs"></span><button class="seg" id="slClose">Back to the game</button></div>
+        <div id="slBody"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="bookScreen" class="hidden">
+    <h2>Your playbook</h2>
+    <p>You start with all 40 plays. Trim the book or add your own designs: carry 8 to 52, with at least one run and one pass.</p>
+    <div id="bookBar"><span id="bookCount"></span><button class="seg" id="bookReset">Starter book</button><button class="seg on" id="bookSave">Save and go back</button></div>
+    <div id="bookList"></div>
+  </section>
+
+  <section id="designer" class="hidden">
+    <h2 id="dsTitle">Design a play</h2>
+    <div id="dsRoot"></div>
+  </section>
+
+  <section id="hall" class="hidden">
+    <h2>Hall of Fame</h2>
+    <p>The ten best records among all online coaches. Most wins first; win rate, then point margin, break ties.</p>
+    <div id="hallBody"></div>
+    <div class="orow center"><button class="seg on" id="hallBack">Back</button></div>
   </section>
 
   <section id="final" class="hidden">
     <h2>Final</h2>
     <div class="result" id="finalScore"></div>
+    <div id="finalCareer" aria-live="polite"></div>
     <table id="finalTable"></table>
     <button id="again">New game</button>
     <div class="note" id="finalMeta"></div>

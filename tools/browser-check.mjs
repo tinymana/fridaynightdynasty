@@ -10,7 +10,7 @@ await page.setViewport({ width: 1000, height: 900 });
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(pathToFileURL('dist/index.html').href);
+await page.goto(pathToFileURL('site/play/index.html').href);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 await sleep(500);
 await page.screenshot({ path: `${out}/1-title.png` });
@@ -31,7 +31,7 @@ await page.evaluate(() => window.__fnd.setSpeed(0));
 let shotDef = false, n = 0;
 while (s.mode !== 'final' && n++ < 600) {
   const prompt = await page.$eval('#prompt', (e) => e.textContent);
-  if (!shotDef && prompt.includes('defense')) { await page.screenshot({ path: `${out}/6-defense.png` }); shotDef = true; }
+  if (!shotDef && prompt.includes('front')) { await page.screenshot({ path: `${out}/6-defense.png` }); shotDef = true; }
   const cards = await page.$$('#panel [data-act]');
   const acts = await Promise.all(cards.map((c) => c.evaluate((e) => e.dataset.act)));
   let pick = acts.filter((a) => a.startsWith('p:') || a.startsWith('d:') || a === 'pat');

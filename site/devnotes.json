@@ -2,14 +2,197 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.5.0",
+      "date": "2026-11-25",
+      "title": "The big playbook: 40 on offense, 40 on defense",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Your starter book is now 40 offensive plays: eight from each of the five formations. Sixteen plays are new, including Stretch, Fullback Dive, Play-Action Post, Tunnel Screen, Corner Shot, Double Slants, Fades, Bootleg and Max Protect Shot."
+        },
+        {
+          "tag": "new",
+          "text": "Call offense by formation: pick Singleback, I-Form, Shotgun, Spread or Heavy (keys Z X C V B), then the play."
+        },
+        {
+          "tag": "new",
+          "text": "40 defensive calls: a new 4-4 front joins the 4-3, 5-2, Nickel and 3-4, and each front can now run eight calls. New calls: Man Free, Cover 2, Zone Blitz and Prevent."
+        },
+        {
+          "tag": "improved",
+          "text": "Books can hold 8 to 52 plays, so your own designs go on top of the 40 instead of replacing them. Trim the book if you like a shorter call sheet."
+        },
+        {
+          "tag": "improved",
+          "text": "The AI coach uses the whole book and the new defenses, and saves Prevent for protecting a late lead."
+        },
+        {
+          "tag": "note",
+          "text": "Saved playbooks from older versions are reset to the new 40-play starter book. Your designed plays and defenses are kept."
+        },
+        {
+          "tag": "note",
+          "text": "Special teams calls (onside and squib kicks, fakes, going for the block) are next, along with the new cut-in artwork."
+        }
+      ]
+    },
+    {
+      "version": "0.4.0",
+      "date": "2026-11-25",
+      "title": "Design your own plays, coach records and the Hall of Fame",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Play designer. Open Edit playbook and press Design a play: drag your eleven into place, give each player a job, and click the field to draw routes and running lanes."
+        },
+        {
+          "tag": "new",
+          "text": "Defense designer. Place your eleven defenders and tell each one to rush, cover a man, drop to a zone or read the play."
+        },
+        {
+          "tag": "new",
+          "text": "The game checks every design against the rules and tells you in plain words what to fix, such as too few players on the line."
+        },
+        {
+          "tag": "new",
+          "text": "Practice field. Run a design dozens of times against any defense (or any play) and see average gain, completions, sacks and turnovers. Watch one to see it on the real field."
+        },
+        {
+          "tag": "new",
+          "text": "Keep up to 12 plays and 6 defenses of your own. Your plays go in your eight-play book; your defenses are under the Mine tab on defense."
+        },
+        {
+          "tag": "new",
+          "text": "Your designs come with you into online games. The server checks them again, and both coaches see the same play."
+        },
+        {
+          "tag": "new",
+          "text": "Coach profile. Every finished online game counts toward your career wins, losses, points and best winning streak. Championships will count once dynasty seasons arrive."
+        },
+        {
+          "tag": "new",
+          "text": "Hall of Fame. The ten best records among all online coaches, one button from the menu."
+        },
+        {
+          "tag": "tune",
+          "text": "Coverage now lines up against the formation in front of it, so corners follow receivers wherever you put them."
+        },
+        {
+          "tag": "note",
+          "text": "Known gap: a very carefully built custom play can still gain more than it should against the AI. Tightening that is ongoing."
+        }
+      ]
+    },
+    {
+      "version": "0.3.1",
+      "date": "2026-11-25",
+      "title": "Sideline voice chat",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Talk to the other coach during an online game. Press Voice chat in the lobby or on the sideline bar and allow your microphone."
+        },
+        {
+          "tag": "new",
+          "text": "Audio goes straight from one browser to the other. It never passes through the game server, and it is free."
+        },
+        {
+          "tag": "new",
+          "text": "Mute your mic at any time; the status line shows whether you are connected. Voice carries on from the lobby into the game."
+        }
+      ]
+    },
+    {
+      "version": "0.3",
+      "date": "2026-11-25",
+      "title": "Online head-to-head",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Play a friend online. Sign in with a coach name and a four-digit PIN, host a game, and share the five-digit game PIN. The other coach types it in to join."
+        },
+        {
+          "tag": "new",
+          "text": "Hidden play calls: you only see that the other sideline has called its play, never what it is, until the snap."
+        },
+        {
+          "tag": "new",
+          "text": "The server runs every play. Both browsers replay it from the shared record and check that they match the server exactly."
+        },
+        {
+          "tag": "new",
+          "text": "If a coach drops out, the AI calls his plays so nobody is left waiting. He can sign back in on any device and pick up where the game is."
+        },
+        {
+          "tag": "new",
+          "text": "Depth chart and game plan changes work online, and your own eight-play book comes with you."
+        },
+        {
+          "tag": "improved",
+          "text": "The site now publishes itself when an update is merged."
+        }
+      ]
+    },
+    {
+      "version": "0.2",
+      "date": "2026-11-25",
+      "title": "Playbooks, fronts and the sideline",
+      "items": [
+        {
+          "tag": "new",
+          "text": "A 24-play library across five formations: Singleback, I-Form, Shotgun, Spread and Heavy, with lead blockers, quarterback runs and a sneak."
+        },
+        {
+          "tag": "new",
+          "text": "Build your own playbook: pick the eight plays you carry into the game. Your book is remembered on your device."
+        },
+        {
+          "tag": "new",
+          "text": "Four defensive fronts (4-3, 5-2, Nickel, 3-4), each with four calls. Man coverage now matches up against whatever formation lines up."
+        },
+        {
+          "tag": "new",
+          "text": "Full 39-player rosters with depth charts. Players tire as they play, slow down, and are rested automatically; reorder your depth chart from the sideline."
+        },
+        {
+          "tag": "new",
+          "text": "A 20-second play clock. If it runs out, your AI coach makes the call from your game plan: run or pass lean, and how bold to be on fourth down."
+        },
+        {
+          "tag": "new",
+          "text": "Kneel-downs to run out the clock."
+        },
+        {
+          "tag": "improved",
+          "text": "A sharper AI coach: kneels to finish a win, plays prevent defense with a late lead, brings the heavy front on the goal line and chases two points when the score calls for it."
+        },
+        {
+          "tag": "improved",
+          "text": "Balance: over 200 simulated games, no play averages more than 1.5 times the playbook average, and a wrong defensive guess hurts without deciding the game."
+        }
+      ]
+    },
+    {
       "version": "0.1.1",
       "date": "2026-11-25",
       "title": "Start screen, logo and this site",
       "items": [
-        { "tag": "new", "text": "Friday Night Dynasty start screen and logo." },
-        { "tag": "new", "text": "This website, with dev notes and the roadmap. The game's title screen shows its version from the same notes file." },
-        { "tag": "improved", "text": "The home side is now the Wildcats, in navy, white and red to match the artwork." },
-        { "tag": "improved", "text": "Build order changed: online head-to-head moves up to right after play calling, and the league is built online-first so friends can coach rival schools from the first season." }
+        {
+          "tag": "new",
+          "text": "Friday Night Dynasty start screen and logo."
+        },
+        {
+          "tag": "new",
+          "text": "This website, with dev notes and the roadmap. The game's title screen shows its version from the same notes file."
+        },
+        {
+          "tag": "improved",
+          "text": "The home side is now the Wildcats, in navy, white and red to match the artwork."
+        },
+        {
+          "tag": "improved",
+          "text": "Build order changed: online head-to-head moves up to right after play calling, and the league is built online-first so friends can coach rival schools from the first season."
+        }
       ]
     },
     {
@@ -17,12 +200,30 @@
       "date": "2026-11-25",
       "title": "Kickoff: coach-only exhibition",
       "items": [
-        { "tag": "new", "text": "A full four-quarter exhibition game. You call the plays; the AI controls all 22 players and coaches the other sideline." },
-        { "tag": "new", "text": "Starter playbook: 8 offensive plays and 4 defensive calls, each with a diagram. Guess the offense right and your defense gets an edge." },
-        { "tag": "new", "text": "Coach's decisions: punt, field goal, extra point or two-point try, and timeouts." },
-        { "tag": "new", "text": "Watch at normal speed, fast, or skip to the result. Scoring plays and turnovers you fast-forwarded are replayed at normal speed." },
-        { "tag": "new", "text": "Kickoffs, punts, field goals, safeties, interceptions, fumbles and sacks, with a score bug and a final summary." },
-        { "tag": "new", "text": "Every game is reproducible from its seed and the list of coaching decisions, which is what will make online results fair." }
+        {
+          "tag": "new",
+          "text": "A full four-quarter exhibition game. You call the plays; the AI controls all 22 players and coaches the other sideline."
+        },
+        {
+          "tag": "new",
+          "text": "Starter playbook: 8 offensive plays and 4 defensive calls, each with a diagram. Guess the offense right and your defense gets an edge."
+        },
+        {
+          "tag": "new",
+          "text": "Coach's decisions: punt, field goal, extra point or two-point try, and timeouts."
+        },
+        {
+          "tag": "new",
+          "text": "Watch at normal speed, fast, or skip to the result. Scoring plays and turnovers you fast-forwarded are replayed at normal speed."
+        },
+        {
+          "tag": "new",
+          "text": "Kickoffs, punts, field goals, safeties, interceptions, fumbles and sacks, with a score bug and a final summary."
+        },
+        {
+          "tag": "new",
+          "text": "Every game is reproducible from its seed and the list of coaching decisions, which is what will make online results fair."
+        }
       ]
     },
     {
@@ -30,23 +231,122 @@
       "date": "2026-11-25",
       "title": "Design foundation",
       "items": [
-        { "tag": "new", "text": "Game design, architecture plan, data model and acceptance criteria for every milestone." },
-        { "tag": "new", "text": "Direction set: coach-only. Nobody steers a player; every decision is a coach's decision." }
+        {
+          "tag": "new",
+          "text": "Game design, architecture plan, data model and acceptance criteria for every milestone."
+        },
+        {
+          "tag": "new",
+          "text": "Direction set: coach-only. Nobody steers a player; every decision is a coach's decision."
+        }
       ]
     }
   ],
   "roadmap": [
-    { "status": "testing", "title": "Exhibition football", "text": "Coach a full game against the AI. Playable now; waiting on playtest sign-off." },
-    { "status": "next", "title": "Playbooks and smarter football", "text": "More formations and plays, build your own 8-play book, in-game substitutions, a game plan and a sharper AI coach." },
-    { "status": "planned", "title": "Online head-to-head", "text": "Invite a friend by link and coach against each other live, with hidden play calls." },
-    { "status": "planned", "title": "Complete statistics", "text": "Full box scores for teams and players, checked so every number adds up." },
-    { "status": "planned", "title": "Eight-school league", "text": "Eight fictional schools with rosters, rivals, schedules and standings. Any school can be run by a person or the AI." },
-    { "status": "planned", "title": "Dynasty seasons with friends", "text": "Persistent rosters and week-by-week seasons. Invite coaches to run rival schools; the week advances when everyone is ready." },
-    { "status": "planned", "title": "Kids grow up", "text": "Graduation, incoming freshmen from feeder schools, player development, morale and academics." },
-    { "status": "planned", "title": "Run the program", "text": "Coaching staff, facilities, fundraising and community expectations." },
-    { "status": "planned", "title": "Playoffs and championships", "text": "League, section and state brackets, with overtime." },
-    { "status": "planned", "title": "Commissioner tools", "text": "Advance and roll back weeks, assign coaches, set schedules and keep an audit log." },
-    { "status": "planned", "title": "Records, alumni and legacy", "text": "Record books, hall of fame, college offers, and a coaching career with job offers." },
-    { "status": "planned", "title": "Regional and national", "text": "More states, showcase games, rankings and a fictional national championship." }
+    {
+      "status": "testing",
+      "title": "Exhibition football",
+      "text": "Coach a full game against the AI. Playable now; waiting on playtest sign-off."
+    },
+    {
+      "status": "testing",
+      "title": "Playbooks and smarter football",
+      "text": "A 24-play library, build-your-own book, four defensive fronts, fatigue and substitutions, a play clock and a game plan. Playable now."
+    },
+    {
+      "status": "testing",
+      "title": "Online head-to-head",
+      "text": "Invite a friend with a game PIN and coach against each other live, with hidden play calls. Playable now on the website."
+    },
+    {
+      "status": "testing",
+      "title": "Sideline voice chat",
+      "text": "Talk to the other coach during an online game, free and straight from your browser. Playable now on the website."
+    },
+    {
+      "status": "testing",
+      "title": "Design your own plays",
+      "text": "Draw up offensive and defensive plays in an editor, test them on a practice field, and carry them into games. Playable now."
+    },
+    {
+      "status": "testing",
+      "title": "Coach profile and Hall of Fame",
+      "text": "Career wins, losses and championships for every online coach, and a top-ten Hall of Fame. Records count now; championships arrive with dynasty seasons."
+    },
+    {
+      "status": "testing",
+      "title": "The big playbook",
+      "text": "A 40-play starter book and 40 defensive calls. Playable now."
+    },
+    {
+      "status": "next",
+      "title": "Special teams",
+      "text": "Kickoff, punt and field-goal calls: deep, squib and onside kicks, fake punts and field goals, return or go for the block."
+    },
+    {
+      "status": "next",
+      "title": "Cut-ins and new artwork",
+      "text": "Touchdown, field goal, interception and half-time cut-ins, new player sprites and on-field effects."
+    },
+    {
+      "status": "next",
+      "title": "Game length options",
+      "text": "Choose how long the four quarters are before kickoff."
+    },
+    {
+      "status": "planned",
+      "title": "Complete statistics",
+      "text": "Full box scores for teams and players, checked so every number adds up."
+    },
+    {
+      "status": "planned",
+      "title": "Eight-school league",
+      "text": "Pick a real state and get a generated league of eight fictional schools with rosters, rivals, schedules and standings. Any school can be run by a person or the AI."
+    },
+    {
+      "status": "planned",
+      "title": "Dynasty: solo or with friends",
+      "text": "Persistent rosters and week-by-week seasons, played alone against the AI or with friends running rival schools. When two coaches meet, both have to be online to play; the week advances when everyone is ready."
+    },
+    {
+      "status": "planned",
+      "title": "Kids grow up",
+      "text": "Graduation, incoming freshmen from feeder schools, player development, morale and academics."
+    },
+    {
+      "status": "planned",
+      "title": "Run the program",
+      "text": "Coaching staff, facilities, fundraising and community expectations."
+    },
+    {
+      "status": "planned",
+      "title": "Playoffs and championships",
+      "text": "League, section and state brackets, with overtime."
+    },
+    {
+      "status": "planned",
+      "title": "Commissioner tools",
+      "text": "Advance and roll back weeks, assign coaches, set schedules and keep an audit log."
+    },
+    {
+      "status": "planned",
+      "title": "Records, alumni and legacy",
+      "text": "Record books, hall of fame, college offers, and a coaching career with job offers."
+    },
+    {
+      "status": "planned",
+      "title": "Regional and national",
+      "text": "More states, showcase games, rankings and a fictional national championship."
+    },
+    {
+      "status": "planned",
+      "title": "Weather",
+      "text": "Rain, wind, cold and heat that change how the ball is thrown, kicked and held on to."
+    },
+    {
+      "status": "planned",
+      "title": "Friday night broadcast",
+      "text": "High-school broadcast look: score bug, lower-third graphics, player and stat overlays, replays worth watching. The AI-run football has to be sharp and fun to watch."
+    }
   ]
 }

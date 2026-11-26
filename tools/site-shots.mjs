@@ -20,7 +20,7 @@ for (let n = 0; s.mode !== 'final' && n < 700; n++) {
   const prompt = await page.$eval('#prompt', (e) => e.textContent);
   const acts = await page.$$eval('#panel [data-act]', (els) => els.map((e) => e.dataset.act));
   if (!done.off && prompt === 'Call your play') { await shot('#game', 'shot_offense'); done.off = true; }
-  if (!done.def && prompt === 'Call your defense') { await shot('#game', 'shot_defense'); done.def = true; }
+  if (!done.def && prompt === 'Pick a front, then call it') { await shot('#game', 'shot_defense'); done.def = true; }
   let pick = acts.filter((a) => a.startsWith('p:') || a.startsWith('d:') || a === 'pat');
   if (prompt.startsWith('4th') && acts.includes('punt')) pick = [acts.includes('fg') ? 'fg' : 'punt'];
   const a = done.off && !done.live && acts.includes('p:curls') ? 'p:curls' : pick[n % pick.length];

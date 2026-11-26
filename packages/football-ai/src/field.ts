@@ -1,4 +1,4 @@
-import { FIELD_W, U, clamp, dist } from '@fnd/core';
+import { FIELD_W, U, clamp, dist, type DefRole, type Group } from '@fnd/core';
 
 /** On-field decisions. Pure functions over positions, so they can be tested without the engine. */
 
@@ -100,4 +100,89 @@ export function qbRead(
   if (best >= 0) return best;
   if (forced) return fallback >= 0 && fallbackOpen >= 0.7 ? fallback : -2;
   return -1;
+}
+
+// --------------------------------------------------------------- coverage
+
+export interface CoverReceiver {
+  idx: number;
+  x: number;
+  y: number;
+  group: Group;
+}
+export interface CoverDefender {
+  idx: number;
+  x: number;
+  y: number;
+  role: DefRole;
+}
+
+/** How badly a defender's position suits covering a receiver's position, in yards of extra cost. */
+const MISMATCH: Record<DefRole, Partial<Record<Group, number>>> = {
+  CB: { WR: 0, TE: 6, RB: 10 },
+  NB: { WR: 0, TE: 2, RB: 6 },
+  S: { WR: 5, TE: 0, RB: 3 },
+  LB: { WR: 8, TE: 2, RB: 0 },
+  DL: {},
+};
+
+/**
+ * Man-coverage matchups at the snap. Wide receivers are claimed first, widest first, then tight ends,
+ * then backs. Each takes the nearest defender whose position suits him. Returns defender index to receiver index.
+ */
+export function matchCoverage(receivers: readonly CoverReceiver[], defenders: readonly CoverDefender[]): Map<number, number> {
+  const mid = FIELD_W / 2;
+  const taken = new Set<number>();
+  const covered = new Set<number>();
+  const out = new Map<number, number>();
+  const pair = (d: CoverDefender, r: CoverReceiver): void => {
+    taken.add(d.idx);
+    covered.add(r.idx);
+    out.set(d.idx, r.idx);
+  };
+
+  // First the cornerbacks take wide receivers, nearest pairs first. A corner with nobody on his side
+  // travels across the formation rather than stand guarding grass.
+  const corners = defenders.filter((d) => d.role === 'CB' || d.role === 'NB');
+  const wideouts = receivers.filter((r) => r.group === 'WR');
+  for (;;) {
+    let best: [CoverDefender, CoverReceiver] | null = null;
+    let bestGap = 1e9;
+    for (const d of corners) {
+      if (taken.has(d.idx)) continue;
+      for (const r of wideouts) {
+        if (covered.has(r.idx)) continue;
+        const gap = Math.abs(d.y - r.y);
+        if (gap < bestGap) {
+          bestGap = gap;
+          best = [d, r];
+        }
+      }
+    }
+    if (!best) break;
+    pair(best[0], best[1]);
+  }
+
+  // Then everyone else: receivers before tight ends before backs, widest first, each taking the
+  // nearest defender whose position suits him.
+  const rank = (g: Group): number => (g === 'WR' ? 0 : g === 'TE' ? 1 : 2);
+  const order = receivers.filter((r) => !covered.has(r.idx))
+    .sort((a, b) => rank(a.group) - rank(b.group) || Math.abs(b.y - mid) - Math.abs(a.y - mid) || a.idx - b.idx);
+  for (const r of order) {
+    let best: CoverDefender | null = null;
+    let bestCost = 1e9;
+    for (const d of defenders) {
+      if (taken.has(d.idx)) continue;
+      // Safeties rotate across the field more readily than linebackers do.
+      const reach = d.role === 'S' ? 0.4 : 1;
+      const cost = (Math.abs(d.y - r.y) / U) * reach + (MISMATCH[d.role][r.group] ?? 20);
+      if (cost < bestCost) {
+        bestCost = cost;
+        best = d;
+      }
+    }
+    if (!best) break;
+    pair(best, r);
+  }
+  return out;
 }

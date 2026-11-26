@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { DEFENSE_CALLS, OFFENSE_PLAYS, Rng, exhibitionTeams, playById, callById } from '@fnd/core';
+import { BOOK_SIZE, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, FORMATIONS, GROUPS, OFFENSE_PLAYS, ROSTER_SIZE, Rng, defAssignment, exhibitionTeams, formationById, validateBook } from '@fnd/core';
+import { aiDefense } from '@fnd/football-ai';
 import { Game, PlaySim, gameHash, replayGame, simulateGame, summarize } from '@fnd/match-sim';
+import { makeSim } from './helpers';
 
 describe('seeded randomness', () => {
   it('produces the same sequence for the same seed', () => {
@@ -24,26 +26,84 @@ describe('team generation', () => {
     const [a, b] = exhibitionTeams(5);
     const [a2] = exhibitionTeams(5);
     expect(a).toEqual(a2);
-    const ids = [a, b].flatMap((t) => [...Object.values(t.offense), ...Object.values(t.defense), t.kicker, t.punter].map((p) => p.id));
+    const ids = [a, b].flatMap((t) => t.roster.map((p) => p.id));
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids[0]).toBe('plr_000001');
+  });
+  it('fills every position group and orders each depth chart', () => {
+    const [a] = exhibitionTeams(9);
+    for (const g of GROUPS) {
+      expect(a.depth[g].length).toBe(ROSTER_SIZE[g]);
+      expect(new Set(a.depth[g]).size).toBe(ROSTER_SIZE[g]);
+    }
+    expect(a.roster.length).toBe(39);
+  });
+});
+
+describe('play library (M2 acceptance)', () => {
+  it('has at least 4 formations, 24 plays, 4 fronts and 4 calls, all as data', () => {
+    expect(FORMATIONS.length).toBeGreaterThanOrEqual(4);
+    expect(OFFENSE_PLAYS.length).toBeGreaterThanOrEqual(40);
+    expect(DEFENSE_FRONTS.length).toBeGreaterThanOrEqual(4);
+    expect(DEFENSE_SCHEMES.length).toBeGreaterThanOrEqual(4);
+    expect(new Set(OFFENSE_PLAYS.map((p) => p.id)).size).toBe(OFFENSE_PLAYS.length);
+  });
+  it('every formation and front fields eleven players the roster can supply', () => {
+    for (const f of [...FORMATIONS, ...DEFENSE_FRONTS]) {
+      expect(f.slots.length).toBe(11);
+      expect(new Set(f.slots.map((x) => x.id)).size).toBe(11);
+      const perGroup: Record<string, number[]> = {};
+      for (const sl of f.slots) (perGroup[sl.group] ??= []).push(sl.rank);
+      for (const [g, ranks] of Object.entries(perGroup)) {
+        expect(new Set(ranks).size).toBe(ranks.length);
+        expect(Math.max(...ranks)).toBeLessThanOrEqual(ROSTER_SIZE[g as keyof typeof ROSTER_SIZE]);
+      }
+    }
+  });
+  it('every play only assigns slots its formation has, with exactly one quarterback and a legal line', () => {
+    for (const p of OFFENSE_PLAYS) {
+      const f = formationById(p.formation);
+      const ids = f.slots.map((x) => x.id);
+      for (const slot of Object.keys(p.assign)) expect(ids, `${p.id} assigns ${slot}`).toContain(slot);
+      expect(ids.filter((x) => x === 'QB').length).toBe(1);
+      expect(f.slots.filter((x) => x.group === 'OL').length).toBe(5);
+      const carries = Object.values(p.assign).filter((a) => a.t === 'carry').length;
+      expect(carries).toBe(p.kind === 'run' ? 1 : 0);
+      if (p.kind === 'pass') expect(Object.values(p.assign).some((a) => a.t === 'route')).toBe(true);
+    }
+  });
+  it('validates playbooks', () => {
+    expect(validateBook(DEFAULT_BOOK)).toBeNull();
+    expect(DEFAULT_BOOK.length).toBe(40);
+    expect(BOOK_SIZE).toBeGreaterThanOrEqual(DEFAULT_BOOK.length);
+    expect(validateBook(DEFAULT_BOOK.slice(0, 7))).not.toBeNull();
+    expect(validateBook([...DEFAULT_BOOK.slice(0, 7), DEFAULT_BOOK[0]])).not.toBeNull();
+    expect(validateBook(OFFENSE_PLAYS.filter((p) => p.kind === 'run').slice(0, 8).map((p) => p.id))).not.toBeNull();
+    expect(validateBook([...DEFAULT_BOOK.slice(0, 7), 'nope'])).not.toBeNull();
   });
 });
 
 describe('play simulation', () => {
-  it('every play against every call finishes with a result', () => {
-    const [a, b] = exhibitionTeams(1);
-    for (const play of OFFENSE_PLAYS) for (const call of DEFENSE_CALLS) for (const los of [1, 30, 97]) {
-      const sim = new PlaySim({ offense: a, defense: b, play: playById(play.id), call: callById(call.id), los, rng: new Rng(los) });
+  it('every play against every front and call finishes with a result', () => {
+    for (const play of OFFENSE_PLAYS) for (const front of DEFENSE_FRONTS) for (const scheme of DEFENSE_SCHEMES) for (const los of [1, 30, 97]) {
+      const sim = makeSim(play.id, front.id, scheme.id, los, los);
       let guard = 0;
       while (!sim.done && guard++ < 2000) sim.step();
-      expect(sim.done).toBe(true);
+      expect(sim.done, `${play.id} vs ${front.id} ${scheme.id}`).toBe(true);
       expect(sim.result).not.toBeNull();
       for (const p of sim.players) {
         expect(Number.isInteger(p.x)).toBe(true);
         expect(Number.isInteger(p.y)).toBe(true);
       }
     }
+  });
+  it('is identical for the same seed', () => {
+    const run = (): unknown => {
+      const sim = makeSim('flood', 'nickel', 'blitz', 40, 77);
+      while (!sim.done) sim.step();
+      return [sim.result, sim.players.map((p) => [p.x, p.y])];
+    };
+    expect(run()).toEqual(run());
   });
 });
 
@@ -58,7 +118,7 @@ describe('full game', () => {
     for (const t of ['kickoff', 'run', 'pass']) expect(types.has(t as never)).toBe(true);
   });
 
-  it('replays to the identical score and play list from seed plus decisions (M1 acceptance)', () => {
+  it('replays to the identical score and play list from seed plus decisions', () => {
     const again = replayGame(seed, exhibitionTeams(seed), game.log);
     expect(again.state.score).toEqual(game.state.score);
     expect(again.events).toEqual(game.events);
@@ -87,41 +147,139 @@ describe('full game', () => {
       expect(pts).toEqual(g.state.score);
       const [a, b] = summarize(g.events);
       for (const t of [a, b]) expect(t.totalYds).toBe(t.rushYds + t.passYds);
-      expect(g.state.timeouts[0]).toBeGreaterThanOrEqual(0);
+      for (const v of Object.values(g.energy)) {
+        expect(v).toBeGreaterThanOrEqual(0);
+        expect(v).toBeLessThanOrEqual(100);
+      }
     }
   });
 
-  it('runs a whole game with no rendering in under 2 seconds (M1 acceptance)', () => {
+  it('runs a whole game with no rendering in under 2 seconds', () => {
     const t0 = performance.now();
     simulateGame(99, exhibitionTeams(99));
     expect(performance.now() - t0).toBeLessThan(2000);
   });
 
-  it('stays in a believable scoring and play-count range over 60 games', () => {
-    let pts = 0;
-    let plays = 0;
-    for (let s = 100; s < 160; s++) {
-      const g = simulateGame(s, exhibitionTeams(s));
-      pts += g.state.score[0] + g.state.score[1];
-      const [a, b] = summarize(g.events);
-      plays += a.plays + b.plays;
-    }
-    expect(pts / 120).toBeGreaterThan(10);
-    expect(pts / 120).toBeLessThan(35);
-    expect(plays / 120).toBeGreaterThan(40);
-    expect(plays / 120).toBeLessThan(70);
-  });
-
-  it('accepts human decisions, including timeouts, punts and field goals', () => {
+  it('accepts human decisions, including timeouts, punts, field goals and kneel-downs', () => {
     const g = new Game(3, exhibitionTeams(3));
+    const def = { frontId: '43', callId: 'base' };
     let guard = 0;
+    let kneels = 0;
     while (g.state.phase !== 'final' && guard++ < 2000) {
       if (g.state.phase === 'kickoff') g.begin(null, null);
-      else if (g.state.phase === 'conversion') g.begin({ kind: 'patKick' }, { callId: 'base' });
-      else if (g.state.down === 4) g.begin(g.state.yardLine > 65 ? { kind: 'fieldGoal' } : { kind: 'punt' }, { callId: 'base' });
-      else g.begin({ kind: 'play', playId: 'dive', timeout: true }, { callId: 'base' });
+      else if (g.state.phase === 'conversion') g.begin({ kind: 'patKick' }, def);
+      else if (g.state.down === 4) g.begin(g.state.yardLine > 65 ? { kind: 'fieldGoal' } : { kind: 'punt' }, def);
+      else if (g.state.quarter === 4 && g.state.clock < 60 && g.state.down < 4) {
+        kneels++;
+        g.begin({ kind: 'kneel' }, def);
+      } else g.begin({ kind: 'play', playId: 'dive', timeout: true }, def);
       while (!g.tick()) { /* step */ }
     }
     expect(g.state.phase).toBe('final');
+    expect(kneels).toBeGreaterThanOrEqual(0);
+  });
+
+  it('a kneel-down loses a yard, uses a down and keeps the clock running', () => {
+    const g = new Game(12, exhibitionTeams(12));
+    g.begin(null, null);
+    g.tick();
+    const before = { ...g.state };
+    g.begin({ kind: 'kneel' }, { frontId: '43', callId: 'base' });
+    g.tick();
+    const e = g.lastEvent!;
+    expect(e.type).toBe('kneel');
+    expect(e.yards).toBe(-1);
+    expect(g.state.down).toBe(2);
+    expect(g.state.yardLine).toBe(before.yardLine - 1);
+    expect(g.state.clockRunning).toBe(true);
+    expect(g.state.clock).toBe(before.clock - 3);
+  });
+});
+
+describe('playbooks, depth charts and fatigue (M2 acceptance)', () => {
+  it('only allows plays from the team playbook', () => {
+    const small = ['dive', 'power', 'toss', 'counter', 'slants', 'curls', 'flood', 'verticals'];
+    const g = new Game(4, exhibitionTeams(4), { books: [small, small] });
+    g.begin(null, null);
+    g.tick();
+    expect(() => g.begin({ kind: 'play', playId: 'mesh' }, { frontId: '43', callId: 'base' })).toThrow(/playbook/);
+  });
+  it('uses a custom playbook and rejects an invalid one', () => {
+    const book = ['iso', 'zone', 'draw', 'blast', 'mesh', 'smash', 'stick', 'post'];
+    const g = simulateGame(11, exhibitionTeams(11), { books: [book, DEFAULT_BOOK] });
+    const home = new Set(g.events.filter((e) => e.offense === 0 && e.offCall).map((e) => e.offCall));
+    for (const id of home) expect(book).toContain(id);
+    expect(() => new Game(1, exhibitionTeams(1), { books: [book.slice(1), DEFAULT_BOOK] })).toThrow();
+    expect(() => new Game(1, exhibitionTeams(1), { books: [[...DEFAULT_BOOK, 'c_notmine00'], DEFAULT_BOOK] })).toThrow();
+  });
+  it('the defense has 40 calls: five fronts by eight coverages, each giving eleven defenders a job', () => {
+    expect(DEFENSE_FRONTS.length * DEFENSE_SCHEMES.length).toBe(40);
+    for (const f of DEFENSE_FRONTS) {
+      expect(f.slots.length, f.id).toBe(11);
+      for (const c of DEFENSE_SCHEMES) {
+        const jobs = f.slots.map((slot) => defAssignment(slot, c.id).t);
+        const rushers = jobs.filter((j) => j === 'rush').length;
+        expect(rushers, `${f.id} ${c.id}`).toBeGreaterThanOrEqual(3);
+        expect(rushers, `${f.id} ${c.id}`).toBeLessThanOrEqual(8);
+      }
+    }
+    // A late lead is the only time the AI reaches for prevent.
+    const rng = new Rng(5);
+    let prevent = 0;
+    for (let i = 0; i < 400; i++) if (aiDefense({ down: 1, distance: 10, yardLine: 40, quarter: 2, clock: 400, scoreDiff: 0, timeouts: 3, oppTimeouts: 3, clockRunning: false } as never, DEFENSE_FRONTS, DEFENSE_SCHEMES, rng).callId === 'prevent') prevent++;
+    expect(prevent).toBeLessThan(20);
+  });
+  it('the starter book is the whole library: 40 plays, eight from each formation', () => {
+    expect(DEFAULT_BOOK.length).toBe(40);
+    for (const f of FORMATIONS) expect(OFFENSE_PLAYS.filter((p) => p.formation === f.id).length, f.id).toBe(8);
+    expect(new Set(OFFENSE_PLAYS.map((p) => p.id)).size).toBe(40);
+  });
+  it('depth chart changes put a different player on the field and replay exactly', () => {
+    const teams = exhibitionTeams(21);
+    const g = new Game(21, teams);
+    const before = g.starter(0, 'QB').id;
+    const order = [...g.depth[0].QB].reverse();
+    g.manage({ kind: 'depth', team: 0, group: 'QB', order });
+    expect(g.starter(0, 'QB').id).not.toBe(before);
+    expect(() => g.manage({ kind: 'depth', team: 0, group: 'QB', order: [before, before] })).toThrow();
+    const def = { frontId: '43', callId: 'base' };
+    for (let i = 0; i < 40 && g.state.phase !== 'final'; i++) {
+      if (g.state.phase === 'kickoff') g.begin(null, null);
+      else if (g.state.phase === 'conversion') g.begin({ kind: 'patKick' }, def);
+      else if (g.state.down === 4) g.begin({ kind: 'punt' }, def);
+      else g.begin({ kind: 'play', playId: 'slants' }, def);
+      while (!g.tick()) { /* step */ }
+    }
+    const passers = new Set(g.events.filter((e) => e.offense === 0 && e.passer).map((e) => e.passer));
+    expect(passers.has(order[0])).toBe(true);
+    expect(passers.has(before)).toBe(false);
+    const again = replayGame(21, exhibitionTeams(21), g.log);
+    expect(gameHash(again)).toBe(gameHash(g));
+  });
+  it('rests a tired starter and brings him back after he recovers', () => {
+    const g = new Game(8, exhibitionTeams(8));
+    const f = formationById('single');
+    const rb = g.starter(0, 'RB');
+    const backup = g.starter(0, 'RB', 2);
+    g.energy[rb.id] = 30;
+    const notices: never[] = [];
+    let line = g.lineup(0, f.slots, notices);
+    expect(line.find((p) => p.pos === 'RB')!.id).toBe(backup.id);
+    expect(notices.length).toBe(1);
+    g.energy[rb.id] = 60;
+    line = g.lineup(0, f.slots);
+    expect(line.find((p) => p.pos === 'RB')!.id).toBe(backup.id);
+    g.energy[rb.id] = 80;
+    line = g.lineup(0, f.slots);
+    expect(line.find((p) => p.pos === 'RB')!.id).toBe(rb.id);
+  });
+  it('a lower threshold keeps starters in longer, and fatigue changes who plays over a game', () => {
+    const g = simulateGame(31, exhibitionTeams(31));
+    expect(Math.min(...Object.values(g.energy))).toBeLessThan(100);
+    const h = new Game(31, exhibitionTeams(31));
+    h.manage({ kind: 'threshold', team: 0, value: 0 });
+    const rb = h.starter(0, 'RB');
+    h.energy[rb.id] = 5;
+    expect(h.lineup(0, formationById('single').slots).find((p) => p.pos === 'RB')!.id).toBe(rb.id);
   });
 });

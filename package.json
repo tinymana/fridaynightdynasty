@@ -1,7 +1,7 @@
 {
   "name": "friday-night-dynasty",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.5.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,10 +10,18 @@
     "typecheck": "tsc --noEmit",
     "sim": "tsx tools/headless.ts",
     "check:browser": "node tools/browser-check.mjs",
-    "build:site": "vite build && cp dist/index.html site/play/index.html"
+    "build:site": "vite build && cp dist/index.html site/play/index.html",
+    "check:ui": "node tools/ui-check.mjs",
+    "probe": "tsx tools/probe.ts",
+    "bundle:function": "esbuild supabase/functions/fnd/index.ts --bundle --format=esm --platform=neutral --target=es2022 \"--external:npm:*\" --minify --legal-comments=none --outfile=supabase/functions/fnd/dist/index.js",
+    "mock:online": "tsx tools/mock-online.ts",
+    "check:online": "node tools/online-check.mjs",
+    "check:voice": "node tools/voice-check.mjs",
+    "check:designer": "node tools/designer-check.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.10",
+    "esbuild": "^0.28.2",
     "phaser": "^3.90.0",
     "puppeteer-core": "^25.19.0",
     "tsx": "^4.23.15",

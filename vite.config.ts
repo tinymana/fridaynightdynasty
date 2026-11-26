@@ -12,6 +12,7 @@ export default defineConfig({
       '@fnd/core': r('./packages/core/src/index.ts'),
       '@fnd/football-ai': r('./packages/football-ai/src/index.ts'),
       '@fnd/match-sim': r('./packages/match-sim/src/index.ts'),
+      '@fnd/online': r('./packages/online/src/index.ts'),
     },
   },
   build: { outDir: '../../dist', emptyOutDir: true, chunkSizeWarningLimit: 4000, assetsInlineLimit: 100000000 },
