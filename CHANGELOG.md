@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.5.0 — 2026-11-25
+
+The big playbook.
+
+### Added
+- 16 offensive plays (40 in the library, eight per formation). The starter book is the whole library.
+- `BOOK_MIN` (8) and `BOOK_SIZE` (52): a book is 8 to 52 plays, so designed plays add to the 40.
+- 4-4 front; Man Free, Cover 2, Zone Blitz and Prevent calls. Five fronts by eight calls is 40 defenses.
+- Offense panel grouped by formation tabs. `tools/probe-all.ts` and `tools/probe-def.ts` for measuring every
+  play and every defense.
+- `art/source`: artwork sheets from the creative director, not yet used.
+
+### Changed
+- The AI's defensive lean is shared among the calls of a kind, so a longer call sheet does not change its mix.
+  Prevent is reserved for protecting a late lead.
+- The home-win balance test samples 400 games; at 200 the 45-55 band was narrower than chance.
+- Playbook storage key is now `fnd.book.v2`.
+
+### Known gaps
+- New plays were tuned by measurement against the AI, not by human play. Spread Counter is weak (about 3 yards);
+  Tight End Pop completes about three in four.
+- Special teams are still automatic apart from punt, field goal and the extra point.
+- Everything listed under 0.4.0 still stands.
+
 ## 0.4.0 — 2026-11-25
 
 Play designer, coach careers and the Hall of Fame.

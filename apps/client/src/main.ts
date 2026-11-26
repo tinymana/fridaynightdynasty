@@ -630,7 +630,7 @@ function showDefensePanel(): void {
   const custom = frontId === CUSTOM_FRONT;
   const front = frontById(libraryFront());
   const tb = timeoutButton();
-  const keys = ['Q', 'W', 'E', 'R'];
+  const keys = ['Q', 'W', 'E', 'R', 'Y'];
   const fronts = `<div class="fronts"><span class="lbl">Front</span>${DEFENSE_FRONTS.map((f, i) => `<button class="act${f.id === frontId ? ' on' : ''}" data-act="f:${f.id}" title="${f.desc}">${f.name} <kbd>[${keys[i]}]</kbd></button>`).join('')}${mine.length ? `<button class="act${custom ? ' on' : ''}" data-act="f:${CUSTOM_FRONT}" title="The defenses you designed">Mine <kbd>[A]</kbd></button>` : ''}</div>`;
   const kindLabel = { run: 'vs run', pass: 'vs pass', blitz: 'pressure', balanced: 'balanced' };
   if (custom) {

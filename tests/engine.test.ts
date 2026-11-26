@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { BOOK_SIZE, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, FORMATIONS, GROUPS, OFFENSE_PLAYS, ROSTER_SIZE, Rng, exhibitionTeams, formationById, validateBook } from '@fnd/core';
+import { BOOK_SIZE, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, FORMATIONS, GROUPS, OFFENSE_PLAYS, ROSTER_SIZE, Rng, defAssignment, exhibitionTeams, formationById, validateBook } from '@fnd/core';
+import { aiDefense } from '@fnd/football-ai';
 import { Game, PlaySim, gameHash, replayGame, simulateGame, summarize } from '@fnd/match-sim';
 import { makeSim } from './helpers';
 
@@ -210,6 +211,23 @@ describe('playbooks, depth charts and fatigue (M2 acceptance)', () => {
     for (const id of home) expect(book).toContain(id);
     expect(() => new Game(1, exhibitionTeams(1), { books: [book.slice(1), DEFAULT_BOOK] })).toThrow();
     expect(() => new Game(1, exhibitionTeams(1), { books: [[...DEFAULT_BOOK, 'c_notmine00'], DEFAULT_BOOK] })).toThrow();
+  });
+  it('the defense has 40 calls: five fronts by eight coverages, each giving eleven defenders a job', () => {
+    expect(DEFENSE_FRONTS.length * DEFENSE_SCHEMES.length).toBe(40);
+    for (const f of DEFENSE_FRONTS) {
+      expect(f.slots.length, f.id).toBe(11);
+      for (const c of DEFENSE_SCHEMES) {
+        const jobs = f.slots.map((slot) => defAssignment(slot, c.id).t);
+        const rushers = jobs.filter((j) => j === 'rush').length;
+        expect(rushers, `${f.id} ${c.id}`).toBeGreaterThanOrEqual(3);
+        expect(rushers, `${f.id} ${c.id}`).toBeLessThanOrEqual(8);
+      }
+    }
+    // A late lead is the only time the AI reaches for prevent.
+    const rng = new Rng(5);
+    let prevent = 0;
+    for (let i = 0; i < 400; i++) if (aiDefense({ down: 1, distance: 10, yardLine: 40, quarter: 2, clock: 400, scoreDiff: 0, timeouts: 3, oppTimeouts: 3, clockRunning: false } as never, DEFENSE_FRONTS, DEFENSE_SCHEMES, rng).callId === 'prevent') prevent++;
+    expect(prevent).toBeLessThan(20);
   });
   it('the starter book is the whole library: 40 plays, eight from each formation', () => {
     expect(DEFAULT_BOOK.length).toBe(40);

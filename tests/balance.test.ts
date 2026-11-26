@@ -27,7 +27,8 @@ function rotatingBook(game: number, team: number): string[] {
 describe('balance over 200 games', () => {
   const GAMES = 200;
   const wins = [0, 0];
-  for (let g = 1; g <= GAMES; g++) {
+  // 400 games for the win share: at 200 the 45-55 band is narrower than ordinary chance for two equal teams.
+  for (let g = 1; g <= GAMES * 2; g++) {
     const s = simulateGame(g, exhibitionTeams(g), { books: [DEFAULT_BOOK, DEFAULT_BOOK] }).state.score;
     if (s[0] > s[1]) wins[0]++;
     else if (s[1] > s[0]) wins[1]++;

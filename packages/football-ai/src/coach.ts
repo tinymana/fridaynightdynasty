@@ -129,14 +129,17 @@ export function aiDefense(s: Situation, fronts: readonly DefFront[], schemes: re
   else if (p > 0.7) w = { pass: 0.5, blitz: 0.25, balanced: 0.25, run: 0 };
   else if (p < 0.4) w = { run: 0.4, balanced: 0.45, blitz: 0.15, pass: 0 };
   else w = { balanced: 0.4, run: 0.2, pass: 0.25, blitz: 0.15 };
-  const scheme = weightedPick(schemes, (c) => w[c.kind], rng);
+  // Prevent is for protecting a late lead and almost nothing else.
+  // The lean is by kind of call, shared among the calls of that kind, so a bigger call sheet does not change the mix.
+  const ofKind = (k: SchemeKind): number => schemes.reduce((n, c) => n + (c.kind === k ? (c.id === 'prevent' ? (prevent ? 3 : 0.05) : 1) : 0), 0);
+  const scheme = weightedPick(schemes, (c) => (w[c.kind] * (c.id === 'prevent' ? (prevent ? 3 : 0.05) : 1)) / ofKind(c.kind), rng);
 
   let fw: Record<string, number>;
   if (prevent) fw = { nickel: 0.9, '43': 0.1 };
-  else if (short || goalLine) fw = { '52': 0.7, '43': 0.3 };
+  else if (short || goalLine) fw = { '52': 0.6, '44': 0.25, '43': 0.15 };
   else if (p > 0.7) fw = { nickel: 0.7, '43': 0.2, '34': 0.1 };
-  else if (p < 0.4) fw = { '43': 0.4, '52': 0.35, '34': 0.25 };
-  else fw = { '43': 0.45, '34': 0.3, nickel: 0.15, '52': 0.1 };
+  else if (p < 0.4) fw = { '43': 0.35, '52': 0.25, '44': 0.2, '34': 0.2 };
+  else fw = { '43': 0.4, '34': 0.25, nickel: 0.15, '44': 0.1, '52': 0.1 };
   const front = weightedPick(fronts, (f) => fw[f.id] ?? 0.0001, rng);
 
   return { frontId: front.id, callId: scheme.id, timeout: wantsTimeout(s, false) };

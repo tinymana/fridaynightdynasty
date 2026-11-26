@@ -197,6 +197,16 @@ export const DEFENSE_FRONTS: readonly DefFront[] = [
       d('FS', 'S', 1, [13, -3], 'S', [17, -9], { deep: true }),
       d('SS', 'S', 2, [10, 6], 'S', [17, 9], { cover: true })],
   },
+  {
+    id: '44', name: '4-4', desc: 'Eight in the box, one safety deep. Tough to run on.',
+    slots: [dl('DE1', 1, -4.4), dl('DT1', 2, -1.4), dl('DT2', 3, 1.4), dl('DE2', 4, 4.4),
+      d('OLB1', 'LB', 3, [3, -7], 'LB', [7, -11], { cover: true, stuff: true, blitz: true }),
+      d('ILB1', 'LB', 1, [4.5, -2], 'LB', [9, -4], { cover: true }),
+      d('ILB2', 'LB', 2, [4.5, 2], 'LB', [9, 4], { blitz: true }),
+      d('OLB2', 'LB', 4, [3, 7], 'LB', [7, 11], { cover: true, stuff: true }),
+      ...CORNERS,
+      d('FS', 'S', 1, [12, 0], 'S', [17, 0], { deep: true })],
+  },
 ];
 
 export const DEFENSE_SCHEMES: readonly DefScheme[] = [
@@ -204,6 +214,10 @@ export const DEFENSE_SCHEMES: readonly DefScheme[] = [
   { id: 'runStuff', name: 'Run Stuff', kind: 'run', desc: 'Linebackers crash the line. Exposed to the pass.' },
   { id: 'coverZone', name: 'Cover Zone', kind: 'pass', desc: 'Drop into zones. Soft against the run.' },
   { id: 'blitz', name: 'Blitz', kind: 'blitz', desc: 'Send extra rushers. Sack or big play.' },
+  { id: 'man', name: 'Man Free', kind: 'balanced', desc: 'Tight man coverage with one safety deep.' },
+  { id: 'cover2', name: 'Cover 2', kind: 'pass', desc: 'Two safeties split the deep field. Corners play soft underneath.' },
+  { id: 'zoneBlitz', name: 'Zone Blitz', kind: 'blitz', desc: 'Send pressure, drop everyone else into zones.' },
+  { id: 'prevent', name: 'Prevent', kind: 'pass', desc: 'Everyone deep. Gives up short gains, guards the big play.' },
 ];
 
 /** Combines a front with a call: what each of the eleven defenders does on this snap. */
@@ -222,6 +236,29 @@ export function defAssignment(slot: DefSlot, scheme: string): DefAssign {
       if (slot.rushBase) return { t: 'rush' };
       if (slot.role === 'CB') return { t: 'man', cushion: 5.5 };
       return { t: 'zone', at: slot.zone };
+    case 'man':
+      if (slot.rushBase) return { t: 'rush' };
+      if (slot.deep) return { t: 'zone', at: [15, 0] };
+      if (isDb) return { t: 'man', cushion: 2 };
+      if (slot.cover) return { t: 'man', cushion: 2.5 };
+      return { t: 'read' };
+    case 'cover2': {
+      if (slot.rushBase) return { t: 'rush' };
+      const side = slot.at[1] < 0 || (slot.at[1] === 0 && slot.zone[1] < 0) ? -1 : 1;
+      if (slot.role === 'S') return { t: 'zone', at: [19, slot.deep && slot.at[1] === 0 ? 0 : side * 14] };
+      if (slot.role === 'CB') return { t: 'man', cushion: 6.5 };
+      if (slot.role === 'LB' && !slot.cover) return { t: 'read' };
+      return { t: 'zone', at: [Math.min(slot.zone[0], 7), slot.zone[1]] };
+    }
+    case 'zoneBlitz':
+      if (slot.blitz || slot.rushBase) return { t: 'rush' };
+      if (slot.role === 'CB') return { t: 'man', cushion: 4.5 };
+      return { t: 'zone', at: slot.zone };
+    case 'prevent':
+      if (slot.rushBase) return { t: 'rush' };
+      if (slot.role === 'CB') return { t: 'zone', at: [20, slot.at[1] < 0 ? -17 : 17] };
+      if (slot.role === 'S') return { t: 'zone', at: [24, slot.zone[1]] };
+      return { t: 'zone', at: [slot.role === 'NB' ? 14 : 12, slot.zone[1]] };
     case 'blitz':
       if (slot.blitz || slot.rushBase) return { t: 'rush' };
       if (slot.deep) return { t: 'zone', at: [13, 0] };

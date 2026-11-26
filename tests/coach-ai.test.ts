@@ -132,7 +132,8 @@ describe('AI coach: defense', () => {
   };
   it('3rd and 12: plays the pass, mostly from nickel', () => {
     const share = sample(sit({ down: 3, distance: 12 }));
-    expect(share((d) => d.callId === 'coverZone' || d.callId === 'blitz')).toBeGreaterThan(0.7);
+    const kind = (d: { callId: string }): string => DEFENSE_SCHEMES.find((c) => c.id === d.callId)!.kind;
+    expect(share((d) => kind(d) === 'pass' || kind(d) === 'blitz')).toBeGreaterThan(0.7);
     expect(share((d) => d.frontId === 'nickel')).toBeGreaterThan(0.55);
     expect(share((d) => d.callId === 'runStuff')).toBe(0);
   });
@@ -140,7 +141,7 @@ describe('AI coach: defense', () => {
     const share = sample(sit({ down: 3, distance: 1 }));
     expect(share((d) => d.callId === 'runStuff')).toBeGreaterThan(0.5);
     expect(share((d) => d.frontId === '52')).toBeGreaterThan(0.55);
-    expect(share((d) => d.callId === 'coverZone')).toBe(0);
+    expect(share((d) => ['coverZone', 'cover2', 'prevent'].includes(d.callId))).toBe(0);
   });
   it('goal line: brings the heavy front', () => {
     const share = sample(sit({ down: 1, distance: 2, yardLine: 98 }));
@@ -148,9 +149,10 @@ describe('AI coach: defense', () => {
   });
   it('protecting a lead in the last two minutes: prevent defense, no blitz', () => {
     const share = sample(sit({ quarter: 4, clock: 60, scoreDiff: 5, down: 2, distance: 10 }));
-    expect(share((d) => d.callId === 'coverZone')).toBeGreaterThan(0.7);
+    expect(share((d) => ['coverZone', 'cover2', 'prevent'].includes(d.callId))).toBeGreaterThan(0.7);
+    expect(share((d) => d.callId === 'prevent')).toBeGreaterThan(0.35);
     expect(share((d) => d.frontId === 'nickel')).toBeGreaterThan(0.8);
-    expect(share((d) => d.callId === 'blitz')).toBe(0);
+    expect(share((d) => d.callId === 'blitz' || d.callId === 'zoneBlitz')).toBe(0);
   });
   it('1st and 10: mixes calls so it cannot be read', () => {
     const share = sample(sit({ down: 1, distance: 10 }));

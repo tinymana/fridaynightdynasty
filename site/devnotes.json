@@ -2,6 +2,41 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.5.0",
+      "date": "2026-11-25",
+      "title": "The big playbook: 40 on offense, 40 on defense",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Your starter book is now 40 offensive plays: eight from each of the five formations. Sixteen plays are new, including Stretch, Fullback Dive, Play-Action Post, Tunnel Screen, Corner Shot, Double Slants, Fades, Bootleg and Max Protect Shot."
+        },
+        {
+          "tag": "new",
+          "text": "Call offense by formation: pick Singleback, I-Form, Shotgun, Spread or Heavy (keys Z X C V B), then the play."
+        },
+        {
+          "tag": "new",
+          "text": "40 defensive calls: a new 4-4 front joins the 4-3, 5-2, Nickel and 3-4, and each front can now run eight calls. New calls: Man Free, Cover 2, Zone Blitz and Prevent."
+        },
+        {
+          "tag": "improved",
+          "text": "Books can hold 8 to 52 plays, so your own designs go on top of the 40 instead of replacing them. Trim the book if you like a shorter call sheet."
+        },
+        {
+          "tag": "improved",
+          "text": "The AI coach uses the whole book and the new defenses, and saves Prevent for protecting a late lead."
+        },
+        {
+          "tag": "note",
+          "text": "Saved playbooks from older versions are reset to the new 40-play starter book. Your designed plays and defenses are kept."
+        },
+        {
+          "tag": "note",
+          "text": "Special teams calls (onside and squib kicks, fakes, going for the block) are next, along with the new cut-in artwork."
+        }
+      ]
+    },
+    {
       "version": "0.4.0",
       "date": "2026-11-25",
       "title": "Design your own plays, coach records and the Hall of Fame",
@@ -239,9 +274,19 @@
       "text": "Career wins, losses and championships for every online coach, and a top-ten Hall of Fame. Records count now; championships arrive with dynasty seasons."
     },
     {
+      "status": "testing",
+      "title": "The big playbook",
+      "text": "A 40-play starter book and 40 defensive calls. Playable now."
+    },
+    {
       "status": "next",
-      "title": "Bigger playbook and special teams",
-      "text": "A 20-play starter book, plus special-teams calls: onside and squib kicks, fake punts and field goals, and going for the block."
+      "title": "Special teams",
+      "text": "Kickoff, punt and field-goal calls: deep, squib and onside kicks, fake punts and field goals, return or go for the block."
+    },
+    {
+      "status": "next",
+      "title": "Cut-ins and new artwork",
+      "text": "Touchdown, field goal, interception and half-time cut-ins, new player sprites and on-field effects."
     },
     {
       "status": "next",
@@ -260,8 +305,8 @@
     },
     {
       "status": "planned",
-      "title": "Dynasty seasons with friends",
-      "text": "Persistent rosters and week-by-week seasons. Invite coaches to run rival schools; the week advances when everyone is ready."
+      "title": "Dynasty: solo or with friends",
+      "text": "Persistent rosters and week-by-week seasons, played alone against the AI or with friends running rival schools. When two coaches meet, both have to be online to play; the week advances when everyone is ready."
     },
     {
       "status": "planned",
@@ -297,6 +342,11 @@
       "status": "planned",
       "title": "Weather",
       "text": "Rain, wind, cold and heat that change how the ball is thrown, kicked and held on to."
+    },
+    {
+      "status": "planned",
+      "title": "Friday night broadcast",
+      "text": "High-school broadcast look: score bug, lower-third graphics, player and stat overlays, replays worth watching. The AI-run football has to be sharp and fun to watch."
     }
   ]
 }
