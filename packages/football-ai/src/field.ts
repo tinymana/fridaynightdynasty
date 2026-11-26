@@ -1,4 +1,4 @@
-import { FIELD_W, U, clamp, dist } from '@fnd/core';
+import { FIELD_W, U, clamp, dist, type DefRole, type Group } from '@fnd/core';
 
 /** On-field decisions. Pure functions over positions, so they can be tested without the engine. */
 
@@ -100,4 +100,56 @@ export function qbRead(
   if (best >= 0) return best;
   if (forced) return fallback >= 0 && fallbackOpen >= 0.7 ? fallback : -2;
   return -1;
+}
+
+// --------------------------------------------------------------- coverage
+
+export interface CoverReceiver {
+  idx: number;
+  x: number;
+  y: number;
+  group: Group;
+}
+export interface CoverDefender {
+  idx: number;
+  x: number;
+  y: number;
+  role: DefRole;
+}
+
+/** How badly a defender's position suits covering a receiver's position, in yards of extra cost. */
+const MISMATCH: Record<DefRole, Partial<Record<Group, number>>> = {
+  CB: { WR: 0, TE: 6, RB: 10 },
+  NB: { WR: 0, TE: 2, RB: 6 },
+  S: { WR: 5, TE: 0, RB: 3 },
+  LB: { WR: 8, TE: 2, RB: 0 },
+  DL: {},
+};
+
+/**
+ * Man-coverage matchups at the snap. Wide receivers are claimed first, widest first, then tight ends,
+ * then backs. Each takes the nearest defender whose position suits him. Returns defender index to receiver index.
+ */
+export function matchCoverage(receivers: readonly CoverReceiver[], defenders: readonly CoverDefender[]): Map<number, number> {
+  const mid = FIELD_W / 2;
+  const rank = (g: Group): number => (g === 'WR' ? 0 : g === 'TE' ? 1 : 2);
+  const order = [...receivers].sort((a, b) => rank(a.group) - rank(b.group) || Math.abs(b.y - mid) - Math.abs(a.y - mid) || a.idx - b.idx);
+  const taken = new Set<number>();
+  const out = new Map<number, number>();
+  for (const r of order) {
+    let best = -1;
+    let bestCost = 1e9;
+    for (const d of defenders) {
+      if (taken.has(d.idx)) continue;
+      const cost = Math.abs(d.y - r.y) / U + (MISMATCH[d.role][r.group] ?? 20);
+      if (cost < bestCost) {
+        bestCost = cost;
+        best = d.idx;
+      }
+    }
+    if (best < 0) break;
+    taken.add(best);
+    out.set(best, r.idx);
+  }
+  return out;
 }

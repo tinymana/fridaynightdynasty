@@ -1,8 +1,8 @@
 import {
-  DEF_POS, FIELD_W, OFF_POS, U, clamp, dist, yd,
-  type DefAssign, type DefCall, type OffAssign, type OffPlay, type Player, type Rng, type Team,
+  FIELD_W, U, clamp, defAssignment, dist, yd,
+  type DefAssign, type DefFront, type DefScheme, type OffAssign, type OffFormation, type OffPlay, type Player, type Rng,
 } from '@fnd/core';
-import { carrierTarget, contestDistance, qbRead, type FieldDefender, type ReadReceiver } from '@fnd/football-ai';
+import { carrierTarget, contestDistance, matchCoverage, qbRead, type CoverDefender, type CoverReceiver, type FieldDefender, type ReadReceiver } from '@fnd/football-ai';
 
 /**
  * One scrimmage play, simulated on a fixed 60 Hz step with integer positions.
@@ -41,6 +41,10 @@ export interface SimPlayer {
   deep: boolean;
   lag: number;
   recog: number;
+  /** Distance covered this play, in field units. Drives fatigue. */
+  moved: number;
+  /** Heavy contact this play: carried the ball, made or took a tackle. */
+  contact: boolean;
 }
 
 export interface Ball {
@@ -76,16 +80,26 @@ export interface PlayResult {
 }
 
 export interface PlayContext {
-  offense: Team;
-  defense: Team;
   play: OffPlay;
-  call: DefCall;
+  formation: OffFormation;
+  front: DefFront;
+  scheme: DefScheme;
+  /** The eleven on the field, in the order of the formation's and the front's slots. */
+  offPlayers: readonly Player[];
+  defPlayers: readonly Player[];
+  /** Energy 0 to 100 for each of those players. Tired players are slower. */
+  offEnergy: readonly number[];
+  defEnergy: readonly number[];
   /** Line of scrimmage, yards from the offense's own goal line (1 to 99). */
   los: number;
   rng: Rng;
 }
 
-const speedOf = (p: Player): number => Math.round(((5.2 + p.ratings.speed * 0.04) * U) / 60);
+const BLOCK: OffAssign = { t: 'block' };
+
+/** Top speed in field units per tick. A fully tired player loses 15 percent. */
+export const speedOf = (p: Player, energy = 100): number =>
+  Math.round(((5.2 + p.ratings.speed * 0.04) * U * (85 + (15 * clamp(energy, 0, 100)) / 100)) / 6000);
 
 export class PlaySim {
   readonly players: SimPlayer[] = [];
@@ -97,8 +111,11 @@ export class PlaySim {
   result: PlayResult | null = null;
 
   private readonly play: OffPlay;
-  private readonly call: DefCall;
+  private readonly scheme: DefScheme;
   private readonly rng: Rng;
+  private readonly assigns: OffAssign[] = [];
+  private readonly qbIdx: number;
+  private readonly carrierIdx: number;
   private readonly hx: number[][] = [];
   private readonly hy: number[][] = [];
   private readonly qb: SimPlayer;
@@ -116,50 +133,76 @@ export class PlaySim {
 
   constructor(ctx: PlayContext) {
     this.play = ctx.play;
-    this.call = ctx.call;
+    this.scheme = ctx.scheme;
     this.rng = ctx.rng;
     this.losYard = ctx.los;
     this.los = yd(ctx.los);
 
-    OFF_POS.forEach((pos, i) => {
-      const [dx, dy] = ctx.play.formation[pos];
-      this.players.push(this.makePlayer(i, 0, pos, ctx.offense.offense[pos], this.los + yd(dx), CY + yd(dy)));
+    ctx.formation.slots.forEach((slot, i) => {
+      this.assigns.push(ctx.play.assign[slot.id] ?? BLOCK);
+      this.players.push(this.makePlayer(i, 0, slot.id, ctx.offPlayers[i], ctx.offEnergy[i], this.los + yd(slot.at[0]), CY + yd(slot.at[1])));
     });
-    DEF_POS.forEach((pos, i) => {
-      const [dx, dy] = ctx.call.formation[pos];
-      const p = this.makePlayer(11 + i, 1, pos, ctx.defense.defense[pos], Math.min(this.los + yd(dx), yd(109)), CY + yd(dy));
-      this.assignDefender(p, ctx.call.assign[pos]);
+    this.qbIdx = ctx.formation.slots.findIndex((x) => x.id === 'QB');
+    this.carrierIdx = this.assigns.findIndex((a) => a.t === 'carry');
+
+    const manDefenders: CoverDefender[] = [];
+    ctx.front.slots.forEach((slot, i) => {
+      const p = this.makePlayer(11 + i, 1, slot.id, ctx.defPlayers[i], ctx.defEnergy[i], Math.min(this.los + yd(slot.at[0]), yd(109)), CY + yd(slot.at[1]));
+      const a = defAssignment(slot, ctx.scheme.id);
+      this.assignDefender(p, a);
+      if (a.t === 'man') manDefenders.push({ idx: p.idx, x: p.x, y: p.y, role: slot.role });
       this.players.push(p);
     });
+
+    // Man coverage is matched to the formation in front of it, and defensive backs line up over their man.
+    const receivers: CoverReceiver[] = [];
+    ctx.formation.slots.forEach((slot, i) => {
+      if (slot.group === 'WR' || slot.group === 'TE' || slot.group === 'RB') receivers.push({ idx: i, x: this.players[i].x, y: this.players[i].y, group: slot.group });
+    });
+    const pairs = matchCoverage(receivers, manDefenders);
+    for (const md of manDefenders) {
+      const dP = this.players[md.idx];
+      const r = pairs.get(md.idx);
+      if (r === undefined) {
+        dP.mode = 'read';
+        continue;
+      }
+      dP.manIdx = r;
+      if (md.role === 'CB' || md.role === 'NB') {
+        dP.y = this.players[r].y;
+        dP.py = dP.sy = dP.y;
+      }
+    }
+
     for (let i = 0; i < 11; i++) {
       this.hx.push([this.players[i].x]);
       this.hy.push([this.players[i].y]);
     }
-    this.qb = this.players[0];
-    this.ball = { state: 'held', holder: 0, x: this.qb.x, y: this.qb.y, fromX: 0, fromY: 0, toX: 0, toY: 0, t: 0, T: 0 };
+    this.qb = this.players[this.qbIdx];
+    this.ball = { state: 'held', holder: this.qbIdx, x: this.qb.x, y: this.qb.y, fromX: 0, fromY: 0, toX: 0, toY: 0, t: 0, T: 0 };
+    if (ctx.play.kind === 'run' && this.carrierIdx === this.qbIdx) this.handedOff = true;
 
     const pk = ctx.play.kind;
-    const ck = ctx.call.kind;
+    const ck = ctx.scheme.kind;
     this.edge = ck === pk ? 1 : (ck === 'run' && pk === 'pass') || (ck === 'pass' && pk === 'run') ? -1 : 0;
     this.readEvery = 5 + Math.trunc((100 - this.qb.player.ratings.awareness) / 12);
   }
 
-  private makePlayer(idx: number, side: 0 | 1, pos: string, player: Player, x: number, y: number): SimPlayer {
+  private makePlayer(idx: number, side: 0 | 1, pos: string, player: Player, energy: number, x: number, y: number): SimPlayer {
     return {
-      idx, side, pos, player, x, y, px: x, py: y, sx: x, sy: y, spd: speedOf(player),
+      idx, side, pos, player, x, y, px: x, py: y, sx: x, sy: y, spd: speedOf(player, energy),
       engaged: -1, beatenUntil: 0, stunUntil: 0, stumbleUntil: 0, tackleCd: 0, wp: 0,
-      mode: 'off', manIdx: -1, cushion: 0, cushionFloor: 0, zx: x, zy: y, deep: false, lag: 0, recog: 0,
+      mode: 'off', manIdx: -1, cushion: 0, cushionFloor: 0, zx: x, zy: y, deep: false, lag: 0, recog: 0, moved: 0, contact: false,
     };
   }
 
   private assignDefender(p: SimPlayer, a: DefAssign): void {
     const r = p.player.ratings;
-    const kindDelay = { run: 0, balanced: 18, blitz: 16, pass: 30 }[this.call.kind];
+    const kindDelay = { run: 0, balanced: 16, blitz: 16, pass: 24 }[this.scheme.kind];
     p.recog = kindDelay + Math.trunc((100 - r.awareness) / 5);
     p.lag = clamp(8 + Math.trunc((100 - r.coverage) / 8), 4, 24);
     p.mode = a.t;
     if (a.t === 'man') {
-      p.manIdx = OFF_POS.indexOf(a.target);
       p.cushion = yd(a.cushion);
       p.cushionFloor = yd(this.rng.range(-1.6, 1.4) + (r.coverage - 60) * 0.03);
     } else if (a.t === 'zone') {
@@ -215,10 +258,12 @@ export class PlaySim {
     if (d <= spd) {
       p.x = tx;
       p.y = ty;
+      p.moved += d;
       return true;
     }
     p.x += Math.trunc((dx * spd) / d);
     p.y += Math.trunc((dy * spd) / d);
+    p.moved += spd;
     return false;
   }
 
@@ -244,7 +289,7 @@ export class PlaySim {
       this.moveTo(o, d.x, d.y, o.spd, yd(0.6));
       return;
     }
-    const a: OffAssign = this.play.assign[o.pos as keyof OffPlay['assign']];
+    const a: OffAssign = this.assigns[o.idx];
     const holding = this.ball.state === 'held' && this.ball.holder === o.idx;
 
     if (a.t === 'qb') {
@@ -254,6 +299,10 @@ export class PlaySim {
       return;
     }
     if (holding) return this.moveCarrier(o, a);
+    if (a.t === 'lead' && o.wp < a.pts.length && !this.defenderNear(o, yd(3))) {
+      this.followCarry(o, a.pts, o.spd);
+      return;
+    }
     if (a.t === 'carry') {
       if (!this.handedOff) this.followCarry(o, a.pts, o.spd);
       return;
@@ -269,6 +318,14 @@ export class PlaySim {
     this.block(o);
   }
 
+  private defenderNear(o: SimPlayer, radius: number): boolean {
+    for (let i = 11; i < 22; i++) {
+      const d = this.players[i];
+      if (d.engaged < 0 && this.tick >= d.stunUntil && dist(o.x, o.y, d.x, d.y) < radius) return true;
+    }
+    return false;
+  }
+
   private followCarry(o: SimPlayer, pts: readonly (readonly [number, number])[], spd: number): boolean {
     if (o.wp >= pts.length) return false;
     const [dx, dy] = pts[o.wp];
@@ -277,7 +334,7 @@ export class PlaySim {
   }
 
   private moveCarrier(o: SimPlayer, a: OffAssign): void {
-    let spd = Math.trunc((o.spd * 90) / 100);
+    let spd = Math.trunc((o.spd * (this.play.kind === 'run' ? 93 : 86)) / 100);
     if (this.tick < o.stumbleUntil) spd = Math.trunc((spd * 55) / 100);
     if (a.t === 'carry' && this.followCarry(o, a.pts, spd)) return;
     const t = carrierTarget(o, this.defenderView());
@@ -332,7 +389,7 @@ export class PlaySim {
     if (this.play.kind === 'run') {
       if (!this.handedOff && this.tick >= (this.play.handoffTick ?? 24)) {
         this.handedOff = true;
-        b.holder = OFF_POS.indexOf('RB');
+        b.holder = this.carrierIdx >= 0 ? this.carrierIdx : this.qbIdx;
       }
       return;
     }
@@ -350,16 +407,16 @@ export class PlaySim {
     let pressure = false;
     for (let i = 11; i < 22; i++) {
       const d = P[i];
-      if (d.engaged < 0 && this.tick >= d.stunUntil && dist(d.x, d.y, this.qb.x, this.qb.y) < yd(2.0)) pressure = true;
+      if (d.engaged < 0 && this.tick >= d.stunUntil && dist(d.x, d.y, this.qb.x, this.qb.y) < yd(1.9)) pressure = true;
     }
     const forced = this.hurried || pressure || elapsed >= 150;
     if (elapsed < 0 && !this.hurried && !(pressure && this.tick > 24)) return;
     if (!this.hurried && elapsed % this.readEvery !== 0) return;
 
     const receivers: ReadReceiver[] = [];
-    for (let i = 1; i < 11; i++) {
+    for (let i = 0; i < 11; i++) {
       const o = P[i];
-      const a = this.play.assign[o.pos as keyof OffPlay['assign']];
+      const a = this.assigns[o.idx];
       if (a.t === 'route' && o.engaged < 0) receivers.push({ idx: i, x: o.x, y: o.y, settled: this.settled(o) });
     }
     const maxThrow = 22 + this.qb.player.ratings.throwPower * 0.3;
@@ -394,7 +451,7 @@ export class PlaySim {
     this.target = targetIdx;
     this.targetSettled = this.settled(r);
     // The quarterback knows the route: lead the receiver to where the route takes him.
-    const route = this.play.assign[r.pos as keyof OffPlay['assign']];
+    const route = this.assigns[r.idx];
     let ax = r.x;
     let ay = r.y;
     let T = 1;
@@ -407,7 +464,7 @@ export class PlaySim {
     }
     const d = dist(this.qb.x, this.qb.y, ax, ay);
     const deep = Math.max(0, d - yd(18));
-    const err = Math.trunc(d * (0.02 + ((100 - q.throwAccuracy) / 100) * 0.1) + deep * 0.14) + (this.hurried ? yd(1.4) : 0);
+    const err = Math.trunc(d * (0.03 + ((100 - q.throwAccuracy) / 100) * 0.13) + deep * 0.14) + (this.hurried ? yd(1.4) : 0);
     ax += Math.trunc(this.rng.range(-err, err));
     ay += Math.trunc(this.rng.range(-err, err));
     b.toX = clamp(ax, yd(-8), yd(112));
@@ -434,12 +491,12 @@ export class PlaySim {
       }
     }
     const cov = nearest ? nearest.player.ratings.coverage : 0;
-    const blitzCov = this.call.kind === 'blitz' ? -0.04 : 0;
+    const blitzCov = this.scheme.kind === 'blitz' ? -0.04 : 0;
     let pInt = 0;
     if (nearest && dD < 1.6) pInt = ((1.6 - dD) / 1.6) * (0.02 + cov * 0.0006 + 0.02 * this.edge);
     if (nearest && dR > 2 && dD < 1) pInt = 0.15;
     const throwDist = dist(b.fromX, b.fromY, b.toX, b.toY) / U;
-    let pCatch = 0.66 + r.player.ratings.hands * 0.0033 - dR * 0.09;
+    let pCatch = 0.6 + r.player.ratings.hands * 0.0033 - dR * 0.09;
     if (dD < 2.2) pCatch -= (2.2 - dD) * (0.1 + cov * 0.0012 + blitzCov) * (1 + 0.25 * this.edge);
     if (throwDist > 25) pCatch -= (throwDist - 25) * 0.006;
     if (dR > 2) pCatch = 0;
@@ -462,7 +519,7 @@ export class PlaySim {
     b.holder = r.idx;
     r.x = clamp(b.toX, yd(-9), yd(109));
     r.y = clamp(b.toY, 1, FIELD_W - 1);
-    r.stumbleUntil = this.tick + 12;
+    r.stumbleUntil = this.tick + 20;
     for (let i = 11; i < 22; i++) {
       const d = P[i];
       d.recog = 4 + Math.trunc((100 - d.player.ratings.awareness) / 12);
@@ -507,7 +564,7 @@ export class PlaySim {
     if (d.engaged >= 0) {
       spd = Math.trunc((spd * (this.passPro ? 24 : 10)) / 100);
       if (!this.passPro) {
-        const push = clamp(3 + Math.trunc((P[d.engaged].player.ratings.runBlock - d.player.ratings.power) / 8), 0, 7);
+        const push = clamp(5 + Math.trunc((P[d.engaged].player.ratings.runBlock - d.player.ratings.power) / 8), 0, 9);
         d.x = Math.min(d.x + push, yd(109));
       }
     }
@@ -523,7 +580,7 @@ export class PlaySim {
   }
 
   private manSpot(d: SimPlayer): [number, number] {
-    const lag = Math.max(2, d.lag - 4 * this.edge + (this.call.kind === 'blitz' ? 2 : 0));
+    const lag = Math.max(2, d.lag - 4 * this.edge + (this.scheme.kind === 'blitz' ? 2 : 0));
     const [x, y] = this.lagged(d.manIdx, lag);
     const cushion = Math.max(d.cushionFloor + yd(0.4) * this.edge, d.cushion - Math.trunc((this.tick * U) / 24));
     return [Math.max(x + cushion, this.los + yd(1)), y];
@@ -536,9 +593,9 @@ export class PlaySim {
     const zy = d.mode === 'zone' ? d.zy : d.sy;
     let pick = -1;
     let best = d.deep ? -1e9 : yd(10);
-    for (let i = 1; i < 11; i++) {
+    for (let i = 0; i < 11; i++) {
       const o = P[i];
-      const a = this.play.assign[o.pos as keyof OffPlay['assign']];
+      const a = this.assigns[o.idx];
       if (a.t !== 'route') continue;
       if (d.deep) {
         if (Math.abs(o.y - zy) < yd(13) && o.x > zx - yd(7) && o.x > best) {
@@ -563,8 +620,8 @@ export class PlaySim {
   private isBlocking(o: SimPlayer): boolean {
     if (o.engaged >= 0 || this.tick < o.beatenUntil) return false;
     if (this.ball.state === 'held' && this.ball.holder === o.idx) return false;
-    const a = this.play.assign[o.pos as keyof OffPlay['assign']];
-    if (a.t === 'block') return true;
+    const a = this.assigns[o.idx];
+    if (a.t === 'block' || a.t === 'lead') return true;
     if (a.t === 'route') return this.caught;
     return false;
   }
@@ -572,7 +629,7 @@ export class PlaySim {
   private engagements(): void {
     const P = this.players;
     const passPro = this.passPro;
-    for (let i = 1; i < 11; i++) {
+    for (let i = 0; i < 11; i++) {
       const o = P[i];
       if (!this.isBlocking(o)) continue;
       for (let j = 11; j < 22; j++) {
@@ -595,9 +652,9 @@ export class PlaySim {
       const br = bl.player.ratings;
       let p: number;
       if (passPro) {
-        p = 0.066 + (((dr.power + dr.agility) / 2 - br.passBlock) / 100) * 0.12 + (this.call.kind === 'blitz' ? 0.02 : 0);
+        p = 0.074 + (((dr.power + dr.agility) / 2 - br.passBlock) / 100) * 0.12 + (this.scheme.kind === 'blitz' ? 0.02 : 0);
       } else {
-        p = 0.03 + (((dr.tackling + dr.power) / 2 - br.runBlock) / 100) * 0.1;
+        p = 0.022 + (((dr.tackling + dr.power) / 2 - br.runBlock) / 100) * 0.1;
         if (carrier && dist(carrier.x, carrier.y, d.x, d.y) < yd(3)) p *= 1.5;
       }
       p = clamp(p + 0.03 * this.edge, 0.02, 0.5);
@@ -613,23 +670,25 @@ export class PlaySim {
     if (this.ball.state !== 'held') return;
     const P = this.players;
     const c = P[this.ball.holder];
-    const inPocket = this.play.kind === 'pass' && !this.thrown && c.idx === 0;
+    const inPocket = this.play.kind === 'pass' && !this.thrown && c.idx === this.qbIdx;
     for (let j = 11; j < 22; j++) {
       const d = P[j];
       if (this.tick < d.stunUntil || this.tick < d.tackleCd) continue;
       const reach = d.engaged >= 0 ? yd(0.6) : yd(1.4);
       if (dist(c.x, c.y, d.x, d.y) > reach) continue;
       d.tackleCd = this.tick + 30;
+      d.contact = true;
+      c.contact = true;
       const dr = d.player.ratings;
       const cr = c.player.ratings;
       let p = inPocket
         ? 0.72 + ((dr.tackling - cr.agility) / 100) * 0.3
-        : 0.58 + ((dr.tackling - (cr.power + cr.agility) / 2) / 100) * 0.55;
+        : 0.6 + ((dr.tackling - (cr.power + cr.agility) / 2) / 100) * 0.55;
       if (d.engaged >= 0) p *= 0.3;
       p = clamp(p + 0.06 * this.edge, 0.15, 0.95);
       const made = this.rng.chance(p);
       // A carrier moving forward falls forward: stronger runners drag the tackle further.
-      const fall = Math.trunc(this.rng.range(0, 2 + cr.power / 30) * U);
+      const fall = Math.trunc(this.rng.range(0, 2.6 + cr.power / 25) * U);
       if (made) {
         if (!inPocket && c.x > c.px) c.x += fall;
         if (c.x >= yd(100)) return this.finish(c, null, { touchdown: true });
