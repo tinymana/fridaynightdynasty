@@ -1,6 +1,6 @@
 import {
-  CUSTOM_FRONT, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, clamp, exhibitionTeams, validateBook, validateDefPlay, validateOffPlay,
-  type DefDecision, type DefPlay, type GamePlan, type ManageAction, type OffDecision, type OffPlay,
+  CUSTOM_FRONT, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, KICK_STYLES, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, clamp, exhibitionTeams, validateBook, validateDefPlay, validateOffPlay,
+  type DefDecision, type DefPlay, type GamePlan, type KickStyle, type ManageAction, type OffDecision, type OffPlay,
 } from '@fnd/core';
 import { DEFAULT_PLAN } from '@fnd/football-ai';
 import { AutoCoach, Game, gameHash, replayGame, type LoggedDecision } from '@fnd/match-sim';
@@ -12,6 +12,8 @@ import { AutoCoach, Game, gameHash, replayGame, type LoggedDecision } from '@fnd
 
 /** How long a coach has to call a play once the previous one is resolved (includes time to watch it). */
 export const CALL_MS = 45000;
+/** A kickoff call is one of three buttons: it gets less time. */
+export const KICK_MS = 20000;
 /** A coach not heard from for this long is away: the AI calls his plays so the other coach is not kept waiting. */
 export const AWAY_MS = 12000;
 /** A guest who stops checking in to the lobby for this long has left. */
@@ -40,7 +42,8 @@ export interface Room {
   turn: number;
   /** Calls made for the current turn. Never sent to the other coach before the snap. */
   pending: { off?: OffDecision; def?: DefDecision };
-  need: { phase: 'scrimmage' | 'conversion' | 'none'; offense: 0 | 1 };
+  /** On a kickoff, `offense` is the kicking team and only that coach has a call to make. */
+  need: { phase: 'scrimmage' | 'conversion' | 'kickoff' | 'none'; offense: 0 | 1 };
   deadline: number;
   /** When each team's coach last checked in, by team index. */
   seen: [number, number];
@@ -184,12 +187,8 @@ function buildGame(room: Room): Game {
   return replayGame(room.seed, exhibitionTeams(room.seed), room.log, { books: room.books, plays: room.designs?.plays, defenses: room.designs?.defenses });
 }
 
-/** Runs kickoffs (which need no decision), then records what the next decision is. */
+/** Records what the next decision is. */
 function settle(room: Room, game: Game, now: number): void {
-  while (game.state.phase === 'kickoff') {
-    game.begin(null, null);
-    while (!game.tick()) { /* step */ }
-  }
   room.log = game.log.map((d) => JSON.parse(JSON.stringify(d)) as LoggedDecision);
   room.turn = room.log.filter((d) => !('manage' in d)).length;
   room.score = [game.state.score[0], game.state.score[1]];
@@ -199,8 +198,9 @@ function settle(room: Room, game: Game, now: number): void {
     room.state = 'done';
     room.need = { phase: 'none', offense: 0 };
   } else {
-    room.need = { phase: game.state.phase === 'conversion' ? 'conversion' : 'scrimmage', offense: game.state.possession };
-    room.deadline = now + CALL_MS;
+    const kick = game.state.phase === 'kickoff';
+    room.need = kick ? { phase: 'kickoff', offense: game.state.kicking } : { phase: game.state.phase === 'conversion' ? 'conversion' : 'scrimmage', offense: game.state.possession };
+    room.deadline = now + (kick ? KICK_MS : CALL_MS);
   }
   room.updatedAt = now;
 }
@@ -218,6 +218,10 @@ export function startRoom(room: Room, coachId: string, now: number): void {
 function cleanOffense(room: Room, team: 0 | 1, raw: unknown): OffDecision {
   const c = (raw ?? {}) as Record<string, unknown>;
   const timeout = c['timeout'] === true;
+  if (room.need.phase === 'kickoff') {
+    if (c['kind'] === 'kickoff' && KICK_STYLES.includes(c['style'] as KickStyle)) return { kind: 'kickoff', style: c['style'] as KickStyle };
+    throw new RoomError('bad_call', 'Choose how to kick off.');
+  }
   if (room.need.phase === 'conversion') {
     if (c['kind'] === 'patKick') return { kind: 'patKick' };
     if (c['kind'] === 'play' && typeof c['playId'] === 'string' && room.books[team].includes(c['playId'])) return { kind: 'play', playId: c['playId'] };
@@ -239,10 +243,14 @@ function cleanDefense(room: Room, team: 0 | 1, raw: unknown): DefDecision {
   if (c['frontId'] === CUSTOM_FRONT) {
     // A designed defense must be one of this coach's own.
     if (typeof c['callId'] !== 'string' || !room.designs?.defenses[team].some((d) => d.id === c['callId'])) throw new RoomError('bad_call', 'That defense is not one of your designs.');
-    return { frontId: CUSTOM_FRONT, callId: c['callId'], timeout: c['timeout'] === true };
+    const own: DefDecision = { frontId: CUSTOM_FRONT, callId: c['callId'], timeout: c['timeout'] === true };
+    if (c['block'] === true) own.block = true;
+    return own;
   }
   if (!DEFENSE_FRONTS.some((f) => f.id === c['frontId']) || !DEFENSE_SCHEMES.some((s) => s.id === c['callId'])) throw new RoomError('bad_call', 'Unknown defensive call.');
-  return { frontId: c['frontId'] as string, callId: c['callId'] as string, timeout: c['timeout'] === true };
+  const lib: DefDecision = { frontId: c['frontId'] as string, callId: c['callId'] as string, timeout: c['timeout'] === true };
+  if (c['block'] === true) lib.block = true;
+  return lib;
 }
 
 /** Records a coach's call for the current turn. Which sideline it is for comes from who he is, never from the request. */
@@ -253,7 +261,8 @@ export function submitCall(room: Room, coachId: string, turn: number, call: unkn
   room.seen[team] = now;
   if (team === room.need.offense) {
     if (!room.pending.off) room.pending.off = cleanOffense(room, team, call);
-  } else if (!room.pending.def) room.pending.def = cleanDefense(room, team, call);
+  } else if (room.need.phase === 'kickoff') throw new RoomError('bad_call', 'The kicking team makes this call.');
+  else if (!room.pending.def) room.pending.def = cleanDefense(room, team, call);
   resolveIfReady(room, now);
 }
 
@@ -263,13 +272,14 @@ export function resolveIfReady(room: Room, now: number): boolean {
   const off = room.need.offense;
   const offAway = now - room.seen[off] > AWAY_MS;
   const defAway = now - room.seen[other(off)] > AWAY_MS;
-  const ready = (room.pending.off && room.pending.def) || now >= room.deadline
-    || (room.pending.off && defAway) || (room.pending.def && offAway);
+  const kick = room.need.phase === 'kickoff';
+  const ready = kick ? (room.pending.off || offAway || now >= room.deadline)
+    : (room.pending.off && room.pending.def) || now >= room.deadline || (room.pending.off && defAway) || (room.pending.def && offAway);
   if (!ready) return false;
   const game = buildGame(room);
   const ai = new AutoCoach((room.seed + room.log.length) >>> 0, room.plans);
   let offCall = room.pending.off ?? ai.offense(game)!;
-  let defCall = room.pending.def ?? ai.defense(game)!;
+  let defCall = kick ? null : room.pending.def ?? ai.defense(game)!;
   try {
     game.begin(offCall, defCall);
   } catch {

@@ -128,13 +128,20 @@ export type OffDecision =
   | { kind: 'punt'; timeout?: boolean }
   | { kind: 'fieldGoal'; timeout?: boolean }
   | { kind: 'kneel' }
-  | { kind: 'patKick' };
+  | { kind: 'patKick' }
+  | { kind: 'kickoff'; style: KickStyle };
+
+/** Deep: a normal kickoff. Squib: low and short, no big return. Onside: try to get the ball back. */
+export type KickStyle = 'deep' | 'squib' | 'onside';
+export const KICK_STYLES: readonly KickStyle[] = ['deep', 'squib', 'onside'];
 
 /** A library front plus a call, or a coach-designed defense (`frontId` "@custom", its id in `callId`). */
 export interface DefDecision {
   frontId: string;
   callId: string;
   timeout?: boolean;
+  /** Fourth down only: sell out to block a punt or field goal. A real play against it catches the defense out of position. */
+  block?: boolean;
 }
 
 /** How a coach wants the AI to call the game on his behalf. */
@@ -165,6 +172,11 @@ export interface PlayFlags {
   touchback?: boolean;
   good?: boolean;
   turnoverOnDowns?: boolean;
+  /** Special teams. */
+  onside?: boolean;
+  recovered?: boolean;
+  blocked?: boolean;
+  roughing?: boolean;
 }
 
 /** One record per snap or kick. Every statistic is derived from these. */

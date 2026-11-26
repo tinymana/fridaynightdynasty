@@ -1,4 +1,4 @@
-import type { DefDecision, DefFront, DefScheme, GamePlan, OffDecision, OffPlay, PlayTag, Rng, SchemeKind, Situation } from '@fnd/core';
+import type { DefDecision, DefFront, DefScheme, GamePlan, KickStyle, OffDecision, OffPlay, PlayTag, Rng, SchemeKind, Situation } from '@fnd/core';
 
 /** Coach AI: play calls, fourth-down choices, tries, kneel-downs and timeouts. Depends only on the game situation. */
 
@@ -115,6 +115,13 @@ export function aiOffense(s: Situation, book: readonly OffPlay[], rng: Rng, plan
   return { kind: 'play', playId: play.id, timeout };
 }
 
+/** Kickoff call: onside when behind late, a squib to kill the last seconds of a half, deep otherwise. */
+export function aiKickoff(quarter: number, clock: number, lead: number): KickStyle {
+  if (quarter >= 4 && lead < 0 && (clock <= 150 || (clock <= 300 && lead <= -9))) return 'onside';
+  if ((quarter === 2 || quarter >= 4) && clock <= 15 && lead >= 0) return 'squib';
+  return 'deep';
+}
+
 export function aiDefense(s: Situation, fronts: readonly DefFront[], schemes: readonly DefScheme[], rng: Rng): DefDecision {
   // The defense sees the same situation from the other sideline: scoreDiff is its own.
   const offenseView: Situation = { ...s, scoreDiff: -s.scoreDiff };
@@ -142,5 +149,7 @@ export function aiDefense(s: Situation, fronts: readonly DefFront[], schemes: re
   else fw = { '43': 0.4, '34': 0.25, nickel: 0.15, '44': 0.1, '52': 0.1 };
   const front = weightedPick(fronts, (f) => fw[f.id] ?? 0.0001, rng);
 
-  return { frontId: front.id, callId: scheme.id, timeout: wantsTimeout(s, false) };
+  // Fourth and long outside scoring range is a punt almost every time: now and then, come after it.
+  const block = s.down === 4 && s.distance >= 5 && s.yardLine < 60 && rng.chance(0.1);
+  return block ? { frontId: front.id, callId: scheme.id, timeout: wantsTimeout(s, false), block: true } : { frontId: front.id, callId: scheme.id, timeout: wantsTimeout(s, false) };
 }

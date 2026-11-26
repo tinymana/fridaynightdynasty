@@ -89,7 +89,7 @@ while ((!seenOff || !seenDef) && n++ < 80 && s.mode !== 'final') {
     await sleep(40);
     check('calls box names front and call', (await page.$eval('#calls', (e) => e.textContent)).includes('Nickel Cover Zone'));
   } else {
-    let pick = acts.filter((a) => a.startsWith('p:') || a.startsWith('d:') || a === 'pat');
+    let pick = acts.filter((a) => a.startsWith('p:') || a.startsWith('d:') || a.startsWith('k:') || a === 'pat');
     if (prompt.startsWith('4th') && acts.includes('punt')) pick = [acts.includes('fg') ? 'fg' : 'punt'];
     await page.click(`#panel [data-act="${pick[n % pick.length]}"]`);
   }
@@ -103,7 +103,7 @@ n = 0;
 while (s.mode !== 'final' && n++ < 700) {
   const prompt = await page.$eval('#prompt', (e) => e.textContent);
   const acts = await page.$$eval('#panel [data-act]', (els) => els.map((e) => e.dataset.act));
-  let pick = acts.filter((a) => a.startsWith('p:') || a.startsWith('d:') || a === 'pat');
+  let pick = acts.filter((a) => a.startsWith('p:') || a.startsWith('d:') || a.startsWith('k:') || a === 'pat');
   if (prompt.startsWith('4th') && acts.includes('punt')) pick = [acts.includes('fg') ? 'fg' : 'punt'];
   if (acts.includes('kneel') && s.quarter === 4 && s.clock < 100) pick = ['kneel'];
   await page.click(`#panel [data-act="${pick[n % pick.length]}"]`);
