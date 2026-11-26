@@ -8,6 +8,7 @@ import { fieldGoalDistance } from '@fnd/football-ai';
 import { AutoCoach, Game, gameHash, replayGame, simulateGame, summarize, type LoggedDecision, type PlaySim } from '@fnd/match-sim';
 import type { Career, RoomView } from '@fnd/online';
 import { OnlineError, online } from './net/online';
+import { cutinFor } from './cutins';
 import { openDefenseDesigner, openOffenseDesigner, practiceTeams, type DesignerHost } from './designer';
 import { voice } from './net/voice';
 import { FieldScene, createGame, type FieldView, type ViewPlayer } from './scene';
@@ -106,6 +107,8 @@ let book: string[] = (() => {
 let practiceRun: { make: (seed: number) => PlaySim; n: number; pause: number; told: boolean } | null = null;
 let career: Career | null = null;
 let bookDraft: string[] = [];
+/** Cut-in artwork after big plays. Off in tests that only want the football. */
+let showCutins = true;
 /** Quarter length and weather for the next game this coach starts or hosts. */
 let setup: GameSetup = cleanSetup(store.get<unknown>('fnd.setup.v1', null));
 const setupLine = (s: GameSetup): string => `${s.quarterMinutes}-minute quarters \u00b7 ${WEATHER[s.weather].name}`;
@@ -340,6 +343,7 @@ function nextPractice(): void {
 
 function next(): void {
   $('banner').classList.add('hidden');
+  $('cutin').classList.add('hidden');
   $('calls').classList.add('hidden');
   const s = game.state;
   if (s.phase === 'final') return showFinal();
@@ -506,6 +510,17 @@ function showResult(e: PlayEvent | null): void {
   let period = '';
   if (s.phase === 'final') period = 'End of game. ';
   else if (s.quarter !== lastQuarter) period = lastQuarter === 2 ? 'Halftime. ' : `End of quarter ${lastQuarter}. `;
+  const cut = showCutins && speed !== 0 ? cutinFor(e, s.phase === 'final' ? 'final' : s.quarter !== lastQuarter && lastQuarter === 2 ? 'half' : null, s.score[0] + s.score[1] + s.quarter) : null;
+  const cutEl = $('cutin') as HTMLImageElement;
+  cutEl.classList.toggle('hidden', !cut);
+  if (cut) {
+    cutEl.src = cut.url;
+    cutEl.alt = cut.alt;
+    // Restart the pop-in animation.
+    cutEl.style.animation = 'none';
+    void cutEl.offsetWidth;
+    cutEl.style.animation = '';
+  }
   lastQuarter = s.quarter;
   const big = !!e && (e.flags.touchdown || e.flags.blocked || e.flags.recovered || e.flags.interception || e.flags.fumbleLost || e.flags.safety || ((e.type === 'fieldGoal' || e.type === 'twoPoint') && !!e.flags.good));
   banner.className = big ? 'big' : '';
@@ -517,7 +532,7 @@ function showResult(e: PlayEvent | null): void {
     else if (e.flags.incomplete || e.type === 'punt' || e.type === 'kickoff' || e.type === 'kneel') sfx.whistle();
     else sfx.tackle();
   }
-  const base = big || period ? 2600 : e?.type === 'kneel' ? 1000 : 1700;
+  const base = cut ? 3000 : big || period ? 2600 : e?.type === 'kneel' ? 1000 : 1700;
   timer = turbo ? 40 : speed === 0 ? Math.min(base, 900) : speed === 1 ? base : Math.round(base * 0.5);
   mode = 'post';
 }
@@ -1399,7 +1414,7 @@ window.addEventListener('keydown', (ev) => {
 /** Debug hooks used by the browser checks. */
 (window as unknown as Record<string, unknown>).__fnd = {
   selftest: (s: number): string => gameHash(simulateGame(s, exhibitionTeams(s))),
-  state: () => ({ mode, setup: game?.setup ?? setup, myPlays: myPlays.length, myDefs: myDefs.length, career, practice: practiceRun ? { n: practiceRun.n, done: !!viewSim?.done } : null, phase: game?.state.phase, score: game?.state.score, quarter: game?.state.quarter, clock: game?.state.clock, sidelineOpen, playClock: clockOn ? Math.ceil(clockLeft / 1000) : null, book,
+  state: () => ({ mode, cutin: $('cutin').classList.contains('hidden') ? null : ($('cutin') as HTMLImageElement).alt, setup: game?.setup ?? setup, myPlays: myPlays.length, myDefs: myDefs.length, career, practice: practiceRun ? { n: practiceRun.n, done: !!viewSim?.done } : null, phase: game?.state.phase, score: game?.state.score, quarter: game?.state.quarter, clock: game?.state.clock, sidelineOpen, playClock: clockOn ? Math.ceil(clockLeft / 1000) : null, book,
     online: net ? { pin: net.pin, state: net.view.state, turn: net.view.turn, you: net.view.you, sync: net.sync, serverHash: net.view.hash, localHash: game ? gameHash(game) : '', queued: net.queue.length, serverScore: net.view.score, mine: !!net.view.mine, voice: voice.state, peer: voice.peerState(String(net.view.you === 0 ? 1 : 0)), voiceSeen: net.view.voice } : null }),
   setSpeed: (n: number) => { speed = n; },
   setTurbo: (on: boolean) => { turbo = on; },
