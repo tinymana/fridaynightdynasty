@@ -49,6 +49,9 @@ export class SharedLeagueScreen {
   private message = '';
   /** The school the commissioner is renaming, or -1. The screen is not redrawn while the form is open. */
   private editing = -1;
+  /** The commissioner has pressed the force button once and is being asked to confirm. Kept here so a redraw does not lose it. */
+  private forceArmed = false;
+  private lastWeek = -1;
 
   constructor(private readonly root: HTMLElement, private readonly title: HTMLElement, private readonly host: SharedHost) {}
 
@@ -134,7 +137,9 @@ export class SharedLeagueScreen {
     const v = this.view;
     if (!v) return;
     // Only redraw when something changed, so a button is never replaced under the coach's finger.
-    const stamp = JSON.stringify(v) + this.message + this.editing;
+    if (v.week !== this.lastWeek) this.forceArmed = false;
+    this.lastWeek = v.week;
+    const stamp = JSON.stringify(v) + this.message + this.editing + this.forceArmed;
     if (stamp === this.drawn || (this.editing >= 0 && this.root.querySelector('#sf'))) return;
     this.drawn = stamp;
     const state = stateByCode(v.stateCode);
@@ -177,17 +182,18 @@ export class SharedLeagueScreen {
       const last = v.lastWeek.length ? `<h3>${weekName(v.week - 1)} results</h3>${v.lastWeek.map((g) => `<div class="dy-game${g.home === v.you || g.away === v.you ? ' me' : ''}"><span>${esc(v.schools[g.away].name)} at ${esc(v.schools[g.home].name)}</span><b>${g.score[1]}–${g.score[0]}</b></div>`).join('')}` : '';
       const past = v.history.length ? `<h3>Champions</h3>${[...v.history].reverse().slice(0, 8).map((h) => `<div class="dy-game${h.champion === v.you ? ' me' : ''}"><span>Year ${h.year}: ${esc(v.schools[h.champion].name)}${who(h.champion)}</span><span>beat ${esc(v.schools[h.runnerUp].name)}</span></div>`).join('')}` : '';
       const force = v.isCommissioner && !v.over && v.games.some((g) => !g.score && (g.human[0] || g.human[1]))
-        ? `<div class="orow center" style="margin-top:10px"><button class="seg" id="shForce">${v.forced ? 'Moving the week on…' : 'Commissioner: let the AI finish this week'}</button></div>` : '';
+        ? `<div class="orow center" style="margin-top:10px"><button class="seg" id="shForce">${v.forced ? 'Moving the week on…' : this.forceArmed ? 'Really? Coaches who have not played get an AI result' : 'Commissioner: let the AI finish this week'}</button></div>` : '';
       this.root.innerHTML = `${head}${next}<div class="dy-cols"><div><h3>Standings</h3><table><tr><th>#</th><th>School</th><th>Record</th><th>PF</th><th>PA</th></tr>${rows}</table></div><div>${games}${last}${past}</div></div>${force}${foot}`;
       this.root.querySelector('#shNext')?.addEventListener('click', () => void this.act(() => this.host.api.next(v.code)));
       this.root.querySelector('#shForce')?.addEventListener('click', (e) => {
         const el = e.currentTarget as HTMLElement;
         if (v.forced) return;
-        if (el.dataset.sure !== '1') {
-          el.dataset.sure = '1';
+        if (!this.forceArmed) {
+          this.forceArmed = true;
           el.textContent = 'Really? Coaches who have not played get an AI result';
           return;
         }
+        this.forceArmed = false;
         void this.act(() => this.host.api.force(v.code));
       });
       this.root.querySelector('#shPlay')?.addEventListener('click', () => {

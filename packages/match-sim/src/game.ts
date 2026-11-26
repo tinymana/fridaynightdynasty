@@ -7,6 +7,7 @@ import {
 } from '@fnd/core';
 import { DEFAULT_PLAN, aiDefense, aiKickoff, aiOffense, fieldGoalDistance } from '@fnd/football-ai';
 import { PlaySim, type PlayContext, type PlayResult } from './play';
+import { ReturnSim, kickoffReturnSetup, puntReturnSetup, type ReturnResult, type ReturnSetup } from './returns';
 import { blockOutcome, fieldGoalChance, patChance, resolvePunt, resolveStyledKickoff } from './special';
 
 /** Game rules: downs, clock, scoring, possession, fatigue and substitutions. Turns coaching decisions into play events. */
@@ -92,6 +93,11 @@ export class Game {
   private snapN = 0;
   /** Overtime: which period, who had the ball first in it, and whether the first (0) or second (1) series is being played. */
   private ot: { period: number; first: 0 | 1; turn: 0 | 1 } | null = null;
+  /**
+   * The return on the last play, if there was one: a fresh copy to draw, the team that was attacking toward
+   * larger x on that play (the kicking team or the offense), and so the frame its positions are in.
+   */
+  lastReturn: { make: () => ReturnSim; frame: 0 | 1 } | null = null;
   /** The defense went for the block on the last snap and the offense ran a real play. */
   caughtBlocking = false;
   private calls: { off?: string; front?: string; def?: string } = {};
@@ -237,6 +243,8 @@ export class Game {
     this.instant = false;
     this.twoPoint = false;
     this.caughtBlocking = false;
+    this.lastReturn = null;
+    this.snapN = n;
     this.calls = {};
 
     if (s.phase === 'kickoff') {
@@ -247,9 +255,9 @@ export class Game {
     if (!off) throw new Error('offense decision required');
     const offTeam = s.possession;
 
+    // (snapN is set at the top of begin.)
     // A call that is not allowed is refused whatever the officials do.
     if (off.kind === 'play' && !this.books[offTeam].includes(off.playId)) throw new Error(`play ${off.playId} is not in this team's playbook`);
-    this.snapN = n;
     // A flag before the snap: the call is thrown away and the down is replayed.
     if (s.phase === 'scrimmage' && off.kind !== 'kneel') {
       const roll = Rng.stream(this.seed, `flag:${n}`).range(0, 1);
@@ -428,6 +436,54 @@ export class Game {
     }
   }
 
+  /**
+   * The defender who came up with the ball runs it back from where the play ended, with his teammates blocking and
+   * the offense chasing. Sets the new spot (or the score) and returns the words to add to the play-by-play.
+   */
+  private turnoverReturn(def: 0 | 1, r: PlayResult, delay: number, flags: PlayFlags, points: [number, number], who: Partial<PlayEvent>): string {
+    const s = this.state;
+    const sim = this.live;
+    const man = sim?.players.find((p) => p.side === 1 && p.player.id === r.tackler?.id);
+    if (!sim || !man) {
+      this.firstDownAt(def, 100 - clamp(r.endYard, 1, 99));
+      return '';
+    }
+    const P = sim.players;
+    // A fumble is picked up where the runner went down.
+    const at = delay ? { x: Math.trunc(sim.ball.x), y: Math.trunc(sim.ball.y) } : { x: man.x, y: man.y };
+    // Positions are copied now, so the return can be drawn again later exactly as it was played.
+    const blockers = P.filter((p) => p.side === 1 && p !== man).map((p) => ({ player: p.player, x: p.x, y: p.y }));
+    const chasers = P.filter((p) => p.side === 0).map((p) => ({ player: p.player, x: p.x, y: p.y }));
+    const ret = this.runBack((rng) => ({
+      carrier: { player: man.player, x: at.x, y: at.y },
+      blockers, chasers,
+      rng, delay: delay || 8, tackleBonus: 0.2,
+    }), other(def));
+    const yards = Math.max(0, ret.yards);
+    who.returnYards = yards;
+    if (ret.touchdown) {
+      flags.defensiveTouchdown = true;
+      s.score[def] += 6;
+      points[def] = 6;
+      s.possession = def;
+      s.phase = 'conversion';
+      s.yardLine = RULES.twoPointFrom;
+      return ` Returned ${yds(yards)} for a TOUCHDOWN, ${this.teams[def].name}!`;
+    }
+    this.firstDownAt(def, clamp(100 - ret.endYard, 1, 99));
+    return yards >= 3 ? ` Returned ${yds(yards)}.` : '';
+  }
+
+  /** Plays out a return and keeps a way to draw it. Its random stream is keyed to the snap, apart from the play's own. */
+  private runBack(setupOf: (rng: Rng) => ReturnSetup, frame: 0 | 1): ReturnResult {
+    const n = this.snapN;
+    const make = (): ReturnSim => new ReturnSim(setupOf(Rng.stream(this.seed, `return:${n}`)));
+    const sim = make();
+    while (!sim.done) sim.step();
+    this.lastReturn = { make, frame };
+    return sim.result!;
+  }
+
   /** A foul before the snap: five yards, replay the down. */
   private deadBallFoul(kind: 'falseStart' | 'offside'): void {
     const s = this.state;
@@ -533,7 +589,15 @@ export class Game {
     const recv = other(kick);
     const kicker = this.starter(kick, 'K');
     const returner = this.starter(recv, 'WR', 3);
-    const r = resolveStyledKickoff(rng, kicker, returner, s.kickFrom, style, this.onsideExpected());
+    const kicked = resolveStyledKickoff(rng, kicker, returner, s.kickFrom, style, this.onsideExpected());
+    let r = kicked;
+    if (style !== 'onside' && !kicked.touchback) {
+      // The return is played out on the field: the returner, his blockers and the coverage.
+      const from = s.kickFrom;
+      const land = clamp(from + kicked.kickYards, 40, 99);
+      const ret = this.runBack((rr) => kickoffReturnSetup(this.teams[kick], this.teams[recv], returner, from, land, style === 'squib' ? 0.8 : 0.6, rr, style === 'squib'), kick);
+      r = { ...kicked, returnYards: Math.max(0, ret.yards), touchdown: ret.touchdown, startYard: clamp(100 - ret.endYard, 1, 99) };
+    }
     this.runClock(r.touchback ? 0 : style === 'onside' ? 3 : 6);
     const points: [number, number] = [0, 0];
     let text: string;
@@ -587,13 +651,34 @@ export class Game {
       this.emit('punt', off, before, 15, { roughing: true, firstDown: true }, [0, 0], 8, `Flag: running into the kicker. First down, ${this.teams[off].name}.`, { kicker: punter.id });
     } else {
       // A defense that came after the punt has nobody back to return it.
-      const startYard = rushed && !r.touchback ? clamp(r.startYard - r.returnYards, 1, 99) : r.startYard;
-      const returned = rushed ? 0 : r.returnYards;
-      this.firstDownAt(other(off), startYard);
+      let startYard = rushed && !r.touchback ? clamp(r.startYard - r.returnYards, 1, 99) : r.startYard;
+      let returned = rushed ? 0 : r.returnYards;
+      let scored = false;
+      const recv = other(off);
+      if (!r.touchback && returned > 0) {
+        // Not a fair catch: the return is played out on the field.
+        const returner = this.starter(recv, 'WR', 3);
+        // The spot is read now: the return may be drawn later, after the ball has moved.
+        const los = s.yardLine;
+        const land = clamp(los + r.grossYards, 1, 99);
+        const ret = this.runBack((rr) => puntReturnSetup(this.teams[off], this.teams[recv], returner, los, land, rr), off);
+        returned = Math.max(0, ret.yards);
+        startYard = clamp(100 - ret.endYard, 1, 99);
+        scored = ret.touchdown;
+      }
+      const points: [number, number] = [0, 0];
+      if (scored) {
+        s.score[recv] += 6;
+        points[recv] = 6;
+        s.possession = recv;
+        s.phase = 'conversion';
+        s.yardLine = RULES.twoPointFrom;
+      } else this.firstDownAt(recv, startYard);
       s.clockRunning = false;
       const text = r.touchback ? `${short(punter)} punts into the end zone. Touchback.`
-        : `${short(punter)} punts ${yds(r.grossYards)}${returned ? `, returned ${yds(returned)}` : rushed ? ', no return' : ', fair catch'}.`;
-      this.emit('punt', off, before, r.grossYards, { touchback: r.touchback }, [0, 0], 8, text, { kicker: punter.id, returnYards: r.touchback ? 0 : returned });
+        : scored ? `${short(punter)} punts ${yds(r.grossYards)}. Returned ${yds(returned)} for a TOUCHDOWN, ${this.teams[recv].name}!`
+          : `${short(punter)} punts ${yds(r.grossYards)}${returned ? `, returned ${yds(returned)}` : rushed ? ', no return' : ', fair catch'}.`;
+      this.emit('punt', off, before, r.grossYards, scored ? { touchdown: true } : { touchback: r.touchback }, points, 8, text, { kicker: punter.id, returnYards: r.touchback ? 0 : returned });
     }
     this.afterPlayClock();
   }
@@ -714,8 +799,9 @@ export class Game {
       flags.interception = true;
       yards = 0;
       const touchback = r.endYard >= 100;
-      this.firstDownAt(def, touchback ? RULES.touchbackAt : 100 - Math.max(r.endYard, 1));
       text = `${short(r.passer)} pass is INTERCEPTED by ${short(r.tackler)}!`;
+      if (touchback) this.firstDownAt(def, RULES.touchbackAt);
+      else text += this.turnoverReturn(def, r, 0, flags, points, who);
       stop = true;
     } else if (r.touchdown) {
       flags.touchdown = true;
@@ -735,8 +821,8 @@ export class Game {
       stop = true;
     } else if (r.turnover === 'fumble') {
       flags.fumbleLost = true;
-      this.firstDownAt(def, 100 - clamp(r.endYard, 1, 99));
       text = `${base}. FUMBLE, recovered by ${this.teams[def].name}!`;
+      text += this.turnoverReturn(def, r, 24, flags, points, who);
       stop = true;
     } else if (r.incomplete) {
       flags.incomplete = true;

@@ -34,7 +34,8 @@ describe('overtime', () => {
         expect(e.type).not.toBe('kneel');
       }
       for (let period = 1; period <= g.overtime; period++) {
-        const inPeriod = plays.filter((e) => e.quarter === RULES.quarters + period);
+        // Tries after a touchdown are left out: a defense that scores on a return takes its try before its own series.
+        const inPeriod = plays.filter((e) => e.quarter === RULES.quarters + period && e.type !== 'pat' && e.type !== 'twoPoint');
         const teams = new Set(inPeriod.map((e) => e.offense));
         expect(teams.size, `seed ${g.seed} period ${period}`).toBe(2);
         // The first snap of each series is first and goal from the ten.

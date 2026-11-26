@@ -180,6 +180,8 @@ export interface PlayFlags {
   recovered?: boolean;
   blocked?: boolean;
   roughing?: boolean;
+  /** An interception or fumble run back for a score. The points go to the defense. */
+  defensiveTouchdown?: boolean;
   /** Set on a penalty event: which foul it was. */
   foul?: PenaltyKind;
 }

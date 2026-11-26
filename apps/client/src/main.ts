@@ -5,7 +5,7 @@ import {
   type DefDecision, type DefFront, type DefPlay, type DefScheme, type GameSetup, type Group, type KickStyle, type ManageAction, type OffAssign, type OffDecision, type OffPlay, type PlayEvent, type Team,
 } from '@fnd/core';
 import { fieldGoalDistance } from '@fnd/football-ai';
-import { AutoCoach, Game, gameHash, replayGame, simulateGame, summarize, type LoggedDecision, type PlaySim } from '@fnd/match-sim';
+import { AutoCoach, Game, gameHash, replayGame, simulateGame, summarize, type LoggedDecision, type PlaySim, type ReturnSim } from '@fnd/match-sim';
 import { leagueTeams, type Career, type RoomView } from '@fnd/online';
 import { OnlineError, online } from './net/online';
 import { cutinFor } from './cutins';
@@ -29,7 +29,7 @@ const other = (t: 0 | 1): 0 | 1 => (t === 0 ? 1 : 0);
 const css = (n: number): string => `#${n.toString(16).padStart(6, '0')}`;
 const ord = (n: number): string => ['', '1st', '2nd', '3rd', '4th'][n] ?? `${n}th`;
 
-type Mode = 'menu' | 'choose' | 'wait' | 'presnap' | 'live' | 'replay' | 'kick' | 'post' | 'final';
+type Mode = 'menu' | 'choose' | 'wait' | 'presnap' | 'live' | 'return' | 'replay' | 'kick' | 'post' | 'final';
 
 /** An online game in progress. The server owns the result; this browser replays the shared log to draw it. */
 interface Net {
@@ -88,6 +88,8 @@ let lineup: ViewPlayer[] = [];
 let spot = { x: 50, y: CY_YD };
 let marks: { los: number; toGain: number } | null = null;
 let kick: KickAnim | null = null;
+/** A kick, punt or turnover being run back: the real return, replayed from the game. */
+let viewReturn: { sim: ReturnSim; frame: 0 | 1; then: (() => void) | null; hold: number } | null = null;
 let pendingOff: OffDecision | null = null;
 let pendingEvent: PlayEvent | null = null;
 let wantTimeout = false;
@@ -127,6 +129,8 @@ let setup: GameSetup = cleanSetup(store.get<unknown>('fnd.setup.v1', null));
 const setupLine = (s: GameSetup): string => `${s.quarterMinutes}-minute quarters \u00b7 ${WEATHER[s.weather].name}`;
 /** The formation tab open on the offense panel. */
 let offTab = FORMATIONS[0].id;
+/** On fourth down the call sheet opens on special teams, until the coach picks a formation for that snap. */
+let stAuto = true;
 let frontId: string = DEFENSE_FRONTS[0].id;
 let useClock = store.get<boolean>('fnd.clock.v1', true);
 let clockLeft = 0;
@@ -181,6 +185,7 @@ function kickoffLineup(kicking: 0 | 1, from: number): ViewPlayer[] {
 function setStatic(): void {
   const s = game.state;
   viewSim = null;
+  viewReturn = null;
   if (s.phase === 'kickoff') {
     lineup = kickoffLineup(s.kicking, s.kickFrom);
     marks = null;
@@ -195,7 +200,26 @@ function setStatic(): void {
   }
 }
 
+/** Shows the return on the last play, if there was one and plays are being watched, then carries on. */
+function startReturn(then: () => void): void {
+  const r = game.lastReturn;
+  if (!r || speed === 0) return then();
+  viewReturn = { sim: r.make(), frame: r.frame, then, hold: 350 };
+  kick = null;
+  mode = 'return';
+  acc = 0;
+}
+
 function buildView(): FieldView {
+  if (viewReturn) {
+    const { sim, frame: side } = viewReturn;
+    const players: ViewPlayer[] = sim.players.map((p) => {
+      const [x, y] = abs(side, p.x / U, p.y / U);
+      return { team: p.side === 0 ? other(side) : side, x, y, moving: p.x !== p.px || p.y !== p.py, down: p.idx === 0 && sim.done && !sim.result?.touchdown, hasBall: p.idx === 0 };
+    });
+    const c = players[0];
+    return { players, ball: { x: c.x, y: c.y, z: 0, visible: false }, los: null, toGain: null, focusX: c.x, frame };
+  }
   if (viewSim) {
     const sim = viewSim;
     const off = viewOffense;
@@ -293,7 +317,25 @@ function step(dt: number): FieldView | null {
           done = game.tick();
         }
       }
-      if (done) playOver(game.lastEvent);
+      if (done) startReturn(() => playOver(game.lastEvent));
+      break;
+    }
+    case 'return': {
+      const v = viewReturn;
+      if (!v) break;
+      if (!v.sim.done) {
+        acc += dt * Math.max(1, speed);
+        for (let n = 0; acc >= 16.667 && n < 16 && !v.sim.done; n++) {
+          acc -= 16.667;
+          frame++;
+          v.sim.step();
+        }
+      } else if ((v.hold -= dt) <= 0 && v.then) {
+        // The picture of the tackle stays up until the next snap is set.
+        const then = v.then;
+        v.then = null;
+        then();
+      }
       break;
     }
     case 'replay': {
@@ -314,9 +356,11 @@ function step(dt: number): FieldView | null {
         kick.t += dt;
         if (kick.t >= kick.T + kick.R) {
           const e = kick.e;
-          kick = null;
-          setStatic();
-          showResult(e);
+          startReturn(() => {
+            kick = null;
+            setStatic();
+            showResult(e);
+          });
         }
       }
       break;
@@ -405,6 +449,8 @@ function next(): void {
   setStatic();
   wantTimeout = false;
   wantBlock = false;
+  stAuto = true;
+  if (offTab === '@st') offTab = FORMATIONS[0].id;
   if (s.possession === user) {
     startPlayClock();
     showOffensePanel();
@@ -523,7 +569,7 @@ function startKick(team: 0 | 1, from: number, to: number, toY: number, e: PlayEv
   const run = returner >= 0 ? Math.sign(x0 - x1) * yards : 0;
   const pace = speed === 1 ? 1 : 0.4;
   kick = {
-    x0, x1, y0, y1, t: 0, T: speed === 0 ? 0 : Math.round(1200 * pace), R: speed === 0 || returner < 0 ? 0 : Math.round(Math.min(4200, 700 + yards * 95) * pace),
+    x0, x1, y0, y1, t: 0, T: speed === 0 ? 0 : Math.round(1200 * pace), R: 0,
     e, start, kicking: team, returner, run,
   };
   mode = 'kick';
@@ -538,6 +584,7 @@ function playOver(e: PlayEvent | null): void {
     const r = game.replayLast();
     if (r) {
       viewSim = r.sim;
+      viewReturn = null;
       viewOffense = r.offense;
       acc = 0;
       $('tag').classList.remove('hidden');
@@ -587,7 +634,7 @@ function showResult(e: PlayEvent | null): void {
   banner.className = big ? 'big' : e?.type === 'penalty' ? 'flag' : '';
   banner.innerHTML = `${e ? e.text : 'Time runs out.'}<small>${period}${situationText()}</small>`;
   if (e) {
-    if (e.flags.touchdown || ((e.type === 'fieldGoal' || e.type === 'pat' || e.type === 'twoPoint') && e.flags.good)) sfx.score();
+    if (e.flags.touchdown || e.flags.defensiveTouchdown || ((e.type === 'fieldGoal' || e.type === 'pat' || e.type === 'twoPoint') && e.flags.good)) sfx.score();
     else if (e.flags.interception || e.flags.fumbleLost || e.flags.safety || e.flags.turnoverOnDowns) sfx.bad();
     else if (e.flags.firstDown) sfx.first();
     else if (e.flags.incomplete || e.type === 'punt' || e.type === 'kickoff' || e.type === 'kneel' || e.type === 'penalty') sfx.whistle();
@@ -600,7 +647,7 @@ function showResult(e: PlayEvent | null): void {
 
 /** After a play with no field animation (a kneel-down), show the new spot straight away. */
 function setStaticIfIdle(): void {
-  if (!viewSim && !kick) setStatic();
+  if (!viewSim && !kick && !viewReturn) setStatic();
 }
 
 // ----------------------------------------------------------------- score bug
@@ -706,13 +753,27 @@ function showOffensePanel(twoPointPick = false): void {
   const tabKeys = ['Z', 'X', 'C', 'V', 'B', 'N'];
   const tabs = [...FORMATIONS.map((f) => ({ id: f.id, name: f.name, plays: all.filter((p) => !p.slots && p.formation === f.id) })), { id: '@mine', name: 'Mine', plays: all.filter((p) => !!p.slots) }].filter((t) => t.plays.length);
   if (!tabs.some((t) => t.id === offTab)) offTab = tabs[0].id;
-  const plays = tabs.find((t) => t.id === offTab)!.plays;
-  let html = (tabs.length > 1 ? `<div class="fronts"><span class="lbl">Formation</span>${tabs.map((t, i) => `<button class="act${t.id === offTab ? ' on' : ''}" data-act="tab:${t.id}">${t.name} <kbd>[${tabKeys[i]}]</kbd><small>${t.plays.length} ${t.plays.length === 1 ? 'play' : 'plays'}</small></button>`).join('')}</div>` : '')
-    + plays.map((p, i) => playCard(p, `p:${p.id}`, i < 9 ? ` <kbd>[${i + 1}]</kbd>` : '')).join('');
+  // Special teams have their own tab on the call sheet during a drive.
+  const hasSt = s.phase === 'scrimmage';
+  const onSt = hasSt && (offTab === '@st' || (s.down === 4 && stAuto));
+  if (offTab === '@st' && !hasSt) offTab = tabs[0].id;
+  if (hasSt) tabs.push({ id: '@st', name: 'Special teams', plays: [] });
+  const shown = onSt ? '@st' : offTab === '@st' ? tabs[0].id : offTab;
+  const plays = tabs.find((t) => t.id === shown)!.plays;
+  const fgYards = fieldGoalDistance(s.yardLine);
+  const stCards = !onSt ? '' : `<button class="card st" data-act="punt"><span class="nm">Punt <kbd>[P]</kbd></span><span class="ds">Kick it away and make them drive the field. They may come after it.</span></button>`
+    + (fgYards <= 60 ? `<button class="card st" data-act="fg"><span class="nm">Field goal <kbd>[F]</kbd></span><span class="form">${fgYards} yards</span><span class="ds">${fgYards <= 30 ? 'A short one.' : fgYards <= 40 ? 'In range for a good high school kicker.' : 'A long one for a high school kicker.'} Three points.</span></button>` : '')
+    + `<button class="card st" data-act="fake"><span class="nm">Fake it <kbd>[G]</kbd></span><span class="ds">Line up to kick, then run a real play. Pick the play next. It works when they sell out for the block.</span></button>`
+    + ((s.quarter === 2 || s.quarter === 4) && s.down < 4 ? '<button class="card st" data-act="kneel"><span class="nm">Kneel <kbd>[K]</kbd></span><span class="ds">Lose a yard and keep the clock running.</span></button>' : '');
+  let html = (tabs.length > 1 ? `<div class="fronts"><span class="lbl">Formation</span>${tabs.map((t, i) => `<button class="act${t.id === shown ? ' on' : ''}" data-act="tab:${t.id}">${t.name} <kbd>[${t.id === '@st' ? 'M' : tabKeys[i]}]</kbd><small>${t.id === '@st' ? 'punt, kick, fake' : `${t.plays.length} ${t.plays.length === 1 ? 'play' : 'plays'}`}</small></button>`).join('')}</div>` : '')
+    + stCards + plays.map((p, i) => playCard(p, `p:${p.id}`, i < 9 ? ` <kbd>[${i + 1}]</kbd>` : '')).join('');
   if (s.phase === 'scrimmage') {
     const fg = fieldGoalDistance(s.yardLine);
     const canKneel = (s.quarter === 2 || s.quarter === 4) && s.down < 4;
-    html += `<div class="wide"><button class="act" data-act="punt">Punt <kbd>[P]</kbd></button>${fg <= 60 ? `<button class="act" data-act="fg">Field goal <kbd>[F]</kbd><small>${fg} yards</small></button>` : ''}${canKneel ? '<button class="act" data-act="kneel">Kneel <kbd>[K]</kbd><small>Lose a yard, keep the clock running</small></button>' : ''}${timeoutButton()}</div>`;
+    // The quick row under the plays; on the special teams tab the same calls are the cards above.
+    const quick = onSt ? '' : `<button class="act" data-act="punt">Punt <kbd>[P]</kbd></button>${fg <= 60 ? `<button class="act" data-act="fg">Field goal <kbd>[F]</kbd><small>${fg} yards</small></button>` : ''}${canKneel ? '<button class="act" data-act="kneel">Kneel <kbd>[K]</kbd><small>Lose a yard, keep the clock running</small></button>' : ''}`;
+    const tbtn = timeoutButton();
+    if (quick || tbtn) html += `<div class="wide">${quick}${tbtn}</div>`;
   }
   panel.innerHTML = html;
   const acts: Record<string, () => void> = {
@@ -720,14 +781,18 @@ function showOffensePanel(twoPointPick = false): void {
     fg: () => submitOff({ kind: 'fieldGoal', timeout: wantTimeout }),
     kneel: () => submitOff({ kind: 'kneel' }),
     timeout: () => { wantTimeout = !wantTimeout; showOffensePanel(twoPointPick); },
+    // A fake is a real play called in a kicking situation: go and pick it.
+    fake: () => { stAuto = false; if (offTab === '@st') offTab = tabs[0].id; showOffensePanel(twoPointPick); },
   };
   for (const p of plays) acts[`p:${p.id}`] = () => submitOff({ kind: 'play', playId: p.id, timeout: wantTimeout });
-  for (const t of tabs) acts[`tab:${t.id}`] = () => { offTab = t.id; showOffensePanel(twoPointPick); };
+  for (const t of tabs) acts[`tab:${t.id}`] = () => { offTab = t.id; stAuto = false; showOffensePanel(twoPointPick); };
   bind(acts, (k) => {
     const n = Number(k);
     if (n >= 1 && n <= Math.min(9, plays.length)) return `p:${plays[n - 1].id}`;
     const ti = tabKeys.indexOf(k.toUpperCase());
-    if (ti >= 0 && ti < tabs.length) return `tab:${tabs[ti].id}`;
+    if (ti >= 0 && ti < tabs.length && tabs[ti].id !== '@st') return `tab:${tabs[ti].id}`;
+    if (k === 'm' && hasSt) return 'tab:@st';
+    if (k === 'g' && onSt) return 'fake';
     return k === 'p' ? 'punt' : k === 'f' ? 'fg' : k === 'k' ? 'kneel' : k === 't' ? 'timeout' : null;
   });
 }
@@ -1354,6 +1419,8 @@ function onlineNext(): void {
   setStatic();
   wantTimeout = false;
   wantBlock = false;
+  stAuto = true;
+  if (offTab === '@st') offTab = FORMATIONS[0].id;
   mode = 'wait';
   if (net.queue.length) return pump();
   showOnlinePanel();

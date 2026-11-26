@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.9.0 — 2026-11-26
+
+Returns played out on the field.
+
+### Added
+- `packages/match-sim/src/returns.ts`: `ReturnSim`, a 60 Hz simulation of one ball carrier, his blockers and the
+  pursuit. Blocks hold for a time set by the two players' ratings; missed tackles slow the runner and can take out
+  the men behind. `kickoffReturnSetup` and `puntReturnSetup` place the coverage and the return team.
+- The game uses it for kickoffs, punts that are not fair-caught, interceptions and fumble recoveries.
+  `Game.lastReturn` gives a fresh copy to draw. Its random stream is keyed to the snap.
+- `PlayFlags.defensiveTouchdown`; punt-return touchdowns.
+- Client: mode `return` draws the real return after the kick or the play; a Special teams tab on the call sheet
+  that opens on fourth down, with a Fake it card.
+- `tests/returns.test.ts`; `tools/probe-returns.ts`.
+
+### Fixed
+- A return drawn after the ball had been re-spotted would have been built from the new spot. Positions are now
+  copied when the play happens, and a test checks that the return shown is the return that counted.
+
+### Changed
+- Kickoff and punt return yards now come from the simulation, not a formula. Game results differ from 0.8.0.
+
+### Known gaps
+- Kickoff returns cluster between 12 and 20 yards; real ones spread wider.
+- No fumbles on returns, no penalties on returns, no return by the kicking team after a blocked kick.
+- Instant replay does not include the return.
+
 ## 0.8.0 — 2026-11-26
 
 Penalties, a run-first retune held by a realism scorecard, and school renaming.

@@ -2,6 +2,33 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.9.0",
+      "date": "2026-11-26",
+      "title": "Returns: kicks, punts, picks and fumbles",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Interceptions and fumble recoveries are run back. The defender takes off from where he got the ball, his teammates block, and the offense has to chase him down. Some go all the way."
+        },
+        {
+          "tag": "new",
+          "text": "Kickoff and punt returns are now real plays: a returner, blockers who pick up the coverage, missed tackles and the occasional touchdown."
+        },
+        {
+          "tag": "new",
+          "text": "Special teams tab on the call sheet. On fourth down it opens by itself with Punt, Field goal and Fake it. Fake it lets you line up to kick and run a real play."
+        },
+        {
+          "tag": "tune",
+          "text": "Return touchdowns are rare: about one turnover in fourteen is taken to the house, and a kickoff goes the distance well under once in a hundred."
+        },
+        {
+          "tag": "note",
+          "text": "Instant replay shows the play, not the return that followed it."
+        }
+      ]
+    },
+    {
       "version": "0.8.0",
       "date": "2026-11-26",
       "title": "Real football: flags, a run-first game and commissioner tools",
@@ -465,9 +492,9 @@
       "text": "Flags on the field, and the AI game held to real high school numbers by an automatic scorecard. In the game now."
     },
     {
-      "status": "next",
-      "title": "Returns and runs after the catch",
-      "text": "Interception and fumble returns, and kick and punt returns played out player by player with real blocks and tackles."
+      "status": "testing",
+      "title": "Returns",
+      "text": "Interception, fumble, kickoff and punt returns played out on the field with blocks and tackles. In the game now."
     },
     {
       "status": "next",
@@ -476,8 +503,8 @@
     },
     {
       "status": "next",
-      "title": "Audibles and a special teams sheet",
-      "text": "Change the play at the line, and pick special teams calls from their own tab on the call sheet."
+      "title": "Audibles",
+      "text": "Change the play at the line after you see the defense. The special teams tab is already in."
     },
     {
       "status": "next",
