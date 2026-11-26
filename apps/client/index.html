@@ -57,6 +57,19 @@
   #stage { position: relative; border: 3px solid var(--line); border-radius: 6px; overflow: hidden; background: #000; aspect-ratio: 16 / 9; }
   #phaser, #phaser canvas { width: 100% !important; height: 100% !important; display: block; image-rendering: pixelated; }
   #banner { position: absolute; left: 50%; bottom: 6%; transform: translateX(-50%); max-width: 92%; background: rgba(8, 9, 20, 0.9); border: 2px solid var(--accent); border-radius: 4px; padding: 8px 14px; font-size: 14px; text-align: center; line-height: 1.35; }
+  #wx { position: absolute; inset: 0; pointer-events: none; }
+  #wx.rain { background-image: repeating-linear-gradient(105deg, transparent 0 14px, rgba(190, 215, 255, 0.42) 14px 16px, transparent 16px 31px); background-size: 62px 120px; animation: wx-rain 0.45s linear infinite; }
+  #wx.snow { background-image: radial-gradient(rgba(255, 255, 255, 0.85) 1.6px, transparent 2px), radial-gradient(rgba(255, 255, 255, 0.6) 1.2px, transparent 1.6px); background-size: 46px 46px, 30px 30px; background-position: 0 0, 14px 9px; animation: wx-snow 3.2s linear infinite; }
+  #wx.wind { background-image: repeating-linear-gradient(0deg, transparent 0 70px, rgba(255, 255, 255, 0.1) 70px 71px, transparent 71px 150px); background-size: 300px 150px; animation: wx-wind 0.9s linear infinite; }
+  #wx.heat { background: linear-gradient(rgba(255, 170, 60, 0.1), rgba(255, 170, 60, 0)); }
+  @keyframes wx-rain { to { background-position: -62px 120px; } }
+  @keyframes wx-snow { to { background-position: 46px 46px, 44px 39px; } }
+  @keyframes wx-wind { to { background-position: 300px 0; } }
+  @media (prefers-reduced-motion: reduce) { #wx { animation: none !important; } }
+  #wxTag { position: absolute; left: 8px; top: 8px; background: rgba(8, 9, 20, 0.85); border: 1px solid var(--line); border-radius: 3px; padding: 2px 7px; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); }
+  #cutin { position: absolute; left: 50%; top: 44%; transform: translate(-50%, -50%); width: min(46%, 440px); image-rendering: pixelated; border: 3px solid var(--accent); border-radius: 4px; box-shadow: 0 8px 0 rgba(0, 0, 0, 0.55); animation: cutin 0.28s steps(4) both; pointer-events: none; }
+  @keyframes cutin { from { transform: translate(-50%, -50%) scale(0.2); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { #cutin { animation: none; } }
   #banner.big { border-color: var(--red); font-size: 16px; font-weight: 700; }
   #banner small { display: block; color: var(--dim); font-size: 11px; margin-top: 3px; font-weight: 400; }
   #tag { position: absolute; left: 8px; top: 8px; background: var(--red); color: #fff; font-size: 11px; letter-spacing: 2px; padding: 3px 8px; border-radius: 3px; }
@@ -149,6 +162,30 @@
   .voice-state.bad { color: #ff8d85; }
   .seg.live { border-color: var(--good); color: var(--good); }
 
+  .pick { font-size: 12px; color: var(--dim); letter-spacing: 1px; text-transform: uppercase; display: inline-flex; gap: 6px; align-items: center; }
+  .pick select { font-family: inherit; font-size: 13px; background: #000; color: var(--ink); border: 2px solid var(--line); border-radius: 4px; padding: 5px 8px; }
+  #weatherNote { font-size: 12px; color: var(--dim); }
+  /* dynasty */
+  .sh-code { font-size: 20px; letter-spacing: 4px; color: var(--accent); }
+  #shared h2, #dynasty h2 { font-size: 18px; letter-spacing: 3px; text-transform: uppercase; margin: 18px 0 6px; text-align: center; }
+  #shared h3, #dynasty h3 { font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); margin: 16px 0 6px; }
+  #shared p, #dynasty p { color: var(--dim); font-size: 13px; text-align: center; margin: 4px 0 10px; }
+  #shared table, #dynasty table { font-size: 13.5px; }
+  #shared tr.me td, #dynasty tr.me td { background: var(--panel-2); color: var(--accent); }
+  #shared td small { color: var(--dim); }
+  #shared .team-card.me { border-color: var(--accent); }
+  #shared .team-card:disabled { opacity: 0.55; cursor: default; }
+  #shared td:nth-child(2), #dynasty td:nth-child(2) { text-align: left; }
+  .dy-cols { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 700px) { .dy-cols { grid-template-columns: 1fr; } }
+  .dy-game { display: flex; justify-content: space-between; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .dy-game.me { color: var(--accent); }
+  .dy-game b { font-variant-numeric: tabular-nums; }
+  .dy-next { background: var(--panel); border: 3px solid var(--accent); border-radius: 6px; padding: 12px; text-align: center; margin: 10px 0; }
+  .dy-next .big { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+  .dy-next .orow { justify-content: center; margin-top: 10px; }
+  .dy-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+  .chip-sq { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: baseline; }
   /* designer */
   #designer h2, #hall h2 { font-size: 18px; letter-spacing: 3px; text-transform: uppercase; margin: 18px 0 10px; text-align: center; }
   .ds-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
@@ -219,6 +256,12 @@
       <span id="bookSummary"></span>
       <label class="chk"><input type="checkbox" id="clockToggle"> 20-second play clock</label>
     </div>
+    <div class="setup-opts">
+      <label class="pick">Quarters <select id="quarterPick" aria-label="Quarter length"></select></label>
+      <label class="pick">Weather <select id="weatherPick" aria-label="Weather"></select></label>
+      <span id="weatherNote"></span>
+    </div>
+    <div class="setup-opts"><button class="seg on" id="dynastyBtn">Dynasty</button><span id="dynastyLine">Run a school season after season in the state of your choice.</span></div>
     <div id="onlineBox">
       <h3>Play a friend online</h3>
       <div id="oSignedOut" class="orow">
@@ -235,6 +278,13 @@
           <input id="oJoinPin" maxlength="5" inputmode="numeric" placeholder="Game PIN" autocomplete="off" aria-label="Five-digit game PIN">
           <button class="seg on" id="oJoin">Join a game</button>
         </div>
+        <div class="orow" id="oLeagueRow">
+          <span class="lbl">Dynasty with friends</span>
+          <button class="seg" id="lgNew">Start a league</button>
+          <input id="lgCode" maxlength="5" placeholder="League code" autocomplete="off" aria-label="Five-letter league code" style="text-transform:uppercase;width:120px">
+          <button class="seg" id="lgJoin">Open league</button>
+          <button class="seg hidden" id="lgMine"></button>
+        </div>
       </div>
       <div id="oMsg" role="status" aria-live="polite"></div>
       <div class="note">Pick a coach name and a PIN you will remember. The name is yours once you use it.</div>
@@ -245,6 +295,7 @@
   <section id="lobby" class="hidden">
     <h2>Game PIN</h2>
     <div id="lobbyPin" aria-label="Game PIN"></div>
+    <p id="lobbySetup" style="color:var(--accent);margin:0 0 6px"></p>
     <p id="lobbyHelp">Tell the other coach to sign in, type this PIN and press Join.</p>
     <div class="teams" id="lobbySeats"></div>
     <div class="orow center"><button class="seg on" id="lobbyStart">Start the game</button><button class="seg" id="lobbyLeave">Leave</button></div>
@@ -263,6 +314,9 @@
       <div id="phaser"></div>
       <div id="tag" class="hidden">REPLAY</div>
       <div id="calls" class="hidden"></div>
+      <div id="wx" aria-hidden="true"></div>
+      <div id="wxTag" class="hidden"></div>
+      <img id="cutin" class="hidden" alt="">
       <div id="banner" class="hidden" role="status" aria-live="polite"></div>
     </div>
     <div id="bar">
@@ -304,6 +358,16 @@
     <p>The ten best records among all online coaches. Most wins first; win rate, then point margin, break ties.</p>
     <div id="hallBody"></div>
     <div class="orow center"><button class="seg on" id="hallBack">Back</button></div>
+  </section>
+
+  <section id="shared" class="hidden">
+    <h2 id="shTitle">Dynasty with friends</h2>
+    <div id="shBody"></div>
+  </section>
+
+  <section id="dynasty" class="hidden">
+    <h2 id="dyTitle">Dynasty</h2>
+    <div id="dyBody"></div>
   </section>
 
   <section id="final" class="hidden">

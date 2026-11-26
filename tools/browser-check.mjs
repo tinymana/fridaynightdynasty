@@ -34,7 +34,7 @@ while (s.mode !== 'final' && n++ < 600) {
   if (!shotDef && prompt.includes('front')) { await page.screenshot({ path: `${out}/6-defense.png` }); shotDef = true; }
   const cards = await page.$$('#panel [data-act]');
   const acts = await Promise.all(cards.map((c) => c.evaluate((e) => e.dataset.act)));
-  let pick = acts.filter((a) => a.startsWith('p:') || a.startsWith('d:') || a === 'pat');
+  let pick = acts.filter((a) => a.startsWith('p:') || a.startsWith('d:') || a.startsWith('k:') || a === 'pat');
   if (prompt.startsWith('4th') && acts.includes('punt')) pick = [acts.includes('fg') ? 'fg' : 'punt'];
   const a = pick[n % pick.length];
   await page.click(`#panel [data-act="${a}"]`);

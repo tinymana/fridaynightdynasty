@@ -1,4 +1,4 @@
-import { RULES, clamp, type Player, type Rng } from '@fnd/core';
+import { RULES, clamp, type KickStyle, type Player, type Rng } from '@fnd/core';
 import { fieldGoalDistance, fieldGoalRange } from '@fnd/football-ai';
 
 /** Kicking plays are resolved from ratings, distance and a seeded roll (design: no kick meter). */
@@ -10,6 +10,42 @@ export interface KickoffResult {
   returnYards: number;
   touchback: boolean;
   touchdown: boolean;
+}
+
+/** An onside kick the receivers are ready for is recovered far less often than a surprise. */
+export const ONSIDE_SURPRISE = 0.26;
+export const ONSIDE_EXPECTED = 0.11;
+
+export interface StyledKickoff extends KickoffResult {
+  /** Onside only: the kicking team got the ball back. */
+  recovered: boolean;
+}
+
+/**
+ * A kickoff by style. The same random draws are made for every style, so one seeded stream gives one result per style.
+ * `startYard` is from the goal of the team that ends up with the ball.
+ */
+export function resolveStyledKickoff(rng: Rng, kicker: Player, returner: Player, from: number, style: KickStyle, expected: boolean): StyledKickoff {
+  const deep = resolveKickoff(rng, kicker, returner, from);
+  const a = rng.range(0, 1);
+  const b = rng.range(0, 1);
+  if (style === 'deep') return { ...deep, recovered: false };
+  if (style === 'squib') {
+    const kickYards = Math.round(30 + a * 10);
+    const returnYards = Math.round(2 + b * 8);
+    return { startYard: clamp(100 - (from + kickYards) + returnYards, 1, 60), kickYards, returnYards, touchback: false, touchdown: false, recovered: false };
+  }
+  const kickYards = Math.round(10 + b * 4);
+  const spot = Math.min(from + kickYards, 95);
+  const recovered = a < (expected ? ONSIDE_EXPECTED : ONSIDE_SURPRISE);
+  return { startYard: recovered ? spot : 100 - spot, kickYards, returnYards: 0, touchback: false, touchdown: false, recovered };
+}
+
+/** What going for the block does to a punt or field goal. One roll decides it. */
+export const BLOCK_CHANCE = 0.06;
+export const ROUGHING_CHANCE = 0.07;
+export function blockOutcome(roll: number): 'blocked' | 'roughing' | 'none' {
+  return roll < BLOCK_CHANCE ? 'blocked' : roll < BLOCK_CHANCE + ROUGHING_CHANCE ? 'roughing' : 'none';
 }
 
 export function resolveKickoff(rng: Rng, kicker: Player, returner: Player, from: number): KickoffResult {
@@ -30,8 +66,8 @@ export interface PuntResult {
   touchback: boolean;
 }
 
-export function resolvePunt(rng: Rng, punter: Player, los: number): PuntResult {
-  const grossYards = Math.round(26 + punter.ratings.kicking * 0.16 + rng.range(-9, 9));
+export function resolvePunt(rng: Rng, punter: Player, los: number, distance = 1): PuntResult {
+  const grossYards = Math.round((26 + punter.ratings.kicking * 0.16 + rng.range(-9, 9)) * distance);
   const fairCatch = rng.chance(0.45);
   const returnRoll = rng.range(-1, 12);
   const land = 100 - (los + grossYards);

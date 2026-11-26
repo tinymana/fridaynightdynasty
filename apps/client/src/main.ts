@@ -1,13 +1,16 @@
 import {
-  BOOK_MIN, BOOK_SIZE, CUSTOM_FRONT, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, FORMATIONS, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, OFFENSE_PLAYS, RULES, U,
+  BOOK_MIN, BOOK_SIZE, CUSTOM_FRONT, QUARTER_MINUTES, WEATHER, WEATHERS, cleanSetup, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, FORMATIONS, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, OFFENSE_PLAYS, RULES, U,
   defAssignment, draftFromDefense, draftFromFront, draftFromPlay, exhibitionTeams, formationOf, frontById, newDesignId, overall, playById, schemeById,
   toFront, toScheme, validateBook, validateDefPlay, validateOffPlay,
-  type DefDecision, type DefFront, type DefPlay, type DefScheme, type Group, type ManageAction, type OffAssign, type OffDecision, type OffPlay, type PlayEvent, type Team,
+  type DefDecision, type DefFront, type DefPlay, type DefScheme, type GameSetup, type Group, type KickStyle, type ManageAction, type OffAssign, type OffDecision, type OffPlay, type PlayEvent, type Team,
 } from '@fnd/core';
 import { fieldGoalDistance } from '@fnd/football-ai';
 import { AutoCoach, Game, gameHash, replayGame, simulateGame, summarize, type LoggedDecision, type PlaySim } from '@fnd/match-sim';
-import type { Career, RoomView } from '@fnd/online';
+import { leagueTeams, type Career, type RoomView } from '@fnd/online';
 import { OnlineError, online } from './net/online';
+import { cutinFor } from './cutins';
+import { DynastyScreen, type DynastyGame } from './dynasty';
+import { SharedLeagueScreen } from './shared-league';
 import { openDefenseDesigner, openOffenseDesigner, practiceTeams, type DesignerHost } from './designer';
 import { voice } from './net/voice';
 import { FieldScene, createGame, type FieldView, type ViewPlayer } from './scene';
@@ -79,6 +82,8 @@ let kick: KickAnim | null = null;
 let pendingOff: OffDecision | null = null;
 let pendingEvent: PlayEvent | null = null;
 let wantTimeout = false;
+/** Fourth down on defense: sell out for the block. */
+let wantBlock = false;
 let lastQuarter = 1;
 let keyHandler: ((k: string) => void) | null = null;
 /** Designs are kept in this browser. They are checked again every time they are loaded, and again by the engine and the server. */
@@ -104,6 +109,13 @@ let book: string[] = (() => {
 let practiceRun: { make: (seed: number) => PlaySim; n: number; pause: number; told: boolean } | null = null;
 let career: Career | null = null;
 let bookDraft: string[] = [];
+/** The dynasty game being played, if this game is one. */
+let dynastyGame: DynastyGame | null = null;
+/** Cut-in artwork after big plays. Off in tests that only want the football. */
+let showCutins = true;
+/** Quarter length and weather for the next game this coach starts or hosts. */
+let setup: GameSetup = cleanSetup(store.get<unknown>('fnd.setup.v1', null));
+const setupLine = (s: GameSetup): string => `${s.quarterMinutes}-minute quarters \u00b7 ${WEATHER[s.weather].name}`;
 /** The formation tab open on the offense panel. */
 let offTab = FORMATIONS[0].id;
 let frontId: string = DEFENSE_FRONTS[0].id;
@@ -335,24 +347,23 @@ function nextPractice(): void {
 
 function next(): void {
   $('banner').classList.add('hidden');
+  $('cutin').classList.add('hidden');
   $('calls').classList.add('hidden');
   const s = game.state;
   if (s.phase === 'final') return showFinal();
   if (net) return onlineNext();
   updateBug();
   if (s.phase === 'kickoff') {
-    const k = s.kicking;
-    const from = s.kickFrom;
     setStatic();
-    setPanelWaiting('Kickoff');
-    game.begin(null, null);
-    game.tick();
-    const e = game.lastEvent!;
-    startKick(k, from, Math.min(from + e.yards, 104), CY_YD, e);
+    if (s.kicking === user) {
+      startPlayClock();
+      showKickPanel();
+    } else runKickoff(coach.offense(game));
     return;
   }
   setStatic();
   wantTimeout = false;
+  wantBlock = false;
   if (s.possession === user) {
     startPlayClock();
     showOffensePanel();
@@ -364,6 +375,36 @@ function next(): void {
       showDefensePanel();
     }
   }
+}
+
+/** Runs a kickoff and shows it. */
+function runKickoff(off: OffDecision | null): void {
+  const k = game.state.kicking;
+  const from = game.state.kickFrom;
+  keyHandler = null;
+  clockOn = false;
+  $('pclock').classList.add('hidden');
+  setPanelWaiting('Kickoff');
+  game.begin(off, null);
+  game.tick();
+  const e = game.lastEvent!;
+  startKick(k, from, Math.min(from + e.yards, 104), CY_YD, e);
+}
+
+/** The kicking coach's three choices. */
+function showKickPanel(): void {
+  mode = 'choose';
+  const late = game.onsideExpected();
+  $('prompt').textContent = 'Call the kickoff';
+  const opt = (style: KickStyle, key: string, name: string, text: string): string => `<button class="act" data-act="k:${style}">${name} <kbd>[${key}]</kbd><small>${text}</small></button>`;
+  $('panel').innerHTML = `<div class="wide">${opt('deep', '1', 'Kick deep', 'Pin them back. A return can break loose.')}${opt('squib', '2', 'Squib kick', 'Low and short. No big return, better field position for them.')}${opt('onside', '3', 'Onside kick', late ? 'They are expecting it: about 1 in 9 to recover.' : 'A surprise: about 1 in 4 to recover. Miss and they start near midfield.')}</div>`;
+  const pick = (style: KickStyle) => (): void => {
+    const off: OffDecision = { kind: 'kickoff', style };
+    if (net) void sendCall(off);
+    else runKickoff(off);
+  };
+  bind({ 'k:deep': pick('deep'), 'k:squib': pick('squib'), 'k:onside': pick('onside') }, (k) => (k === '1' ? 'k:deep' : k === '2' ? 'k:squib' : k === '3' ? 'k:onside' : null));
+  showPlayClock();
 }
 
 function startPlayClock(): void {
@@ -385,6 +426,7 @@ function playClockExpired(): void {
   clockOn = false;
   if (mode !== 'choose' || net) return;
   closeSideline();
+  if (game.state.phase === 'kickoff') return runKickoff(coach.offense(game));
   if (game.state.possession === user) commit(coach.offense(game)!, coach.defense(game)!);
   else commit(pendingOff!, coach.defense(game)!);
 }
@@ -407,7 +449,7 @@ function commit(off: OffDecision, def: DefDecision): void {
     const subs = game.lastSubs.filter((x) => x.team === user).map((x) => `${x.slot}: #${x.out.number} resting, #${x.in.number} in`);
     const calls = $('calls');
     calls.innerHTML = `${teams[offTeam].abbr} <b>${play?.name ?? ''}</b><br>${teams[other(offTeam)].abbr} <b>${defName}</b>`
-      + (tb !== null ? `<br>Timeout ${teams[tb].abbr}` : '') + (subs.length ? `<br>${subs.slice(0, 3).join('<br>')}` : '');
+      + (game.caughtBlocking ? '<br>Caught going for the block!' : '') + (tb !== null ? `<br>Timeout ${teams[tb].abbr}` : '') + (subs.length ? `<br>${subs.slice(0, 3).join('<br>')}` : '');
     calls.classList.remove('hidden');
     setPanelWaiting(`${play?.name ?? ''} against ${defName}`);
     updateBug();
@@ -433,7 +475,7 @@ function startKick(team: 0 | 1, from: number, to: number, toY: number, e: PlayEv
 
 function playOver(e: PlayEvent | null): void {
   pendingEvent = e;
-  const big = !!e && (e.flags.touchdown || e.flags.interception || e.flags.fumbleLost || e.flags.safety || (e.type === 'twoPoint' && e.flags.good));
+  const big = !!e && (e.flags.touchdown || e.flags.blocked || e.flags.recovered || e.flags.interception || e.flags.fumbleLost || e.flags.safety || (e.type === 'twoPoint' && e.flags.good));
   // Scoring plays and turnovers are always shown at normal speed: replay them if they were fast-forwarded.
   if (big && speed !== 1) {
     const r = game.replayLast();
@@ -472,8 +514,19 @@ function showResult(e: PlayEvent | null): void {
   let period = '';
   if (s.phase === 'final') period = 'End of game. ';
   else if (s.quarter !== lastQuarter) period = lastQuarter === 2 ? 'Halftime. ' : `End of quarter ${lastQuarter}. `;
+  const cut = showCutins && speed !== 0 ? cutinFor(e, s.phase === 'final' ? 'final' : s.quarter !== lastQuarter && lastQuarter === 2 ? 'half' : null, s.score[0] + s.score[1] + s.quarter) : null;
+  const cutEl = $('cutin') as HTMLImageElement;
+  cutEl.classList.toggle('hidden', !cut);
+  if (cut) {
+    cutEl.src = cut.url;
+    cutEl.alt = cut.alt;
+    // Restart the pop-in animation.
+    cutEl.style.animation = 'none';
+    void cutEl.offsetWidth;
+    cutEl.style.animation = '';
+  }
   lastQuarter = s.quarter;
-  const big = !!e && (e.flags.touchdown || e.flags.interception || e.flags.fumbleLost || e.flags.safety || ((e.type === 'fieldGoal' || e.type === 'twoPoint') && !!e.flags.good));
+  const big = !!e && (e.flags.touchdown || e.flags.blocked || e.flags.recovered || e.flags.interception || e.flags.fumbleLost || e.flags.safety || ((e.type === 'fieldGoal' || e.type === 'twoPoint') && !!e.flags.good));
   banner.className = big ? 'big' : '';
   banner.innerHTML = `${e ? e.text : 'Time runs out.'}<small>${period}${situationText()}</small>`;
   if (e) {
@@ -483,7 +536,7 @@ function showResult(e: PlayEvent | null): void {
     else if (e.flags.incomplete || e.type === 'punt' || e.type === 'kickoff' || e.type === 'kneel') sfx.whistle();
     else sfx.tackle();
   }
-  const base = big || period ? 2600 : e?.type === 'kneel' ? 1000 : 1700;
+  const base = cut ? 3000 : big || period ? 2600 : e?.type === 'kneel' ? 1000 : 1700;
   timer = turbo ? 40 : speed === 0 ? Math.min(base, 900) : speed === 1 ? base : Math.round(base * 0.5);
   mode = 'post';
 }
@@ -629,7 +682,10 @@ function showDefensePanel(): void {
   if (frontId === CUSTOM_FRONT && !mine.length) frontId = DEFENSE_FRONTS[0].id;
   const custom = frontId === CUSTOM_FRONT;
   const front = frontById(libraryFront());
-  const tb = timeoutButton();
+  const fourth = game.state.phase === 'scrimmage' && game.state.down === 4;
+  if (!fourth) wantBlock = false;
+  const tb = timeoutButton() + (fourth ? `<button class="act${wantBlock ? ' on' : ''}" data-act="block">Go for the block <kbd>[G]</kbd><small>${wantBlock ? 'Selling out. A real play will catch you out of position.' : 'Rush a punt or field goal: a chance to block it, a risk of a flag, no return.'}</small></button>` : '');
+  const withExtras = (d: DefDecision): DefDecision => (wantBlock ? { ...d, timeout: wantTimeout, block: true } : { ...d, timeout: wantTimeout });
   const keys = ['Q', 'W', 'E', 'R', 'Y'];
   const fronts = `<div class="fronts"><span class="lbl">Front</span>${DEFENSE_FRONTS.map((f, i) => `<button class="act${f.id === frontId ? ' on' : ''}" data-act="f:${f.id}" title="${f.desc}">${f.name} <kbd>[${keys[i]}]</kbd></button>`).join('')}${mine.length ? `<button class="act${custom ? ' on' : ''}" data-act="f:${CUSTOM_FRONT}" title="The defenses you designed">Mine <kbd>[A]</kbd></button>` : ''}</div>`;
   const kindLabel = { run: 'vs run', pass: 'vs pass', blitz: 'pressure', balanced: 'balanced' };
@@ -637,32 +693,32 @@ function showDefensePanel(): void {
     $('panel').innerHTML = fronts
       + mine.map((d, i) => `<button class="card" data-act="m:${d.id}">${defenseDiagram(toFront(d), toScheme(d))}<span class="nm">${d.name} <span class="kind">${kindLabel[d.kind]}</span></span><span class="form">Your design</span><span class="ds">Designed defense <kbd>[${i + 1}]</kbd></span></button>`).join('')
       + (tb ? `<div class="wide">${tb}</div>` : '');
-    const acts: Record<string, () => void> = { timeout: () => { wantTimeout = !wantTimeout; showDefensePanel(); } };
+    const acts: Record<string, () => void> = { timeout: () => { wantTimeout = !wantTimeout; showDefensePanel(); }, block: () => { wantBlock = !wantBlock; showDefensePanel(); } };
     for (const f of DEFENSE_FRONTS) acts[`f:${f.id}`] = () => { frontId = f.id; setStatic(); showDefensePanel(); };
-    for (const d of mine) acts[`m:${d.id}`] = () => submitDef({ frontId: CUSTOM_FRONT, callId: d.id, timeout: wantTimeout });
+    for (const d of mine) acts[`m:${d.id}`] = () => submitDef(withExtras({ frontId: CUSTOM_FRONT, callId: d.id }));
     bind(acts, (k) => {
       const n = Number(k);
       if (n >= 1 && n <= mine.length) return `m:${mine[n - 1].id}`;
       const fi = keys.indexOf(k.toUpperCase());
       if (fi >= 0) return `f:${DEFENSE_FRONTS[fi].id}`;
-      return k === 't' ? 'timeout' : null;
+      return k === 't' ? 'timeout' : k === 'g' ? 'block' : null;
     });
     return;
   }
   $('panel').innerHTML = fronts
     + DEFENSE_SCHEMES.map((c, i) => `<button class="card" data-act="d:${c.id}">${defenseDiagram(front, c)}<span class="nm">${c.name} <span class="kind">${kindLabel[c.kind]}</span></span><span class="form">${front.name}: ${front.desc}</span><span class="ds">${c.desc} <kbd>[${i + 1}]</kbd></span></button>`).join('')
     + (tb ? `<div class="wide">${tb}</div>` : '');
-  const acts: Record<string, () => void> = { timeout: () => { wantTimeout = !wantTimeout; showDefensePanel(); } };
+  const acts: Record<string, () => void> = { timeout: () => { wantTimeout = !wantTimeout; showDefensePanel(); }, block: () => { wantBlock = !wantBlock; showDefensePanel(); } };
   for (const f of DEFENSE_FRONTS) acts[`f:${f.id}`] = () => { frontId = f.id; setStatic(); showDefensePanel(); };
   acts[`f:${CUSTOM_FRONT}`] = () => { frontId = CUSTOM_FRONT; showDefensePanel(); };
-  for (const c of DEFENSE_SCHEMES) acts[`d:${c.id}`] = () => submitDef({ frontId, callId: c.id, timeout: wantTimeout });
+  for (const c of DEFENSE_SCHEMES) acts[`d:${c.id}`] = () => submitDef(withExtras({ frontId, callId: c.id }));
   bind(acts, (k) => {
     const n = Number(k);
     if (n >= 1 && n <= DEFENSE_SCHEMES.length) return `d:${DEFENSE_SCHEMES[n - 1].id}`;
     if (k === 'a' && mine.length) return `f:${CUSTOM_FRONT}`;
     const fi = keys.indexOf(k.toUpperCase());
     if (fi >= 0) return `f:${DEFENSE_FRONTS[fi].id}`;
-    return k === 't' ? 'timeout' : null;
+    return k === 't' ? 'timeout' : k === 'g' ? 'block' : null;
   });
 }
 
@@ -876,19 +932,67 @@ function bookSummary(): void {
 
 // --------------------------------------------------------------- screens
 
-function show(id: 'title' | 'setup' | 'game' | 'final' | 'bookScreen' | 'lobby' | 'designer' | 'hall'): void {
-  for (const s of ['title', 'setup', 'game', 'final', 'bookScreen', 'lobby', 'designer', 'hall']) $(s).classList.toggle('hidden', s !== id);
+function show(id: 'title' | 'setup' | 'game' | 'final' | 'bookScreen' | 'lobby' | 'designer' | 'hall' | 'dynasty' | 'shared'): void {
+  for (const s of ['title', 'setup', 'game', 'final', 'bookScreen', 'lobby', 'designer', 'hall', 'dynasty', 'shared']) $(s).classList.toggle('hidden', s !== id);
 }
+
+let dynastyDone = false;
+/** The league to go back to after a league game. */
+let leagueReturn: string | null = null;
+const shared = new SharedLeagueScreen($('shBody'), $('shTitle'), {
+  api: {
+    create: async (state, s) => (await online.leagueCreate(session!.token, state, s)).league,
+    get: async (code) => (await online.league(session!.token, code)).league,
+    claim: async (code, school) => (await online.leagueClaim(session!.token, code, school)).league,
+    start: async (code) => (await online.leagueStart(session!.token, code)).league,
+    force: async (code) => (await online.leagueForce(session!.token, code)).league,
+    next: async (code) => (await online.leagueNext(session!.token, code)).league,
+    play: async (code) => (await online.leaguePlay(session!.token, code, book, myPlays, myDefs)).room,
+  },
+  setup: () => setup,
+  openRoom: (room) => openLobby(room),
+  back: () => showSetup(false),
+  errorText: (e) => (e instanceof OnlineError ? e.message : 'Something went wrong.'),
+  pollMs: () => (turbo ? 150 : 2000),
+  remember: (code) => {
+    store.set('fnd.league.v1', code);
+    renderLeagueRow();
+  },
+});
+
+function renderLeagueRow(): void {
+  const code = store.get<string | null>('fnd.league.v1', null);
+  const el = $('lgMine');
+  el.classList.toggle('hidden', !code);
+  el.textContent = code ? `My league ${code}` : '';
+}
+const dynasty = new DynastyScreen($('dyBody'), $('dyTitle'), {
+  load: () => store.get<unknown>('fnd.dynasty.v1', null),
+  save: (d) => store.set('fnd.dynasty.v1', d),
+  quarterMinutes: () => setup.quarterMinutes,
+  play: (g) => {
+    stopOnline();
+    seed = g.seed;
+    teams = g.teams;
+    dynastyGame = g;
+    dynastyDone = false;
+    startGame(g.user, g.setup);
+  },
+  back: () => showSetup(),
+}, () => (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0);
 
 function showSetup(fresh = true): void {
   unlockAudio();
   mode = 'menu';
   closeSideline();
   stopOnline();
-  if (fresh) {
+  dynastyGame = null;
+  if (fresh || !teams || teams[0].id !== 'sch_0001') {
     seed = (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0;
     teams = exhibitionTeams(seed);
   }
+  $('dynastyLine').textContent = dynasty.summary();
+  $('dynastyBtn').textContent = dynasty.active ? 'Continue dynasty' : 'Dynasty';
   const qb = (t: Team) => t.roster.find((p) => p.id === t.depth.QB[0])!;
   $('teams').innerHTML = teams.map((t, i) => `<button class="team-card" data-team="${i}"><div class="swatch" style="background:linear-gradient(90deg, ${css(t.colors.jersey)} 0 60%, ${css(t.colors.trim)} 60% 80%, ${css(t.colors.helmet)} 80%)"></div><div class="nm">${t.name} ${t.mascot}</div><div class="sub">${i === 0 ? 'Home' : 'Visitors'} · QB ${qb(t).name} #${qb(t).number}</div></button>`).join('');
   $('teams').querySelectorAll<HTMLElement>('[data-team]').forEach((el) => el.addEventListener('click', () => startGame(Number(el.dataset.team) as 0 | 1)));
@@ -898,7 +1002,7 @@ function showSetup(fresh = true): void {
   show('setup');
 }
 
-function startGame(team: 0 | 1): void {
+function startGame(team: 0 | 1, conditions: GameSetup = setup): void {
   unlockAudio();
   sfx.select();
   user = team;
@@ -908,8 +1012,9 @@ function startGame(team: 0 | 1): void {
   const defenses: [DefPlay[], DefPlay[]] = [[], []];
   plays[user] = myPlays;
   defenses[user] = myDefs;
-  game = new Game(seed, teams, { books, plays, defenses });
+  game = new Game(seed, teams, { books, plays, defenses, setup: conditions });
   coach = new AutoCoach(seed);
+  showWeather();
   lastQuarter = 1;
   kick = null;
   viewSim = null;
@@ -921,11 +1026,19 @@ function startGame(team: 0 | 1): void {
   updateBug();
   const receiving = other(game.state.kicking);
   $('banner').className = '';
-  $('banner').innerHTML = `${teams[receiving].name} will receive the opening kickoff.<small>You are coaching the ${teams[user].name} ${teams[user].mascot}.</small>`;
+  $('banner').innerHTML = `${teams[receiving].name} will receive the opening kickoff.<small>You are coaching the ${teams[user].name} ${teams[user].mascot}. ${setupLine(game.setup)}.</small>`;
   $('banner').classList.remove('hidden');
   setPanelWaiting('Kickoff');
   timer = 2200;
   mode = 'post';
+}
+
+/** Rain, snow, wind or heat over the field, and a small tag naming it. */
+function showWeather(): void {
+  const w = game.setup.weather;
+  $('wx').className = w === 'clear' ? '' : w;
+  $('wxTag').textContent = WEATHER[w].name;
+  $('wxTag').classList.toggle('hidden', w === 'clear');
 }
 
 function showFinal(): void {
@@ -945,7 +1058,21 @@ function showFinal(): void {
   $('finalMeta').textContent = `Seed ${seed} · ${game.log.length} decisions · game fingerprint ${gameHash(game)}${official}`;
   if (net) window.clearInterval(net.timer);
   $('finalCareer').textContent = '';
+  $('again').textContent = dynastyGame ? 'Back to the dynasty' : net?.view.league ? 'Back to the league' : 'New game';
+  leagueReturn = net?.view.league?.code ?? null;
   if (net) void loadCareer(true);
+  if (dynastyGame && !dynastyDone) {
+    dynastyDone = true;
+    const g = dynastyGame;
+    const score: [number, number] = [s.score[0], s.score[1]];
+    $('finalCareer').textContent = 'Playing the rest of the league\u2026';
+    ($('again') as HTMLButtonElement).disabled = true;
+    // Let the final score paint before the other games are worked out.
+    window.setTimeout(() => {
+      $('finalCareer').textContent = dynasty.finishGame(g, score).text;
+      ($('again') as HTMLButtonElement).disabled = false;
+    }, 60);
+  }
   $('log').innerHTML = game.events.filter((e) => e.points[0] + e.points[1] > 0).map((e) => `<div><b>Q${e.quarter} ${Math.floor(e.clock / 60)}:${String(e.clock % 60).padStart(2, '0')}</b> ${e.text} <b>${e.scoreAfter[0]}–${e.scoreAfter[1]}</b></div>`).join('') || '<div>No scoring.</div>';
   show('final');
 }
@@ -969,7 +1096,7 @@ function renderOnlineBox(): void {
   $('oHostRow').innerHTML = teams.map((t, i) => `<button class="seg" data-host="${i}">Host as ${t.name}</button>`).join('');
   $('oHostRow').querySelectorAll<HTMLElement>('[data-host]').forEach((el) => el.addEventListener('click', async () => {
     try {
-      openLobby((await online.host(session!.token, Number(el.dataset.host) as 0 | 1, book, myPlays, myDefs)).room);
+      openLobby((await online.host(session!.token, Number(el.dataset.host) as 0 | 1, book, myPlays, myDefs, setup)).room);
     } catch (e) {
       signedOutCheck(e);
       onlineMessage('oMsg', e);
@@ -1068,15 +1195,18 @@ function stopOnline(): void {
 function renderLobby(): void {
   if (!net) return;
   const v = net.view;
-  const lobbyTeams = exhibitionTeams(v.seed);
+  const lobbyTeams = v.league ? leagueTeams(v.league) : exhibitionTeams(v.seed);
   $('lobbyPin').textContent = v.pin;
+  $('lobbySetup').textContent = setupLine(cleanSetup(v.setup));
   $('lobbySeats').innerHTML = lobbyTeams.map((t, i) => `<div class="team-card seat${i === v.you ? ' me' : ''}"><div class="swatch" style="background:linear-gradient(90deg, ${css(t.colors.jersey)} 0 60%, ${css(t.colors.trim)} 60% 80%, ${css(t.colors.helmet)} 80%)"></div><div class="nm">${t.name} ${t.mascot}</div><div class="coach${v.coaches[i] ? '' : ' empty'}">${v.coaches[i] ? `${v.coaches[i]}${i === v.you ? ' (you)' : ''}` : 'Waiting for a coach…'}</div></div>`).join('');
   const ready = !!v.coaches[0] && !!v.coaches[1];
   const start = $('lobbyStart') as HTMLButtonElement;
-  start.classList.toggle('hidden', !v.isHost);
+  start.classList.toggle('hidden', !v.isHost || !!v.league);
   start.disabled = !ready;
   start.style.opacity = ready ? '1' : '0.4';
-  $('lobbyHelp').textContent = v.isHost
+  $('lobbyHelp').textContent = v.league
+    ? 'League game. It starts as soon as the other coach sits down: you both have to be here.'
+    : v.isHost
     ? (ready ? 'Both coaches are here. Start when you are ready.' : 'Tell the other coach to sign in, type this PIN and press Join.')
     : 'You are in. Waiting for the host to start the game.';
 }
@@ -1135,11 +1265,12 @@ function enterOnlineGame(): void {
   const v = net.view;
   unlockAudio();
   seed = v.seed;
-  teams = exhibitionTeams(seed);
+  teams = v.league ? leagueTeams(v.league) : exhibitionTeams(seed);
   user = v.you;
   coach = new AutoCoach(seed, [v.plan, v.plan]);
   const catchUp = net.queue.length > 1 ? net.queue.splice(0, net.queue.length) : [];
-  game = replayGame(seed, teams, catchUp, { books: v.books, plays: v.designs.plays, defenses: v.designs.defenses });
+  game = replayGame(seed, teams, catchUp, { books: v.books, plays: v.designs.plays, defenses: v.designs.defenses, setup: cleanSetup(v.setup) });
+  showWeather();
   lastQuarter = game.state.quarter;
   kick = null;
   viewSim = null;
@@ -1163,13 +1294,14 @@ function onlineNext(): void {
   updateBug();
   setStatic();
   wantTimeout = false;
+  wantBlock = false;
   mode = 'wait';
   if (net.queue.length) return pump();
   showOnlinePanel();
 }
 
 function showOnlinePanel(): void {
-  if (!net || game.state.phase === 'final' || game.state.phase === 'kickoff') return;
+  if (!net || game.state.phase === 'final') return;
   const v = net.view;
   if (v.turn !== localTurn()) {
     setPanelWaiting('Waiting for the server');
@@ -1180,6 +1312,14 @@ function showOnlinePanel(): void {
   if (v.mine) {
     mode = 'wait';
     setPanelWaiting('Your call is in. Waiting for the other sideline…');
+    return;
+  }
+  if (game.state.phase === 'kickoff') {
+    if (game.state.kicking === user) showKickPanel();
+    else {
+      mode = 'wait';
+      setPanelWaiting('The other coach is calling the kickoff');
+    }
     return;
   }
   if (game.state.possession === user) showOffensePanel();
@@ -1212,14 +1352,8 @@ function pump(): void {
     $('banner').classList.add('hidden');
     $('calls').classList.add('hidden');
     if (game.state.phase === 'kickoff') {
-      const k = game.state.kicking;
-      const from = game.state.kickFrom;
       setStatic();
-      setPanelWaiting('Kickoff');
-      game.begin(null, null);
-      game.tick();
-      const e = game.lastEvent!;
-      startKick(k, from, Math.min(from + e.yards, 104), CY_YD, e);
+      runKickoff(entry.off);
     } else {
       commit(entry.off!, entry.def!);
     }
@@ -1233,7 +1367,7 @@ function pump(): void {
 function checkSync(): void {
   if (!net || net.queue.length || game.log.length !== net.view.logSize) return;
   // The play just begun is still being drawn here, so compare a finished copy built from the same log.
-  const probe = replayGame(seed, teams, game.log, { books: net.view.books, plays: net.view.designs.plays, defenses: net.view.designs.defenses });
+  const probe = replayGame(seed, teams, game.log, { books: net.view.books, plays: net.view.designs.plays, defenses: net.view.designs.defenses, setup: cleanSetup(net.view.setup) });
   if (gameHash(probe) !== net.view.hash) {
     net.sync = 'bad';
     console.error('out of sync with the server', gameHash(probe), net.view.hash);
@@ -1283,7 +1417,27 @@ voice.onChange(renderVoice);
 ($('setupLogo') as HTMLImageElement).src = logoUrl;
 $('version').textContent = `v${devnotes.notes[0].version} · ${devnotes.notes[0].title}`;
 $('title').addEventListener('click', () => showSetup());
-$('again').addEventListener('click', () => showSetup());
+$('again').addEventListener('click', () => {
+  if (leagueReturn && session) {
+    const code = leagueReturn;
+    leagueReturn = null;
+    stopOnline();
+    mode = 'menu';
+    show('shared');
+    void shared.open(code);
+    return;
+  }
+  if (!dynastyGame) return showSetup();
+  dynastyGame = null;
+  mode = 'menu';
+  dynasty.render();
+  show('dynasty');
+});
+$('dynastyBtn').addEventListener('click', () => {
+  unlockAudio();
+  dynasty.render();
+  show('dynasty');
+});
 $('editBook').addEventListener('click', showBookScreen);
 $('bookReset').addEventListener('click', () => { bookDraft = [...DEFAULT_BOOK]; renderBook(); });
 $('bookSave').addEventListener('click', () => {
@@ -1298,6 +1452,40 @@ $('clockToggle').addEventListener('change', (ev) => {
 });
 $('oEnter').addEventListener('click', () => void signIn());
 $('oPin').addEventListener('keydown', (ev) => { if ((ev as KeyboardEvent).key === 'Enter') void signIn(); });
+const quarterPick = $('quarterPick') as HTMLSelectElement;
+const weatherPick = $('weatherPick') as HTMLSelectElement;
+quarterPick.innerHTML = QUARTER_MINUTES.map((m) => `<option value="${m}">${m} minutes${m === 12 ? ' (standard)' : ''}</option>`).join('');
+weatherPick.innerHTML = WEATHERS.map((w) => `<option value="${w}">${WEATHER[w].name}</option>`).join('');
+const showSetupPicks = (): void => {
+  quarterPick.value = String(setup.quarterMinutes);
+  weatherPick.value = setup.weather;
+  $('weatherNote').textContent = WEATHER[setup.weather].desc;
+};
+const readSetupPicks = (): void => {
+  setup = cleanSetup({ quarterMinutes: Number(quarterPick.value), weather: weatherPick.value });
+  store.set('fnd.setup.v1', setup);
+  showSetupPicks();
+};
+quarterPick.addEventListener('change', readSetupPicks);
+weatherPick.addEventListener('change', readSetupPicks);
+showSetupPicks();
+$('lgNew').addEventListener('click', () => {
+  if (!session) return;
+  show('shared');
+  shared.openNew();
+});
+const openLeague = (code: string): void => {
+  if (!session || !/^[A-Za-z]{5}$/.test(code)) {
+    $('oMsg').textContent = 'A league code is five letters.';
+    return;
+  }
+  $('oMsg').textContent = '';
+  show('shared');
+  void shared.open(code.toUpperCase());
+};
+$('lgJoin').addEventListener('click', () => openLeague(($('lgCode') as HTMLInputElement).value.trim()));
+$('lgMine').addEventListener('click', () => openLeague(store.get<string | null>('fnd.league.v1', null) ?? ''));
+renderLeagueRow();
 for (const id of ['hallBtn', 'hallBtn2']) $(id).addEventListener('click', () => void showHall());
 $('hallBack').addEventListener('click', () => showSetup(false));
 $('oOut').addEventListener('click', () => { session = null; career = null; store.set('fnd.session.v1', null); renderOnlineBox(); });
@@ -1341,7 +1529,7 @@ window.addEventListener('keydown', (ev) => {
 /** Debug hooks used by the browser checks. */
 (window as unknown as Record<string, unknown>).__fnd = {
   selftest: (s: number): string => gameHash(simulateGame(s, exhibitionTeams(s))),
-  state: () => ({ mode, myPlays: myPlays.length, myDefs: myDefs.length, career, practice: practiceRun ? { n: practiceRun.n, done: !!viewSim?.done } : null, phase: game?.state.phase, score: game?.state.score, quarter: game?.state.quarter, clock: game?.state.clock, sidelineOpen, playClock: clockOn ? Math.ceil(clockLeft / 1000) : null, book,
+  state: () => ({ mode, league: shared.current ? { code: shared.current.code, state: shared.current.state, year: shared.current.year, week: shared.current.week, you: shared.current.you, over: shared.current.over, played: shared.current.games.filter((g) => g.score).length } : null, dynasty: dynasty.active ? { year: dynasty.active.year, week: dynasty.active.week, user: dynasty.active.user, results: dynasty.active.results.length, history: dynasty.active.history.length } : null, cutin: $('cutin').classList.contains('hidden') ? null : ($('cutin') as HTMLImageElement).alt, setup: game?.setup ?? setup, myPlays: myPlays.length, myDefs: myDefs.length, career, practice: practiceRun ? { n: practiceRun.n, done: !!viewSim?.done } : null, phase: game?.state.phase, score: game?.state.score, quarter: game?.state.quarter, clock: game?.state.clock, sidelineOpen, playClock: clockOn ? Math.ceil(clockLeft / 1000) : null, book,
     online: net ? { pin: net.pin, state: net.view.state, turn: net.view.turn, you: net.view.you, sync: net.sync, serverHash: net.view.hash, localHash: game ? gameHash(game) : '', queued: net.queue.length, serverScore: net.view.score, mine: !!net.view.mine, voice: voice.state, peer: voice.peerState(String(net.view.you === 0 ? 1 : 0)), voiceSeen: net.view.voice } : null }),
   setSpeed: (n: number) => { speed = n; },
   setTurbo: (on: boolean) => { turbo = on; },

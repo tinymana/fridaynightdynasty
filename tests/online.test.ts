@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, draftFromFront, draftFromPlay, exhibitionTeams, playById, playFromDraft, validateDefPlay, validateOffPlay, type DefDecision, type OffDecision } from '@fnd/core';
 import { gameHash, replayGame } from '@fnd/match-sim';
-import { AWAY_MS, CALL_MS, LOBBY_TIMEOUT_MS, MemoryStore, createApi, type RoomView } from '@fnd/online';
+import { AWAY_MS, CALL_MS, KICK_MS, LOBBY_TIMEOUT_MS, MemoryStore, createApi, type RoomView } from '@fnd/online';
 
 /** Milestone 2b acceptance: online head-to-head with hidden calls, server-run plays, rejoin and tamper resistance. */
 
@@ -29,12 +29,17 @@ async function started(hostTeam = 0) {
   const l = await lobby(world(), hostTeam);
   const r = await l.w.call({ action: 'start', token: l.host, pin: l.pin });
   expect(r.ok).toBe(true);
+  // The opening kickoff is the kicking coach's call; kick it deep so tests start from scrimmage.
+  const kicker = r.room!.you === r.room!.need.offense ? l.host : l.guest;
+  expect(r.room!.need.phase).toBe('kickoff');
+  expect((await l.w.call({ action: 'call', token: kicker, pin: l.pin, turn: r.room!.turn, call: { kind: 'kickoff', style: 'deep' } })).ok).toBe(true);
   return l;
 }
 
 const DEF: DefDecision = { frontId: '43', callId: 'base' };
 /** A simple legal call for whichever sideline the view belongs to. */
 function callFor(v: RoomView): OffDecision | DefDecision {
+  if (v.need.phase === 'kickoff') return { kind: 'kickoff', style: 'deep' };
   if (v.you !== v.need.offense) return DEF;
   if (v.need.phase === 'conversion') return { kind: 'patKick' };
   return { kind: 'play', playId: v.books[v.you][v.turn % 8] };
@@ -116,7 +121,30 @@ describe('lobby', () => {
 });
 
 describe('playing a game', () => {
-  it('runs the opening kickoff on the server and asks both sidelines for a call', async () => {
+  it('the kickoff is the kicking coach\'s call alone, and the AI kicks if he does not', async () => {
+    const l = await lobby(world());
+    const v = (await l.w.call({ action: 'start', token: l.host, pin: l.pin })).room!;
+    expect(v.need.phase).toBe('kickoff');
+    expect(v.logSize).toBe(0);
+    const kicker = v.you === v.need.offense ? l.host : l.guest;
+    const receiver = kicker === l.host ? l.guest : l.host;
+    expect((await l.w.call({ action: 'call', token: receiver, pin: l.pin, turn: v.turn, call: { kind: 'kickoff', style: 'onside' } })).error!.code).toBe('bad_call');
+    expect((await l.w.call({ action: 'call', token: kicker, pin: l.pin, turn: v.turn, call: { kind: 'kickoff', style: 'sideways' } })).error!.code).toBe('bad_call');
+    expect((await l.w.call({ action: 'call', token: kicker, pin: l.pin, turn: v.turn, call: { kind: 'play', playId: 'dive' } })).error!.code).toBe('bad_call');
+    const done = (await l.w.call({ action: 'call', token: kicker, pin: l.pin, turn: v.turn, call: { kind: 'kickoff', style: 'onside' } })).room!;
+    expect(done.logSize).toBe(1);
+    expect((done.log[0] as { off: OffDecision }).off).toEqual({ kind: 'kickoff', style: 'onside' });
+    expect(done.need.phase).toBe('scrimmage');
+    // A second room where nobody kicks: the clock runs out and the AI kicks it.
+    const m = await lobby(world());
+    const mv = (await m.w.call({ action: 'start', token: m.host, pin: m.pin })).room!;
+    m.w.advance(KICK_MS + 1);
+    const after = (await m.w.call({ action: 'game', token: m.host, pin: m.pin })).room!;
+    expect(after.turn).toBe(mv.turn + 1);
+    expect((after.log[0] as { off: OffDecision }).off.kind).toBe('kickoff');
+  });
+
+  it('after the kickoff the server asks both sidelines for a call', async () => {
     const { w, host, pin } = await started();
     const v = (await w.call({ action: 'game', token: host, pin })).room!;
     expect(v.state).toBe('playing');
@@ -210,8 +238,10 @@ describe('playing a game', () => {
     const back = (await w.call({ action: 'join', token: again, pin, have: 0 })).room!;
     expect(back.state).toBe('playing');
     expect(back.log.length).toBe(back.logSize);
-    const mine = (await w.call({ action: 'call', token: again, pin, turn: back.turn, call: callFor(back) })).room!;
-    expect(mine.mine).not.toBeNull();
+    const mine = await w.call({ action: 'call', token: again, pin, turn: back.turn, call: callFor(back) });
+    // After a score the next turn can be a kickoff that is the other coach's call; then he has nothing to send.
+    if (back.need.phase === 'kickoff' && back.you !== back.need.offense) expect(mine.error!.code).toBe('bad_call');
+    else expect(mine.room!.mine).not.toBeNull();
     void guest;
   });
 
@@ -342,7 +372,8 @@ describe('designed plays online', () => {
     const guest = await w.enter('NODEF');
     const pin = (await w.call({ action: 'host', token: host, team: 0, defenses: [def] })).room!.pin;
     await w.call({ action: 'join', token: guest, pin });
-    await w.call({ action: 'start', token: host, pin });
+    const sv = (await w.call({ action: 'start', token: host, pin })).room!;
+    await w.call({ action: 'call', token: sv.you === sv.need.offense ? host : guest, pin, turn: sv.turn, call: { kind: 'kickoff', style: 'deep' } });
     const hv = (await w.call({ action: 'game', token: host, pin })).room!;
     const call = { frontId: '@custom', callId: def.id };
     if (hv.you === hv.need.offense) {

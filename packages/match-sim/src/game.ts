@@ -1,13 +1,13 @@
 import {
-  CUSTOM_FRONT, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, GROUPS, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, OFFENSE_PLAYS, RULES, Rng, U, clamp, formationOf, frontById, hashString,
+  CUSTOM_FRONT, DEFAULT_BOOK, DEFAULT_SETUP, DEFENSE_FRONTS, DEFENSE_SCHEMES, GROUPS, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, OFFENSE_PLAYS, RULES, Rng, U, WEATHER, clamp, cleanSetup, formationOf, frontById, hashString,
   schemeById, toFront, toScheme, validateBook, validateDefPlay, validateOffPlay,
   type DefFront, type DefPlay, type DefScheme, type OffPlay,
-  type DefDecision, type GamePlan, type Group, type ManageAction, type OffDecision, type PlayEvent, type PlayFlags, type PlayType,
+  type DefDecision, type GamePlan, type GameSetup, type Group, type KickStyle, type ManageAction, type OffDecision, type PlayEvent, type PlayFlags, type PlayType,
   type Player, type Situation, type Slot, type Team,
 } from '@fnd/core';
-import { DEFAULT_PLAN, aiDefense, aiOffense, fieldGoalDistance } from '@fnd/football-ai';
+import { DEFAULT_PLAN, aiDefense, aiKickoff, aiOffense, fieldGoalDistance } from '@fnd/football-ai';
 import { PlaySim, type PlayContext, type PlayResult } from './play';
-import { fieldGoalChance, patChance, resolveKickoff, resolvePunt } from './special';
+import { blockOutcome, fieldGoalChance, patChance, resolvePunt, resolveStyledKickoff } from './special';
 
 /** Game rules: downs, clock, scoring, possession, fatigue and substitutions. Turns coaching decisions into play events. */
 
@@ -40,6 +40,8 @@ export interface GameOptions {
   /** Each coach's own designed plays and defenses. Re-validated here: nothing illegal reaches the field. */
   plays?: readonly [readonly OffPlay[], readonly OffPlay[]];
   defenses?: readonly [readonly DefPlay[], readonly DefPlay[]];
+  /** Quarter length and weather. Twelve-minute quarters on a clear night when absent. */
+  setup?: Partial<GameSetup>;
 }
 
 /** A substitution made because a starter is resting. */
@@ -86,13 +88,20 @@ export class Game {
   private readonly resting = new Set<string>();
   private instant = false;
   private twoPoint = false;
+  /** The defense went for the block on the last snap and the offense ran a real play. */
+  caughtBlocking = false;
   private calls: { off?: string; front?: string; def?: string } = {};
   private lastSnap: { offense: 0 | 1; n: number; ctx: Omit<PlayContext, 'rng'> } | null = null;
 
+  readonly setup: GameSetup;
+  private readonly quarterSeconds: number;
+
   constructor(readonly seed: number, readonly teams: readonly [Team, Team], opts: GameOptions = {}) {
+    this.setup = cleanSetup({ ...DEFAULT_SETUP, ...opts.setup });
+    this.quarterSeconds = this.setup.quarterMinutes * 60;
     const receiver = Rng.stream(seed, 'toss').int(0, 1) as 0 | 1;
     this.state = {
-      quarter: 1, clock: RULES.quarterSeconds, score: [0, 0], possession: receiver, down: 1, distance: 10, yardLine: 20,
+      quarter: 1, clock: this.quarterSeconds, score: [0, 0], possession: receiver, down: 1, distance: 10, yardLine: 20,
       phase: 'kickoff', kicking: other(receiver), kickFrom: RULES.kickoffFrom,
       timeouts: [RULES.timeoutsPerHalf, RULES.timeoutsPerHalf], clockRunning: false, openingReceiver: receiver,
     };
@@ -223,10 +232,11 @@ export class Game {
     this.lastSubs = [];
     this.instant = false;
     this.twoPoint = false;
+    this.caughtBlocking = false;
     this.calls = {};
 
     if (s.phase === 'kickoff') {
-      this.kickoff(Rng.stream(this.seed, `special:${n}`));
+      this.kickoff(Rng.stream(this.seed, `special:${n}`), off?.kind === 'kickoff' ? off.style : 'deep');
       this.instant = true;
       return;
     }
@@ -261,11 +271,11 @@ export class Game {
       }
       this.twoPoint = true;
     } else if (off.kind === 'punt') {
-      this.punt(Rng.stream(this.seed, `special:${n}`));
+      this.punt(Rng.stream(this.seed, `special:${n}`), def?.block === true && s.down === 4);
       this.instant = true;
       return;
     } else if (off.kind === 'fieldGoal') {
-      this.fieldGoal(Rng.stream(this.seed, `special:${n}`));
+      this.fieldGoal(Rng.stream(this.seed, `special:${n}`), def?.block === true && s.down === 4);
       this.instant = true;
       return;
     } else if (off.kind === 'kneel') {
@@ -279,7 +289,11 @@ export class Game {
 
     const play = this.playOf(offTeam, off.playId);
     const formation = formationOf(play);
-    const { front, scheme } = this.defenseOf(other(offTeam), def);
+    const called = this.defenseOf(other(offTeam), def);
+    const front = called.front;
+    // A defense that sold out for the block and got a real play is out of position: it plays as if it guessed wrong.
+    this.caughtBlocking = def.block === true && s.phase === 'scrimmage' && s.down === 4;
+    const scheme = this.caughtBlocking ? { ...called.scheme, kind: play.kind === 'run' ? 'pass' as const : 'run' as const } : called.scheme;
     const offPlayers = this.lineup(offTeam, formation.slots, this.lastSubs);
     const defPlayers = this.lineup(other(offTeam), front.slots, this.lastSubs);
     const ctx: Omit<PlayContext, 'rng'> = {
@@ -287,6 +301,7 @@ export class Game {
       offEnergy: offPlayers.map((p) => this.energy[p.id]),
       defEnergy: defPlayers.map((p) => this.energy[p.id]),
       los: this.twoPoint ? RULES.twoPointFrom : s.yardLine,
+      weather: this.setup.weather,
     };
     this.calls = { off: play.id, front: front.id, def: scheme.id };
     this.lastSnap = { offense: offTeam, n, ctx };
@@ -326,7 +341,7 @@ export class Game {
       const id = p.player.id;
       played.add(id);
       const work = 1 + p.moved / (U * 14) + (p.contact ? 2.5 : 0) + (p.engaged >= 0 ? 0.5 : 0);
-      this.energy[id] = Math.max(0, this.energy[id] - (work * (140 - p.player.ratings.stamina)) / 80);
+      this.energy[id] = Math.max(0, this.energy[id] - ((work * (140 - p.player.ratings.stamina)) / 80) * WEATHER[this.setup.weather].drain);
     }
     for (const id of Object.keys(this.energy)) {
       if (!played.has(id)) this.energy[id] = Math.min(100, this.energy[id] + 1.5);
@@ -380,7 +395,7 @@ export class Game {
     s.clockRunning = false;
     if (s.quarter === 2) {
       s.quarter = 3;
-      s.clock = RULES.quarterSeconds;
+      s.clock = this.quarterSeconds;
       s.timeouts = [RULES.timeoutsPerHalf, RULES.timeoutsPerHalf];
       this.setKickoff(s.openingReceiver, RULES.kickoffFrom);
       this.rest(40);
@@ -389,7 +404,7 @@ export class Game {
       s.phase = 'final';
     } else {
       s.quarter++;
-      s.clock = RULES.quarterSeconds;
+      s.clock = this.quarterSeconds;
       this.rest(10);
     }
   }
@@ -399,17 +414,31 @@ export class Game {
     if (s.clock <= 0 && s.phase !== 'conversion' && s.phase !== 'final') this.endQuarter();
   }
 
-  private kickoff(rng: Rng): void {
+  /** The receivers expect an onside kick when the kicking team is behind late in the game. */
+  onsideExpected(): boolean {
+    const s = this.state;
+    return s.quarter >= RULES.quarters && s.clock <= 300 && s.score[s.kicking] < s.score[other(s.kicking)];
+  }
+
+  private kickoff(rng: Rng, style: KickStyle): void {
     const s = this.state;
     const before = { down: 0, distance: 0, yardLine: s.kickFrom, quarter: s.quarter, clock: s.clock };
     const kick = s.kicking;
     const recv = other(kick);
     const kicker = this.starter(kick, 'K');
     const returner = this.starter(recv, 'WR', 3);
-    const r = resolveKickoff(rng, kicker, returner, s.kickFrom);
-    this.runClock(r.touchback ? 0 : 6);
+    const r = resolveStyledKickoff(rng, kicker, returner, s.kickFrom, style, this.onsideExpected());
+    this.runClock(r.touchback ? 0 : style === 'onside' ? 3 : 6);
     const points: [number, number] = [0, 0];
     let text: string;
+    if (style === 'onside') {
+      this.firstDownAt(r.recovered ? kick : recv, r.startYard);
+      text = r.recovered ? `Onside kick! ${this.teams[kick].name} recover it.` : `Onside kick by ${short(kicker)}. ${this.teams[recv].name} fall on it.`;
+      s.clockRunning = false;
+      this.emit('kickoff', kick, before, r.kickYards, { onside: true, recovered: r.recovered }, points, 3, text, { kicker: kicker.id });
+      this.afterPlayClock();
+      return;
+    }
     if (r.touchdown) {
       s.score[recv] += 6;
       points[recv] = 6;
@@ -419,7 +448,8 @@ export class Game {
       text = `Kickoff returned ${yds(r.returnYards)} by ${short(returner)} for a TOUCHDOWN!`;
     } else {
       this.firstDownAt(recv, r.startYard);
-      text = r.touchback ? `${short(kicker)} kicks off. Touchback.` : `${short(kicker)} kicks off. ${short(returner)} returns it ${yds(r.returnYards)}.`;
+      text = r.touchback ? `${short(kicker)} kicks off. Touchback.`
+        : `${short(kicker)} ${style === 'squib' ? 'squibs it' : 'kicks off'}. ${short(returner)} returns it ${yds(r.returnYards)}.`;
     }
     s.clockRunning = false;
     this.emit('kickoff', kick, before, r.kickYards, { touchback: r.touchback, touchdown: r.touchdown }, points, r.touchback ? 0 : 6, text,
@@ -427,30 +457,65 @@ export class Game {
     this.afterPlayClock();
   }
 
-  private punt(rng: Rng): void {
+  /** Fifteen yards and a first down for running into the kicker. */
+  private roughing(off: 0 | 1): void {
+    const s = this.state;
+    this.firstDownAt(off, s.yardLine + 15 >= 100 ? s.yardLine + Math.max(1, Math.trunc((100 - s.yardLine) / 2)) : s.yardLine + 15);
+    s.clockRunning = false;
+  }
+
+  private punt(rng: Rng, rushed: boolean): void {
     const s = this.state;
     const before = this.snapshot();
     const off = s.possession;
     const punter = this.starter(off, 'P');
-    const r = resolvePunt(rng, punter, s.yardLine);
+    const r = resolvePunt(rng, punter, s.yardLine, WEATHER[this.setup.weather].puntDistance);
+    const fate = rushed ? blockOutcome(rng.range(0, 1)) : 'none';
     this.runClock(8);
-    this.firstDownAt(other(off), r.startYard);
-    s.clockRunning = false;
-    const text = r.touchback ? `${short(punter)} punts into the end zone. Touchback.`
-      : `${short(punter)} punts ${yds(r.grossYards)}${r.returnYards ? `, returned ${yds(r.returnYards)}` : ', fair catch'}.`;
-    this.emit('punt', off, before, r.grossYards, { touchback: r.touchback }, [0, 0], 8, text, { kicker: punter.id });
+    if (fate === 'blocked') {
+      this.firstDownAt(other(off), clamp(100 - (s.yardLine - 6), 1, 99));
+      s.clockRunning = false;
+      this.emit('punt', off, before, 0, { blocked: true }, [0, 0], 8, `BLOCKED! ${this.teams[other(off)].name} get to ${short(punter)}'s punt.`, { kicker: punter.id });
+    } else if (fate === 'roughing') {
+      this.roughing(off);
+      this.emit('punt', off, before, 15, { roughing: true, firstDown: true }, [0, 0], 8, `Flag: running into the kicker. First down, ${this.teams[off].name}.`, { kicker: punter.id });
+    } else {
+      // A defense that came after the punt has nobody back to return it.
+      const startYard = rushed && !r.touchback ? clamp(r.startYard - r.returnYards, 1, 99) : r.startYard;
+      const returned = rushed ? 0 : r.returnYards;
+      this.firstDownAt(other(off), startYard);
+      s.clockRunning = false;
+      const text = r.touchback ? `${short(punter)} punts into the end zone. Touchback.`
+        : `${short(punter)} punts ${yds(r.grossYards)}${returned ? `, returned ${yds(returned)}` : rushed ? ', no return' : ', fair catch'}.`;
+      this.emit('punt', off, before, r.grossYards, { touchback: r.touchback }, [0, 0], 8, text, { kicker: punter.id });
+    }
     this.afterPlayClock();
   }
 
-  private fieldGoal(rng: Rng): void {
+  private fieldGoal(rng: Rng, rushed: boolean): void {
     const s = this.state;
     const before = this.snapshot();
     const off = s.possession;
     const kicker = this.starter(off, 'K');
     const dist = fieldGoalDistance(s.yardLine);
-    const good = rng.chance(fieldGoalChance(kicker, s.yardLine));
+    const made = rng.chance(clamp(fieldGoalChance(kicker, s.yardLine) + WEATHER[this.setup.weather].kicking, 0.01, 0.97));
+    const fate = rushed ? blockOutcome(rng.range(0, 1)) : 'none';
+    const good = made && fate !== 'blocked';
     this.runClock(5);
     const points: [number, number] = [0, 0];
+    if (fate === 'roughing' && !made) {
+      this.roughing(off);
+      this.emit('fieldGoal', off, before, dist, { good: false, roughing: true, firstDown: true }, points, 5, `${short(kicker)} misses from ${dist}, but there is a flag: running into the kicker. First down.`, { kicker: kicker.id });
+      this.afterPlayClock();
+      return;
+    }
+    if (fate === 'blocked') {
+      this.firstDownAt(other(off), Math.max(RULES.touchbackAt, 100 - s.yardLine));
+      s.clockRunning = false;
+      this.emit('fieldGoal', off, before, dist, { good: false, blocked: true }, points, 5, `BLOCKED! ${short(kicker)}'s ${dist}-yard field goal never gets off the ground.`, { kicker: kicker.id });
+      this.afterPlayClock();
+      return;
+    }
     if (good) {
       s.score[off] += 3;
       points[off] = 3;
@@ -468,7 +533,7 @@ export class Game {
     const before = this.snapshot();
     const off = s.possession;
     const kicker = this.starter(off, 'K');
-    const good = rng.chance(patChance(kicker));
+    const good = rng.chance(clamp(patChance(kicker) + WEATHER[this.setup.weather].kicking / 2, 0.3, 0.98));
     const points: [number, number] = [0, 0];
     if (good) {
       s.score[off] += 1;
@@ -609,8 +674,9 @@ export class AutoCoach {
     this.plans = plans ? [{ ...plans[0] }, { ...plans[1] }] : [{ ...DEFAULT_PLAN }, { ...DEFAULT_PLAN }];
   }
   offense(game: Game): OffDecision | null {
-    if (game.state.phase === 'kickoff') return null;
-    const t = game.state.possession;
+    const s = game.state;
+    if (s.phase === 'kickoff') return { kind: 'kickoff', style: aiKickoff(s.quarter, s.clock, s.score[s.kicking] - s.score[other(s.kicking)]) };
+    const t = s.possession;
     return aiOffense(game.situation(t), game.bookPlays(t), this.rng[t], this.plans[t]);
   }
   defense(game: Game): DefDecision | null {

@@ -12,7 +12,7 @@
  */
 // @ts-expect-error Deno resolves npm: specifiers at runtime.
 import postgres from 'npm:postgres@3.4.5';
-import { RoomError, createApi, type Career, type Coach, type GameResult, type Room, type Store } from '../../../packages/online/src/index';
+import { AI_COACH, RoomError, createApi, type Career, type Coach, type GameResult, type Room, type SharedLeague, type Store } from '../../../packages/online/src/index';
 
 declare const Deno: { env: { get(name: string): string | undefined }; serve(handler: (req: Request) => Promise<Response> | Response): void };
 
@@ -91,10 +91,33 @@ const store: Store = {
       const room = (typeof raw === 'string' ? JSON.parse(raw) : raw) as Room;
       const out = fn(room);
       await tx`
-        update fnd.rooms set data = ${tx.json(room as never)}, state = ${room.state}, guest_id = ${room.guest?.id ?? null}, updated_at = now()
+        update fnd.rooms set data = ${tx.json(room as never)}, state = ${room.state}, guest_id = ${room.guest && room.guest.id !== AI_COACH.id ? room.guest.id : null}, updated_at = now()
         where pin = ${pin}`;
       return out;
     })) as T;
+  },
+
+  async createLeague(league: SharedLeague) {
+    const made: Row[] = await sql`
+      insert into fnd.leagues (code, commissioner_id, data) values (${league.code}, ${league.commissioner.id}, ${sql.json(league as never)})
+      on conflict (code) do nothing returning code`;
+    return made.length > 0;
+  },
+
+  async withLeague<T>(code: string, fn: (league: SharedLeague) => T): Promise<T> {
+    return (await sql.begin(async (tx: any) => {
+      const rows: Row[] = await tx`select data from fnd.leagues where code = ${code} for update`;
+      if (rows.length === 0) throw new RoomError('no_league', 'No league has that code.', 404);
+      const raw = rows[0].data;
+      const league = (typeof raw === 'string' ? JSON.parse(raw) : raw) as SharedLeague;
+      const out = fn(league);
+      await tx`update fnd.leagues set data = ${tx.json(league as never)}, updated_at = now() where code = ${code}`;
+      return out;
+    })) as T;
+  },
+
+  async addChampionship(coachId: string) {
+    await sql`update fnd.coaches set championships = championships + 1 where id = ${coachId}`;
   },
 
   async dropRoomsOf(coachId: string, olderThan: number) {

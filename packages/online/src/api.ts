@@ -1,8 +1,12 @@
 import { Rng } from '@fnd/core';
 import {
-  RoomError, createRoom, joinRoom, leaveRoom, manageRoom, setPlan, startRoom, submitCall, takeResult, tickRoom, touch, viewRoom, voiceExchange,
+  AI_COACH, RoomError, createLeagueRoom, createRoom, joinLeagueRoom, joinRoom, leaveRoom, manageRoom, setPlan, startRoom, submitCall, takeResult, tickRoom, touch, viewRoom, voiceExchange,
   type Coach, type GameResult, type Room,
 } from './room';
+import {
+  LEAGUE_CODE, claimSchool, createShared, forceWeek, gameOf, nextSharedSeason, recordGame, roomKey, roomLeague, startSeason, stepLeague, viewLeague,
+  type SharedLeague,
+} from './shared';
 
 /**
  * The online API: one endpoint, called with POST { action, ... }. Storage is behind the `Store` interface,
@@ -25,6 +29,12 @@ export interface Store {
   careerOf(coachId: string): Promise<Career | null>;
   /** The best records among all coaches: most wins first, then win rate, then point difference. */
   hallOfFame(limit: number): Promise<Career[]>;
+  /** Returns false if the league code is already in use. */
+  createLeague(league: SharedLeague): Promise<boolean>;
+  /** Runs `fn` with exclusive access to the league and saves it afterwards. Rejects with no_league if it does not exist. */
+  withLeague<T>(code: string, fn: (league: SharedLeague) => T): Promise<T>;
+  /** Adds one dynasty championship to a coach's career record. */
+  addChampionship(coachId: string): Promise<void>;
 }
 
 /** A coach's career record in online games. Championships arrive with dynasty seasons. */
@@ -90,9 +100,22 @@ export function createApi(store: Store, now: () => number = Date.now): (body: un
       const o = fn(room);
       return { out: o, result: takeResult(room) };
     });
-    if (result) await store.recordResult(result);
+    if (result) {
+      // Career records are for games between two coaches; a league game against an AI school counts only in the league.
+      if (!result.coaches.includes(AI_COACH.id)) await store.recordResult(result);
+      if (result.league) {
+        const lg = result.league;
+        await store.withLeague(lg.code, (l) => recordGame(l, lg, result.score, now())).catch(() => false);
+      }
+    }
     return out;
   };
+  const codeOf = (body: Body): string => {
+    const code = str(body, 'code').toUpperCase();
+    if (!LEAGUE_CODE.test(code)) throw new RoomError('no_league', 'A league code is five letters.', 404);
+    return code;
+  };
+  const bringing = (body: Body) => ({ book: body['book'], plays: body['plays'], defenses: body['defenses'] });
 
   const actions: Record<string, (body: Body) => Promise<Record<string, unknown>>> = {
     async enter(body) {
@@ -117,7 +140,7 @@ export function createApi(store: Store, now: () => number = Date.now): (body: un
       for (let attempt = 0; attempt < 12; attempt++) {
         const pin = String(10000 + (randomU32() % 90000));
         // The server picks the seed. Neither coach can choose or predict it.
-        const room = createRoom(pin, me, team, { book: body['book'], plays: body['plays'], defenses: body['defenses'] }, Rng.stream(randomU32(), pin).u32(), now());
+        const room = createRoom(pin, me, team, { book: body['book'], plays: body['plays'], defenses: body['defenses'], setup: body['setup'] }, Rng.stream(randomU32(), pin).u32(), now());
         if (await store.createRoom(room)) return { room: viewRoom(room, me.id, 0, now()) };
       }
       throw new RoomError('busy', 'Could not open a game. Try again.', 503);
@@ -176,6 +199,104 @@ export function createApi(store: Store, now: () => number = Date.now): (body: un
         manageRoom(room, me.id, body['change'], now());
         return { room: viewRoom(room, me.id, have(body), now()) };
       });
+    },
+
+    // ---- dynasty leagues shared by friends
+
+    async leagueCreate(body) {
+      const me = await auth(body);
+      const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+      for (let attempt = 0; attempt < 12; attempt++) {
+        let code = '';
+        for (let i = 0; i < 5; i++) code += letters[randomU32() % letters.length];
+        const league = createShared(code, me, body['state'], randomU32(), body['setup'], now());
+        if (typeof body['school'] === 'number') claimSchool(league, me, body['school'], now());
+        if (await store.createLeague(league)) return { league: viewLeague(league, me.id) };
+      }
+      throw new RoomError('busy', 'Could not start a league. Try again.', 503);
+    },
+
+    /** Polled by every coach in the league. Each call also moves the league one small step along. */
+    async league(body) {
+      const me = await auth(body);
+      const { view, champion } = await store.withLeague(codeOf(body), (l) => {
+        const step = stepLeague(l, now());
+        return { view: viewLeague(l, me.id), champion: step.champion };
+      });
+      if (champion) await store.addChampionship(champion.id);
+      return { league: view };
+    },
+
+    async leagueClaim(body) {
+      const me = await auth(body);
+      return store.withLeague(codeOf(body), (l) => {
+        claimSchool(l, me, body['school'], now());
+        return { league: viewLeague(l, me.id) };
+      });
+    },
+
+    async leagueStart(body) {
+      const me = await auth(body);
+      return store.withLeague(codeOf(body), (l) => {
+        startSeason(l, me.id, now());
+        return { league: viewLeague(l, me.id) };
+      });
+    },
+
+    /** Commissioner only: the AI plays this week's unfinished games so the league can move on. */
+    async leagueForce(body) {
+      const me = await auth(body);
+      return store.withLeague(codeOf(body), (l) => {
+        forceWeek(l, me.id, now());
+        return { league: viewLeague(l, me.id) };
+      });
+    },
+
+    async leagueNext(body) {
+      const me = await auth(body);
+      return store.withLeague(codeOf(body), (l) => {
+        nextSharedSeason(l, me.id, now());
+        return { league: viewLeague(l, me.id) };
+      });
+    },
+
+    /**
+     * Sit down to this week's game. Against an AI school it starts at once. Against another coach the first
+     * to arrive waits in the room, and the game starts when the second sits down: both have to be there.
+     */
+    async leaguePlay(body) {
+      const me = await auth(body);
+      const code = codeOf(body);
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const plan = await store.withLeague(code, (l) => {
+          const g = gameOf(l, me.id);
+          if (!g) throw new RoomError('bad_request', 'You have no game this week.');
+          if (g.done) throw new RoomError('bad_request', 'Your game this week has been played.');
+          const mine = l.coaches[g.home]?.id === me.id ? 0 : 1;
+          return { g, team: mine as 0 | 1, vsAi: l.coaches[mine === 0 ? g.away : g.home] === null, pin: l.rooms[roomKey(g.home, g.away)] ?? null, info: roomLeague(l, g.home, g.away) };
+        });
+        if (plan.pin) {
+          try {
+            return await inRoom(plan.pin, (room) => {
+              tickRoom(room, now());
+              joinLeagueRoom(room, me, bringing(body), now());
+              return { room: viewRoom(room, me.id, 0, now()) };
+            });
+          } catch (e) {
+            // The room has gone (it was cleared as stale): forget it and open a fresh one.
+            if (!(e instanceof RoomError) || e.code !== 'no_room') throw e;
+            await store.withLeague(code, (l) => { if (l.rooms[roomKey(plan.g.home, plan.g.away)] === plan.pin) delete l.rooms[roomKey(plan.g.home, plan.g.away)]; });
+            continue;
+          }
+        }
+        const pin = String(10000 + (randomU32() % 90000));
+        const room = createLeagueRoom(pin, me, plan.team, bringing(body), plan.info.seed, plan.info.league, plan.info.setup, plan.vsAi, now());
+        if (!(await store.createRoom(room))) continue;
+        // If the other coach opened a room in the same instant, his stands and this one is simply never used.
+        const kept = await store.withLeague(code, (l) => (l.rooms[roomKey(plan.g.home, plan.g.away)] ??= pin));
+        if (kept === pin) return { room: viewRoom(room, me.id, 0, now()) };
+      }
+      throw new RoomError('busy', 'Could not open the game. Try again.', 503);
     },
 
     /** The signed-in coach's career record. */

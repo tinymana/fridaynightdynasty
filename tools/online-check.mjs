@@ -71,7 +71,7 @@ try {
   await b.waitForSelector('#game:not(.hidden)');
   for (const p of [a, b]) await p.evaluate(() => window.__fnd.setSpeed(0));
 
-  let shot = false, rejoined = false, plays = 0, ownPlay = 0, ownDef = 0;
+  let shot = false, rejoined = false, plays = 0, ownPlay = 0, ownDef = 0, blocks = 0;
   let pages = [a, b];
   for (let i = 0; i < 6000; i++) {
     const states = await Promise.all(pages.map(st));
@@ -82,7 +82,8 @@ try {
       const p = pages[k];
       const prompt = await p.$eval('#prompt', (e) => e.textContent);
       const acts = await p.$$eval('#panel [data-act]', (els) => els.map((e) => e.dataset.act));
-      let pick = acts.filter((x) => x.startsWith('p:') || x.startsWith('d:') || x.startsWith('m:') || x === 'pat');
+      let pick = acts.filter((x) => x.startsWith('p:') || x.startsWith('d:') || x.startsWith('m:') || x.startsWith('k:') || x === 'pat');
+      if (acts.includes('block') && i % 4 === 0) { await p.click('#panel [data-act="block"]').catch(() => {}); blocks++; continue; }
       if (acts.includes('f:@custom') && i % 3 === 0) { await p.click('#panel [data-act="f:@custom"]').catch(() => {}); continue; }
       if (acts.includes('tab:@mine') && !acts.includes(`p:${mineId}`) && i % 2 === 0) { await p.click('#panel [data-act="tab:@mine"]').catch(() => {}); continue; }
       if (acts.includes(`p:${mineId}`) && i % 2 === 0) pick = [`p:${mineId}`];
@@ -121,7 +122,7 @@ try {
   check('rejoined guest is in sync', sb.online.sync === 'ok' && sb.online.localHash === sb.online.serverHash);
   check('final screen says it matches the server', (await pages[0].$eval('#finalMeta', (e) => e.textContent)).includes('matches the server'));
   await pages[0].screenshot({ path: `${out}/online-final.png` });
-  console.log('final score', sa.score, 'calls made', plays, 'designed plays called', ownPlay, 'designed defenses called', ownDef);
+  console.log('final score', sa.score, 'calls made', plays, 'designed plays called', ownPlay, 'designed defenses called', ownDef, 'block toggles', blocks);
   check('designed plays and defenses were called online', ownPlay > 3 && ownDef > 3);
   // Careers and the Hall of Fame.
   await sleep(3200);

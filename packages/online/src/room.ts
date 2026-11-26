@@ -1,9 +1,10 @@
 import {
-  CUSTOM_FRONT, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, clamp, exhibitionTeams, validateBook, validateDefPlay, validateOffPlay,
-  type DefDecision, type DefPlay, type GamePlan, type ManageAction, type OffDecision, type OffPlay,
+  CUSTOM_FRONT, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, KICK_STYLES, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, clamp, cleanSetup, exhibitionTeams, validateBook, validateDefPlay, validateOffPlay,
+  type DefDecision, type DefPlay, type GamePlan, type GameSetup, type KickStyle, type ManageAction, type OffDecision, type OffPlay,
 } from '@fnd/core';
 import { DEFAULT_PLAN } from '@fnd/football-ai';
 import { AutoCoach, Game, gameHash, replayGame, type LoggedDecision } from '@fnd/match-sim';
+import { leagueTeams, type RoomLeague } from './shared';
 
 /**
  * A head-to-head game room. Pure state transitions: no clock, no storage, no network.
@@ -12,15 +13,22 @@ import { AutoCoach, Game, gameHash, replayGame, type LoggedDecision } from '@fnd
 
 /** How long a coach has to call a play once the previous one is resolved (includes time to watch it). */
 export const CALL_MS = 45000;
+/** A kickoff call is one of three buttons: it gets less time. */
+export const KICK_MS = 20000;
 /** A coach not heard from for this long is away: the AI calls his plays so the other coach is not kept waiting. */
 export const AWAY_MS = 12000;
 /** A guest who stops checking in to the lobby for this long has left. */
 export const LOBBY_TIMEOUT_MS = 20000;
+/** Both coaches of a league game must have checked in this recently for it to start. */
+export const LEAGUE_HERE_MS = 8000;
 
 export interface Coach {
   id: string;
   name: string;
 }
+
+/** The seat of a school no coach runs. It is always "away", so the AI makes its calls at once. */
+export const AI_COACH: Coach = { id: '@ai', name: 'AI coach' };
 
 export interface Room {
   pin: string;
@@ -40,7 +48,10 @@ export interface Room {
   turn: number;
   /** Calls made for the current turn. Never sent to the other coach before the snap. */
   pending: { off?: OffDecision; def?: DefDecision };
-  need: { phase: 'scrimmage' | 'conversion' | 'none'; offense: 0 | 1 };
+  /** On a kickoff, `offense` is the kicking team and only that coach has a call to make. */
+  need: { phase: 'scrimmage' | 'conversion' | 'kickoff' | 'none'; offense: 0 | 1 };
+  /** Quarter length and weather, chosen by the host. Absent in rooms made before this existed. */
+  setup?: GameSetup;
   deadline: number;
   /** When each team's coach last checked in, by team index. */
   seen: [number, number];
@@ -52,6 +63,8 @@ export interface Room {
   voice?: VoiceBox;
   /** Set once the final score has been written to both coaches' career records. */
   recorded?: boolean;
+  /** Present when this is a dynasty league game: which league, week and schools. Team 0 is the home school. */
+  league?: RoomLeague;
 }
 
 /** A finished game, ready to be added to the two coaches' career records. */
@@ -59,6 +72,8 @@ export interface GameResult {
   /** Coach ids by team index. */
   coaches: [string, string];
   score: [number, number];
+  /** The league game this was, if it was one. */
+  league?: RoomLeague;
 }
 
 /** Hands over the result of a finished game exactly once. */
@@ -68,7 +83,7 @@ export function takeResult(room: Room): GameResult | null {
   const coaches: [string, string] = ['', ''];
   coaches[room.hostTeam] = room.host.id;
   coaches[room.hostTeam === 0 ? 1 : 0] = room.guest.id;
-  return { coaches, score: [room.score[0], room.score[1]] };
+  return room.league ? { coaches, score: [room.score[0], room.score[1]], league: room.league } : { coaches, score: [room.score[0], room.score[1]] };
 }
 
 export interface VoiceSignal {
@@ -131,6 +146,8 @@ function cleanDesigns(rawPlays: unknown, rawDefenses: unknown): { plays: OffPlay
 }
 
 export interface Bringing {
+  /** Host only: quarter length and weather. */
+  setup?: unknown;
   book?: unknown;
   plays?: unknown;
   defenses?: unknown;
@@ -152,7 +169,41 @@ export function createRoom(pin: string, host: Coach, team: 0 | 1, bring: Bringin
     need: { phase: 'none', offense: 0 }, deadline: 0, seen: [now, now], score: [0, 0], hash: '', createdAt: now, updatedAt: now,
   };
   seat(room, team, bring);
+  room.setup = cleanSetup(bring.setup);
   return room;
+}
+
+/**
+ * A room for a dynasty league game. The home school is team 0. With `vsAi` the other school has no coach:
+ * the game starts at once and the AI makes that side's calls.
+ */
+export function createLeagueRoom(pin: string, host: Coach, team: 0 | 1, bring: Bringing, seed: number, league: RoomLeague, setup: GameSetup, vsAi: boolean, now: number): Room {
+  const room = createRoom(pin, host, team, bring, seed, now);
+  room.league = league;
+  room.setup = setup;
+  if (vsAi) {
+    room.guest = AI_COACH;
+    room.state = 'playing';
+    room.seen = [now, now];
+    room.seen[other(team)] = 0;
+    settle(room, buildGame(room), now);
+  }
+  return room;
+}
+
+/** A coach sits down to a league game. It starts once both coaches are in the room at the same time. */
+export function joinLeagueRoom(room: Room, guest: Coach, bring: Bringing, now: number): void {
+  joinRoom(room, guest, bring, now);
+  startWhenBothHere(room, now);
+}
+
+/** A league game has no start button: it kicks off when both coaches have checked in within the last few seconds. */
+function startWhenBothHere(room: Room, now: number): void {
+  if (!room.league || room.state !== 'lobby' || !room.guest) return;
+  if (now - room.seen[0] > LEAGUE_HERE_MS || now - room.seen[1] > LEAGUE_HERE_MS) return;
+  room.state = 'playing';
+  room.log = [];
+  settle(room, buildGame(room), now);
 }
 
 export function joinRoom(room: Room, guest: Coach, bring: Bringing, now: number): void {
@@ -181,15 +232,11 @@ export function touch(room: Room, coachId: string, now: number): void {
 }
 
 function buildGame(room: Room): Game {
-  return replayGame(room.seed, exhibitionTeams(room.seed), room.log, { books: room.books, plays: room.designs?.plays, defenses: room.designs?.defenses });
+  return replayGame(room.seed, room.league ? leagueTeams(room.league) : exhibitionTeams(room.seed), room.log, { books: room.books, plays: room.designs?.plays, defenses: room.designs?.defenses, setup: room.setup });
 }
 
-/** Runs kickoffs (which need no decision), then records what the next decision is. */
+/** Records what the next decision is. */
 function settle(room: Room, game: Game, now: number): void {
-  while (game.state.phase === 'kickoff') {
-    game.begin(null, null);
-    while (!game.tick()) { /* step */ }
-  }
   room.log = game.log.map((d) => JSON.parse(JSON.stringify(d)) as LoggedDecision);
   room.turn = room.log.filter((d) => !('manage' in d)).length;
   room.score = [game.state.score[0], game.state.score[1]];
@@ -199,8 +246,9 @@ function settle(room: Room, game: Game, now: number): void {
     room.state = 'done';
     room.need = { phase: 'none', offense: 0 };
   } else {
-    room.need = { phase: game.state.phase === 'conversion' ? 'conversion' : 'scrimmage', offense: game.state.possession };
-    room.deadline = now + CALL_MS;
+    const kick = game.state.phase === 'kickoff';
+    room.need = kick ? { phase: 'kickoff', offense: game.state.kicking } : { phase: game.state.phase === 'conversion' ? 'conversion' : 'scrimmage', offense: game.state.possession };
+    room.deadline = now + (kick ? KICK_MS : CALL_MS);
   }
   room.updatedAt = now;
 }
@@ -218,6 +266,10 @@ export function startRoom(room: Room, coachId: string, now: number): void {
 function cleanOffense(room: Room, team: 0 | 1, raw: unknown): OffDecision {
   const c = (raw ?? {}) as Record<string, unknown>;
   const timeout = c['timeout'] === true;
+  if (room.need.phase === 'kickoff') {
+    if (c['kind'] === 'kickoff' && KICK_STYLES.includes(c['style'] as KickStyle)) return { kind: 'kickoff', style: c['style'] as KickStyle };
+    throw new RoomError('bad_call', 'Choose how to kick off.');
+  }
   if (room.need.phase === 'conversion') {
     if (c['kind'] === 'patKick') return { kind: 'patKick' };
     if (c['kind'] === 'play' && typeof c['playId'] === 'string' && room.books[team].includes(c['playId'])) return { kind: 'play', playId: c['playId'] };
@@ -239,10 +291,14 @@ function cleanDefense(room: Room, team: 0 | 1, raw: unknown): DefDecision {
   if (c['frontId'] === CUSTOM_FRONT) {
     // A designed defense must be one of this coach's own.
     if (typeof c['callId'] !== 'string' || !room.designs?.defenses[team].some((d) => d.id === c['callId'])) throw new RoomError('bad_call', 'That defense is not one of your designs.');
-    return { frontId: CUSTOM_FRONT, callId: c['callId'], timeout: c['timeout'] === true };
+    const own: DefDecision = { frontId: CUSTOM_FRONT, callId: c['callId'], timeout: c['timeout'] === true };
+    if (c['block'] === true) own.block = true;
+    return own;
   }
   if (!DEFENSE_FRONTS.some((f) => f.id === c['frontId']) || !DEFENSE_SCHEMES.some((s) => s.id === c['callId'])) throw new RoomError('bad_call', 'Unknown defensive call.');
-  return { frontId: c['frontId'] as string, callId: c['callId'] as string, timeout: c['timeout'] === true };
+  const lib: DefDecision = { frontId: c['frontId'] as string, callId: c['callId'] as string, timeout: c['timeout'] === true };
+  if (c['block'] === true) lib.block = true;
+  return lib;
 }
 
 /** Records a coach's call for the current turn. Which sideline it is for comes from who he is, never from the request. */
@@ -253,7 +309,8 @@ export function submitCall(room: Room, coachId: string, turn: number, call: unkn
   room.seen[team] = now;
   if (team === room.need.offense) {
     if (!room.pending.off) room.pending.off = cleanOffense(room, team, call);
-  } else if (!room.pending.def) room.pending.def = cleanDefense(room, team, call);
+  } else if (room.need.phase === 'kickoff') throw new RoomError('bad_call', 'The kicking team makes this call.');
+  else if (!room.pending.def) room.pending.def = cleanDefense(room, team, call);
   resolveIfReady(room, now);
 }
 
@@ -263,13 +320,14 @@ export function resolveIfReady(room: Room, now: number): boolean {
   const off = room.need.offense;
   const offAway = now - room.seen[off] > AWAY_MS;
   const defAway = now - room.seen[other(off)] > AWAY_MS;
-  const ready = (room.pending.off && room.pending.def) || now >= room.deadline
-    || (room.pending.off && defAway) || (room.pending.def && offAway);
+  const kick = room.need.phase === 'kickoff';
+  const ready = kick ? (room.pending.off || offAway || now >= room.deadline)
+    : (room.pending.off && room.pending.def) || now >= room.deadline || (room.pending.off && defAway) || (room.pending.def && offAway);
   if (!ready) return false;
   const game = buildGame(room);
   const ai = new AutoCoach((room.seed + room.log.length) >>> 0, room.plans);
   let offCall = room.pending.off ?? ai.offense(game)!;
-  let defCall = room.pending.def ?? ai.defense(game)!;
+  let defCall = kick ? null : room.pending.def ?? ai.defense(game)!;
   try {
     game.begin(offCall, defCall);
   } catch {
@@ -293,6 +351,7 @@ export function tickRoom(room: Room, now: number): void {
     room.guest = null;
     room.updatedAt = now;
   }
+  startWhenBothHere(room, now);
   resolveIfReady(room, now);
 }
 
@@ -368,6 +427,9 @@ export interface RoomView {
   books: [string[], string[]];
   /** Both coaches' designs. Each browser needs them to redraw the game. */
   designs: Designs;
+  setup: GameSetup;
+  /** Set for a dynasty league game: the browser builds the two schools from it. */
+  league: RoomLeague | null;
   turn: number;
   logSize: number;
   /** Log entries from the index the client asked for. */
@@ -396,7 +458,7 @@ export function viewRoom(room: Room, coachId: string, have: number, now: number)
   coaches[other(room.hostTeam)] = room.guest?.name ?? null;
   const iAmOffense = you === room.need.offense;
   return {
-    pin: room.pin, state: room.state, you, isHost: room.host.id === coachId, coaches, seed: room.seed, books: room.books, designs: room.designs ?? { plays: [[], []], defenses: [[], []] },
+    pin: room.pin, state: room.state, you, isHost: room.host.id === coachId, coaches, seed: room.seed, books: room.books, designs: room.designs ?? { plays: [[], []], defenses: [[], []] }, setup: cleanSetup(room.setup), league: room.league ?? null,
     turn: room.turn, logSize: room.log.length, log: room.log.slice(clamp(Math.trunc(have) || 0, 0, room.log.length)),
     need: room.need, submitted: { off: !!room.pending.off, def: !!room.pending.def },
     mine: (iAmOffense ? room.pending.off : room.pending.def) ?? null,

@@ -1,5 +1,6 @@
 import type { Career, Store } from './api';
 import { RoomError, type Coach, type GameResult, type Room } from './room';
+import type { SharedLeague } from './shared';
 
 const blank = (name: string): Career => ({ name, games: 0, wins: 0, losses: 0, ties: 0, pointsFor: 0, pointsAgainst: 0, championships: 0, streak: 0, bestStreak: 0 });
 
@@ -14,6 +15,7 @@ export class MemoryStore implements Store {
   readonly sessions = new Map<string, string>();
   readonly rooms = new Map<string, Room>();
   readonly careers = new Map<string, Career>();
+  readonly leagues = new Map<string, SharedLeague>();
   private nextId = 1;
 
   async signIn(name: string, pin: string) {
@@ -92,6 +94,29 @@ export class MemoryStore implements Store {
 
   async hallOfFame(limit: number): Promise<Career[]> {
     return [...this.careers.values()].filter((c) => c.games > 0).sort(hallOrder).slice(0, limit).map((c) => ({ ...c }));
+  }
+
+  async createLeague(league: SharedLeague): Promise<boolean> {
+    if (this.leagues.has(league.code)) return false;
+    this.leagues.set(league.code, structuredClone(league));
+    return true;
+  }
+
+  async withLeague<T>(code: string, fn: (league: SharedLeague) => T): Promise<T> {
+    const stored = this.leagues.get(code);
+    if (!stored) throw new RoomError('no_league', 'No league has that code.', 404);
+    const league = structuredClone(stored);
+    const out = fn(league);
+    this.leagues.set(code, league);
+    return out;
+  }
+
+  async addChampionship(coachId: string): Promise<void> {
+    const name = this.nameOf(coachId);
+    if (!name) return;
+    const c = this.careers.get(coachId) ?? blank(name);
+    c.championships++;
+    this.careers.set(coachId, c);
   }
 
   async dropRoomsOf(coachId: string, olderThan: number): Promise<void> {
