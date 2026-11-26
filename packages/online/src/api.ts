@@ -4,7 +4,7 @@ import {
   type Coach, type GameResult, type Room,
 } from './room';
 import {
-  LEAGUE_CODE, claimSchool, createShared, forceWeek, gameOf, nextSharedSeason, recordGame, roomKey, roomLeague, startSeason, stepLeague, viewLeague,
+  LEAGUE_CODE, claimSchool, createShared, editLeagueSchool, forceWeek, gameOf, nextSharedSeason, recordGame, roomKey, roomLeague, startSeason, stepLeague, viewLeague,
   type SharedLeague,
 } from './shared';
 
@@ -231,6 +231,15 @@ export function createApi(store: Store, now: () => number = Date.now): (body: un
       const me = await auth(body);
       return store.withLeague(codeOf(body), (l) => {
         claimSchool(l, me, body['school'], now());
+        return { league: viewLeague(l, me.id) };
+      });
+    },
+
+    /** Commissioner only: rename a school or change its colours. */
+    async leagueEdit(body) {
+      const me = await auth(body);
+      return store.withLeague(codeOf(body), (l) => {
+        editLeagueSchool(l, me.id, body['school'], body['identity'], now());
         return { league: viewLeague(l, me.id) };
       });
     },

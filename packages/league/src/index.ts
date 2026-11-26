@@ -112,6 +112,45 @@ export function createLeague(stateCode: string, seed: number): League {
   return { seed: seed >>> 0, state: state.code, schools };
 }
 
+/** What a commissioner may change about a school: what it is called and what it wears. Not how good it is. */
+export interface SchoolIdentity {
+  name: string;
+  mascot: string;
+  abbr: string;
+  colors: TeamColors;
+}
+
+const NAME_OK = /^[A-Za-z][A-Za-z '.-]{1,21}[A-Za-z.]$/;
+const MASCOT_OK = /^[A-Za-z][A-Za-z '-]{1,15}[A-Za-z]$/;
+const ABBR_OK = /^[A-Z]{2,4}$/;
+const tidy = (x: unknown): string => (typeof x === 'string' ? x.replace(/\s+/g, ' ').trim() : '');
+
+/** Checks a renamed or recoloured school. Returns the cleaned identity, or the reason it was refused. */
+export function checkIdentity(raw: unknown, taken: readonly SchoolIdentity[] = []): { ok: true; value: SchoolIdentity } | { ok: false; problem: string } {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const name = tidy(r['name']);
+  const mascot = tidy(r['mascot']);
+  const abbr = tidy(r['abbr']).toUpperCase();
+  if (!NAME_OK.test(name)) return { ok: false, problem: 'A school name is 3 to 23 letters and spaces.' };
+  if (!MASCOT_OK.test(mascot)) return { ok: false, problem: 'A mascot is 3 to 17 letters.' };
+  if (!ABBR_OK.test(abbr)) return { ok: false, problem: 'The short name is 2 to 4 capital letters.' };
+  const c = (r['colors'] ?? {}) as Record<string, unknown>;
+  const colour = (k: string): number | null => (typeof c[k] === 'number' && Number.isInteger(c[k]) && (c[k] as number) >= 0 && (c[k] as number) <= 0xffffff ? (c[k] as number) : null);
+  const [jersey, helmet, pants, trim] = [colour('jersey'), colour('helmet'), colour('pants'), colour('trim')];
+  if (jersey === null || helmet === null || pants === null || trim === null) return { ok: false, problem: 'Choose all four colours.' };
+  if (taken.some((t) => t.name.toLowerCase() === name.toLowerCase())) return { ok: false, problem: 'Another school in the league has that name.' };
+  if (taken.some((t) => t.abbr === abbr)) return { ok: false, problem: 'Another school in the league has that short name.' };
+  return { ok: true, value: { name, mascot, abbr, colors: { jersey, helmet, pants, trim } } };
+}
+
+/** Renames or recolours one school. Its players, strength and results are untouched. Throws with the reason if refused. */
+export function editSchool(league: League, school: number, raw: unknown): League {
+  if (!Number.isInteger(school) || school < 0 || school >= league.schools.length) throw new Error('Choose a school.');
+  const r = checkIdentity(raw, league.schools.filter((_, i) => i !== school));
+  if (!r.ok) throw new Error(r.problem);
+  return { ...league, schools: league.schools.map((s, i) => (i === school ? { ...s, ...r.value } : s)) };
+}
+
 /** Round robin by the circle method: seven weeks, four games a week, everyone plays everyone once. Pairs are [home, away]. */
 export function schedule(): [number, number][][] {
   const ring = Array.from({ length: LEAGUE_SIZE }, (_, i) => i);
@@ -330,8 +369,12 @@ export function loadDynasty(raw: unknown): Dynasty | null {
     if (!Number.isInteger(d.user) || d.user < 0 || d.user >= LEAGUE_SIZE || !Number.isInteger(d.year) || d.year < 1 || !Number.isInteger(d.week) || d.week < 0 || d.week > REGULAR_WEEKS + 1) return null;
     if (!Array.isArray(d.results) || !Array.isArray(d.history)) return null;
     const base = createLeague(d.league.state, d.league.seed);
-    // Names and colours always come from the seed; only prestige is taken from the save, and only within its range.
-    const schools = base.schools.map((s, i) => ({ ...s, prestige: clamp(Number(d.league.schools[i]?.prestige) || s.prestige, PRESTIGE_MIN, PRESTIGE_MAX) }));
+    // Strength is kept within its range. A name or colours the coach changed are kept only if they still pass the checks.
+    let schools = base.schools.map((s, i) => ({ ...s, prestige: clamp(Number(d.league.schools[i]?.prestige) || s.prestige, PRESTIGE_MIN, PRESTIGE_MAX) }));
+    for (let i = 0; i < LEAGUE_SIZE; i++) {
+      const r = checkIdentity(d.league.schools[i], schools.filter((_, k) => k !== i));
+      if (r.ok) schools = schools.map((s, k) => (k === i ? { ...s, ...r.value } : s));
+    }
     const results: GameResult[] = [];
     for (const g of d.results) {
       const ok = Number.isInteger(g.week) && g.week >= 0 && g.week <= REGULAR_WEEKS && Number.isInteger(g.home) && Number.isInteger(g.away) && g.home !== g.away

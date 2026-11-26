@@ -1,6 +1,8 @@
 import { WEATHER, type GameSetup, type Weather } from '@fnd/core';
 import { REGULAR_WEEKS, STATES, stateByCode } from '@fnd/league';
+import type { SchoolIdentity } from '@fnd/league';
 import type { LeagueView, RoomView } from '@fnd/online';
+import { bindSchoolForm, schoolFormHtml } from './school-form';
 
 /**
  * Dynasty with friends: a league on the server where each coach runs a school.
@@ -15,6 +17,7 @@ export interface SharedApi {
   force(code: string): Promise<LeagueView>;
   next(code: string): Promise<LeagueView>;
   play(code: string): Promise<RoomView>;
+  edit(code: string, school: number, identity: SchoolIdentity): Promise<LeagueView>;
 }
 
 export interface SharedHost {
@@ -44,6 +47,8 @@ export class SharedLeagueScreen {
   private drawn = '';
   private pickState = 'TX';
   private message = '';
+  /** The school the commissioner is renaming, or -1. The screen is not redrawn while the form is open. */
+  private editing = -1;
 
   constructor(private readonly root: HTMLElement, private readonly title: HTMLElement, private readonly host: SharedHost) {}
 
@@ -90,6 +95,7 @@ export class SharedLeagueScreen {
     this.view = null;
     this.drawn = '';
     this.message = '';
+    this.editing = -1;
   }
 
   private take(v: LeagueView): void {
@@ -128,35 +134,38 @@ export class SharedLeagueScreen {
     const v = this.view;
     if (!v) return;
     // Only redraw when something changed, so a button is never replaced under the coach's finger.
-    const stamp = JSON.stringify(v) + this.message;
-    if (stamp === this.drawn) return;
+    const stamp = JSON.stringify(v) + this.message + this.editing;
+    if (stamp === this.drawn || (this.editing >= 0 && this.root.querySelector('#sf'))) return;
     this.drawn = stamp;
     const state = stateByCode(v.stateCode);
     this.title.textContent = v.state === 'lobby' ? `${state.name} league` : `${state.name} · Year ${v.year}`;
     const dot = (i: number): string => `<span class="chip-sq" style="background:${css(v.schools[i].colors.jersey)}"></span>`;
     const who = (i: number): string => (v.schools[i].coach ? ` <small>(${esc(v.schools[i].coach!)})</small>` : '');
     const head = `<p>League code <b class="sh-code">${v.code}</b> · commissioner ${esc(v.commissioner)} · ${v.quarterMinutes}-minute quarters</p>`;
-    const foot = `<div class="orow center" style="margin-top:14px"><button class="seg" id="shBack">Main menu</button></div><div id="shMsg" class="sl-note" role="status" aria-live="polite" style="text-align:center">${esc(this.message)}</div>`;
+    const editor = v.isCommissioner
+      ? (this.editing >= 0 ? schoolFormHtml(v.schools[this.editing]) : `<div class="orow center" style="margin-top:12px"><label class="pick">Commissioner: rename a school <select id="shEdit"><option value="">Choose\u2026</option>${v.schools.map((s, i) => `<option value="${i}">${esc(s.name)} ${esc(s.mascot)}</option>`).join('')}</select></label></div>`)
+      : '';
+    const foot = `${editor}<div class="orow center" style="margin-top:14px"><button class="seg" id="shBack">Main menu</button></div><div id="shMsg" class="sl-note" role="status" aria-live="polite" style="text-align:center">${esc(this.message)}</div>`;
 
     if (v.state === 'lobby') {
       const coaches = v.schools.filter((s) => s.coach).length;
       this.root.innerHTML = `${head}<p>Share the code. Each coach signs in, joins with it and takes a school. Schools nobody takes are run by the AI.</p>
-        <div class="dy-pick">${v.schools.map((s, i) => `<button class="team-card${i === v.you ? ' me' : ''}" data-school="${i}" ${s.coach && i !== v.you ? 'disabled' : ''}><div class="swatch" style="background:linear-gradient(90deg, ${css(s.colors.jersey)} 0 60%, ${css(s.colors.trim)} 60% 80%, ${css(s.colors.helmet)} 80%)"></div><div class="nm">${esc(s.name)} ${s.mascot}</div><div class="sub">${s.coach ? `Coach ${esc(s.coach)}${i === v.you ? ' (you)' : ''}` : 'Open · AI for now'}</div></button>`).join('')}</div>
+        <div class="dy-pick">${v.schools.map((s, i) => `<button class="team-card${i === v.you ? ' me' : ''}" data-school="${i}" ${s.coach && i !== v.you ? 'disabled' : ''}><div class="swatch" style="background:linear-gradient(90deg, ${css(s.colors.jersey)} 0 60%, ${css(s.colors.trim)} 60% 80%, ${css(s.colors.helmet)} 80%)"></div><div class="nm">${esc(s.name)} ${esc(s.mascot)}</div><div class="sub">${s.coach ? `Coach ${esc(s.coach)}${i === v.you ? ' (you)' : ''}` : 'Open · AI for now'}</div></button>`).join('')}</div>
         <div class="orow center" style="margin-top:12px">${v.isCommissioner ? `<button class="seg on" id="shStart" ${coaches ? '' : 'disabled'}>Start the season (${coaches} ${coaches === 1 ? 'coach' : 'coaches'})</button>` : '<span class="sl-note">Waiting for the commissioner to start the season.</span>'}</div>${foot}`;
       this.root.querySelectorAll<HTMLButtonElement>('[data-school]').forEach((el) => el.addEventListener('click', () => { if (!el.disabled) void this.act(() => this.host.api.claim(v.code, Number(el.dataset.school))); }));
       this.root.querySelector('#shStart')?.addEventListener('click', () => void this.act(() => this.host.api.start(v.code)));
     } else {
-      const rows = v.standings.map((r, i) => `<tr class="${r.school === v.you ? 'me' : ''}"><td>${i + 1}</td><td>${dot(r.school)}${esc(v.schools[r.school].name)} ${v.schools[r.school].mascot}${who(r.school)}</td><td><b>${rec(r)}</b></td><td>${r.pointsFor}</td><td>${r.pointsAgainst}</td></tr>`).join('');
+      const rows = v.standings.map((r, i) => `<tr class="${r.school === v.you ? 'me' : ''}"><td>${i + 1}</td><td>${dot(r.school)}${esc(v.schools[r.school].name)} ${esc(v.schools[r.school].mascot)}${who(r.school)}</td><td><b>${rec(r)}</b></td><td>${r.pointsFor}</td><td>${r.pointsAgainst}</td></tr>`).join('');
       const mine = v.games.find((g) => g.home === v.you || g.away === v.you) ?? null;
       let next = '';
       if (v.over) {
         const h = v.history[v.history.length - 1];
-        next = `<div class="dy-next"><div class="big">${h.champion === v.you ? 'State champions! You win it all.' : `${esc(v.schools[h.champion].name)} ${v.schools[h.champion].mascot} are ${state.name} champions${v.schools[h.champion].coach ? `, coached by ${esc(v.schools[h.champion].coach!)}` : ''}.`}</div>
+        next = `<div class="dy-next"><div class="big">${h.champion === v.you ? 'State champions! You win it all.' : `${esc(v.schools[h.champion].name)} ${esc(v.schools[h.champion].mascot)} are ${state.name} champions${v.schools[h.champion].coach ? `, coached by ${esc(v.schools[h.champion].coach!)}` : ''}.`}</div>
           <div>${v.you >= 0 ? `You finished ${rec(v.record)}.` : ''}</div><div class="orow">${v.isCommissioner ? `<button class="seg on" id="shNext">Start year ${v.year + 1}</button>` : '<span class="sl-note">The commissioner starts the next year.</span>'}</div></div>`;
       } else if (mine && !mine.score) {
         const opp = mine.home === v.you ? mine.away : mine.home;
         const oppCoach = v.schools[opp].coach;
-        next = `<div class="dy-next"><div class="big">${weekName(v.week)}: ${mine.home === v.you ? 'home to' : 'away at'} ${esc(v.schools[opp].name)} ${v.schools[opp].mascot}</div>
+        next = `<div class="dy-next"><div class="big">${weekName(v.week)}: ${mine.home === v.you ? 'home to' : 'away at'} ${esc(v.schools[opp].name)} ${esc(v.schools[opp].mascot)}</div>
           <div>${oppCoach ? `Coached by ${esc(oppCoach)}. You both have to be here to play${mine.open ? ', and a coach is already waiting in the game' : ''}.` : 'Run by the AI. Play it whenever you like.'} Forecast: ${WEATHER[mine.weather as Weather].name.toLowerCase()}.</div>
           <div class="orow"><button class="seg on" id="shPlay">${oppCoach ? (mine.open ? 'Join the game' : 'Open the game and wait') : 'Coach the game'}</button></div></div>`;
       } else {
@@ -198,5 +207,26 @@ export class SharedLeagueScreen {
       });
     }
     this.root.querySelector('#shBack')!.addEventListener('click', () => { this.close(); this.host.back(); });
+    this.root.querySelector('#shEdit')?.addEventListener('change', (e) => {
+      const i = (e.target as HTMLSelectElement).value;
+      if (i === '') return;
+      this.editing = Number(i);
+      this.drawn = '';
+      this.render();
+    });
+    if (this.editing >= 0 && this.root.querySelector('#sf')) {
+      const i = this.editing;
+      const done = (): void => { this.editing = -1; this.drawn = ''; this.render(); };
+      bindSchoolForm(this.root, v.schools.filter((_, k) => k !== i), async (identity) => {
+        try {
+          const next = await this.host.api.edit(v.code, i, identity);
+          this.editing = -1;
+          this.drawn = '';
+          this.take(next);
+        } catch (e) {
+          throw new Error(this.host.errorText(e));
+        }
+      }, done);
+    }
   }
 }

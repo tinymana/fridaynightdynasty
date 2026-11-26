@@ -51,6 +51,18 @@ try {
   await b.click('#shBody [data-school="7"]');
   check('the commissioner sees the friend take a school', await until(async () => (await text(a, '#shBody')).includes('COACH BO')));
   check('only the commissioner has the start button', (await a.$('#shStart')) !== null && (await b.$('#shStart')) === null);
+  // The commissioner renames his school; the friend sees it and cannot do the same.
+  await a.select('#shEdit', '0');
+  await a.waitForSelector('#sf');
+  await a.$eval('#sfName', (e) => { e.value = 'Tiny Mana Prep'; });
+  await a.$eval('#sfMascot', (e) => { e.value = 'Wizards'; });
+  await a.$eval('#sfAbbr', (e) => { e.value = 'TMP'; });
+  await a.$eval('#sf_jersey', (e) => { e.value = '#6b21a8'; e.dispatchEvent(new Event('input', { bubbles: true })); });
+  await sleep(600);
+  check('the rename form stays open while the league keeps updating', (await a.$('#sf')) !== null && (await a.$eval('#sfName', (e) => e.value)) === 'Tiny Mana Prep');
+  await a.click('#sfSave');
+  check('the friend sees the renamed school', await until(async () => (await text(b, '#shBody')).includes('Tiny Mana Prep Wizards')));
+  check('only the commissioner can rename schools', (await a.$('#shEdit')) !== null && (await b.$('#shEdit')) === null);
   await a.screenshot({ path: `${out}/league-lobby.png` });
   await a.click('#shStart');
   check('both coaches see the season start', await until(async () => (await st(a)).league?.state === 'season' && (await st(b)).league?.state === 'season'));
@@ -64,7 +76,7 @@ try {
   await b.click('#shPlay');
   check('the game starts when both are there', await until(async () => (await st(a)).mode !== 'menu' && (await st(b)).mode !== 'menu' && (await a.$eval('#game', (e) => !e.classList.contains('hidden')))));
   const names = await text(a, '#bug');
-  check('the game is between the two league schools, not the exhibition teams', !names.includes('MCW') && !names.includes('DRS'));
+  check('the game is between the two league schools, under the new name', !names.includes('MCW') && !names.includes('DRS') && names.includes('TMP'));
   for (const p of [a, b]) await p.evaluate(() => { window.__fnd.setSpeed(0); });
   for (let i = 0; i < 9000; i++) {
     const [sa, sb] = [await st(a), await st(b)];

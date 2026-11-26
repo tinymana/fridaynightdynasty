@@ -1,7 +1,7 @@
 import { cleanSetup, type GameSetup, type Team, type TeamColors } from '@fnd/core';
 import {
-  LEAGUE_SIZE, REGULAR_WEEKS, STATES, addResult, closeWeek, createDynasty, createLeague, gameSeed, gameSetup, nextSeason, recordOf, simulate, standings, teamFor, weekComplete, weekGames,
-  type Dynasty, type SeasonRecord, type Standing,
+  LEAGUE_SIZE, REGULAR_WEEKS, STATES, addResult, closeWeek, createDynasty, createLeague, editSchool, gameSeed, gameSetup, nextSeason, recordOf, simulate, standings, teamFor, weekComplete, weekGames,
+  type Dynasty, type SchoolIdentity, type SeasonRecord, type Standing,
 } from '@fnd/league';
 import { RoomError, type Coach } from './room';
 
@@ -41,12 +41,14 @@ export interface RoomLeague {
   home: number;
   away: number;
   prestige: [number, number];
+  /** Names and colours of the two schools, when the commissioner has changed them. */
+  identity?: [SchoolIdentity, SchoolIdentity];
 }
 
 export function leagueTeams(l: RoomLeague): [Team, Team] {
   const league = createLeague(l.state, l.seed);
-  league.schools[l.home] = { ...league.schools[l.home], prestige: l.prestige[0] };
-  league.schools[l.away] = { ...league.schools[l.away], prestige: l.prestige[1] };
+  league.schools[l.home] = { ...league.schools[l.home], ...l.identity?.[0], prestige: l.prestige[0] };
+  league.schools[l.away] = { ...league.schools[l.away], ...l.identity?.[1], prestige: l.prestige[1] };
   const d = { league, year: l.year };
   return [teamFor(d, l.home), teamFor(d, l.away)];
 }
@@ -57,6 +59,19 @@ export function createShared(code: string, coach: Coach, stateCode: unknown, see
     code, state: 'lobby', dynasty: createDynasty(stateCode as string, seed, 0, { quarterMinutes: cleanSetup(setup).quarterMinutes }),
     commissioner: coach, coaches: Array<Coach | null>(LEAGUE_SIZE).fill(null), rooms: {}, createdAt: now, updatedAt: now,
   };
+}
+
+const identityOf = (s: SchoolIdentity): SchoolIdentity => ({ name: s.name, mascot: s.mascot, abbr: s.abbr, colors: { ...s.colors } });
+
+/** Commissioner only: rename a school or change its colours, at any time. Players, strength and results stay as they are. */
+export function editLeagueSchool(l: SharedLeague, coachId: string, school: unknown, identity: unknown, now: number): void {
+  if (l.commissioner.id !== coachId) throw new RoomError('not_host', 'Only the commissioner can rename schools.', 403);
+  try {
+    l.dynasty = { ...l.dynasty, league: editSchool(l.dynasty.league, typeof school === 'number' ? school : -1, identity) };
+  } catch (e) {
+    throw new RoomError('bad_request', e instanceof Error ? e.message : 'That change is not allowed.');
+  }
+  l.updatedAt = now;
 }
 
 export const schoolOf = (l: SharedLeague, coachId: string): number => l.coaches.findIndex((c) => c?.id === coachId);
@@ -95,7 +110,10 @@ export function gameOf(l: SharedLeague, coachId: string): { home: number; away: 
 export function roomLeague(l: SharedLeague, home: number, away: number): { league: RoomLeague; seed: number; setup: GameSetup } {
   const d = l.dynasty;
   return {
-    league: { code: l.code, state: d.league.state, seed: d.league.seed, year: d.year, week: d.week, home, away, prestige: [d.league.schools[home].prestige, d.league.schools[away].prestige] },
+    league: {
+      code: l.code, state: d.league.state, seed: d.league.seed, year: d.year, week: d.week, home, away, prestige: [d.league.schools[home].prestige, d.league.schools[away].prestige],
+      identity: [identityOf(d.league.schools[home]), identityOf(d.league.schools[away])],
+    },
     seed: gameSeed(d, d.week, home, away), setup: gameSetup(d, d.week, home, away),
   };
 }

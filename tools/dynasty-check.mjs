@@ -37,10 +37,27 @@ try {
   check('standings list all eight schools', (await page.$$('#dyBody table tr')).length === 9);
   await page.screenshot({ path: `${out}/dynasty-week1.png` });
 
+  // Rename my school and change its colours.
+  await page.select('#dyEdit', '2');
+  await page.$eval('#sfName', (e) => { e.value = ''; });
+  await page.type('#sfName', 'x');
+  await page.click('#sfSave');
+  check('a bad school name is refused with a reason', (await text('#sfMsg')).includes('3 to 23'));
+  await page.$eval('#sfName', (e) => { e.value = ''; });
+  await page.type('#sfName', 'Tiny Mana Prep');
+  await page.$eval('#sfMascot', (e) => { e.value = 'Wizards'; });
+  await page.$eval('#sfAbbr', (e) => { e.value = 'TMP'; });
+  await page.$eval('#sf_jersey', (e) => { e.value = '#6b21a8'; e.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.screenshot({ path: `${out}/dynasty-rename.png` });
+  await page.click('#sfSave');
+  await sleep(100);
+  check('the renamed school shows in the standings', (await text('#dyBody table')).includes('Tiny Mana Prep Wizards'));
+
   // Coach week 1.
   await page.click('#dyPlay');
   await page.evaluate(() => { window.__fnd.setSpeed(0); window.__fnd.setPlayClock(false); });
   check('the game is played with the dynasty quarter length', (await st()).setup.quarterMinutes === 4);
+  check('the game uses the new name', (await text('#bug')).includes('TMP'));
   for (let i = 0; i < 20000; i++) {
     s = await st();
     if (s.mode === 'final') break;
@@ -80,6 +97,11 @@ try {
   await page.click('#title');
   await sleep(150);
   s = await st();
+  await page.click('#dynastyBtn');
+  await sleep(100);
+  check('the new name survives a reload', (await text('#dyBody')).includes('Tiny Mana Prep'));
+  await page.click('#dyBack');
+  await sleep(100);
   check('the dynasty survives a reload', s.dynasty && s.dynasty.year === 2 && s.dynasty.history === 1 && (await text('#dynastyBtn')) === 'Continue dynasty');
   check('the menu shows the career line', /year 2/.test(await text('#dynastyLine')));
   // An exhibition game still works after a dynasty game.
