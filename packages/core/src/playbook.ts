@@ -82,8 +82,8 @@ export const OFFENSE_PLAYS: readonly OffPlay[] = [
   pass('verticals', 'Four Verticals', 'gun', 'Everyone deep. Needs time to throw.', ['deep'], 2, 72, {
     WR1: route([[40, 0]], true), WR2: route([[40, 0]], true), WR3: route([[12, 0], [26, 5]], true), TE: route([[10, 0], [11, -8]], true), RB: route([[0, 6], [3, 10]]),
   }),
-  pass('mesh', 'Mesh', 'gun', 'Crossing routes underneath. Beats man.', ['short'], 2, 54, {
-    WR1: route([[3.5, 0], [4.5, 22]], true), WR2: route([[4.5, 0], [5.5, -22]], true), WR3: route([[12, 0], [13, 5]]), TE: route([[10, 0], [16, 6]], true), RB: route([[1, 5], [3, 9]]),
+  pass('mesh', 'Mesh', 'gun', 'Crossing routes underneath. Beats man.', ['short'], 2, 60, {
+    WR1: route([[2.5, 0], [3.2, 22]], true), WR2: route([[3.5, 0], [4.2, -22]], true), WR3: route([[12, 0], [13, 5]]), TE: route([[10, 0], [16, 6]], true), RB: route([[1, 5], [3, 9]]),
   }),
   run('draw', 'Draw', 'gun', 'Show pass, then hand it off late.', ['inside'], 40, { RB: carry([[-4, 1], [-1, 0.5], [3, 0.5]]) }),
   pass('swing', 'Back Swing', 'gun', 'Dump it to the back in space.', ['quick'], 1, 36, {
@@ -172,6 +172,7 @@ export const DEFENSE_SCHEMES: readonly DefScheme[] = [
 
 /** Combines a front with a call: what each of the eleven defenders does on this snap. */
 export function defAssignment(slot: DefSlot, scheme: string): DefAssign {
+  if (slot.assign) return slot.assign;
   if (slot.role === 'DL') return { t: 'rush' };
   const isDb = slot.role === 'CB' || slot.role === 'NB';
   switch (scheme) {
@@ -208,11 +209,11 @@ export const formationById = byId(FORMATIONS, 'formation');
 export const frontById = byId(DEFENSE_FRONTS, 'front');
 export const schemeById = byId(DEFENSE_SCHEMES, 'defensive call');
 
-/** A book is valid when it has exactly eight distinct library plays with at least one run and one pass. */
-export function validateBook(ids: readonly string[]): string | null {
+/** A book is valid when it has exactly eight distinct plays (library or the coach's own designs) with at least one run and one pass. */
+export function validateBook(ids: readonly string[], designed: readonly OffPlay[] = []): string | null {
   if (ids.length !== BOOK_SIZE) return `A playbook needs exactly ${BOOK_SIZE} plays.`;
   if (new Set(ids).size !== ids.length) return 'A play can only be in the book once.';
-  const plays = ids.map((id) => OFFENSE_PLAYS.find((p) => p.id === id));
+  const plays = ids.map((id) => designed.find((p) => p.id === id) ?? OFFENSE_PLAYS.find((p) => p.id === id));
   if (plays.some((p) => !p)) return 'Unknown play in the book.';
   if (!plays.some((p) => p!.kind === 'run') || !plays.some((p) => p!.kind === 'pass')) return 'Carry at least one run and one pass.';
   return null;

@@ -11,6 +11,8 @@ import { carrierTarget, contestDistance, matchCoverage, qbRead, type CoverDefend
 
 const CY = FIELD_W >> 1;
 const MAX_TICKS = 900;
+/** How far a handoff or pitch can travel, in yards. */
+export const PITCH_RANGE = 6.5;
 
 export interface SimPlayer {
   idx: number;
@@ -129,6 +131,7 @@ export class PlaySim {
   private caught = false;
   private catchTick = 0;
   private handedOff = false;
+  private handoffAt = 0;
   private readEvery: number;
 
   constructor(ctx: PlayContext) {
@@ -157,7 +160,10 @@ export class PlaySim {
     // Man coverage is matched to the formation in front of it, and defensive backs line up over their man.
     const receivers: CoverReceiver[] = [];
     ctx.formation.slots.forEach((slot, i) => {
-      if (slot.group === 'WR' || slot.group === 'TE' || slot.group === 'RB') receivers.push({ idx: i, x: this.players[i].x, y: this.players[i].y, group: slot.group });
+      if (slot.group !== 'WR' && slot.group !== 'TE' && slot.group !== 'RB') return;
+      // Coverage goes by where a man lines up, not what he is: a back or tight end split out wide is covered as a receiver.
+      const wide = Math.abs(this.players[i].y - CY) >= yd(8);
+      receivers.push({ idx: i, x: this.players[i].x, y: this.players[i].y, group: wide ? 'WR' : slot.group });
     });
     const pairs = matchCoverage(receivers, manDefenders);
     for (const md of manDefenders) {
@@ -388,8 +394,13 @@ export class PlaySim {
     const b = this.ball;
     if (this.play.kind === 'run') {
       if (!this.handedOff && this.tick >= (this.play.handoffTick ?? 24)) {
-        this.handedOff = true;
-        b.holder = this.carrierIdx >= 0 ? this.carrierIdx : this.qbIdx;
+        const c = P[this.carrierIdx >= 0 ? this.carrierIdx : this.qbIdx];
+        // The ball has to get there: a handoff or pitch only reaches a back within a few yards of the quarterback.
+        if (c.idx === this.qbIdx || dist(c.x, c.y, this.qb.x, this.qb.y) <= yd(PITCH_RANGE)) {
+          this.handedOff = true;
+          this.handoffAt = this.tick;
+          b.holder = c.idx;
+        }
       }
       return;
     }
@@ -464,7 +475,7 @@ export class PlaySim {
     }
     const d = dist(this.qb.x, this.qb.y, ax, ay);
     const deep = Math.max(0, d - yd(18));
-    const err = Math.trunc(d * (0.03 + ((100 - q.throwAccuracy) / 100) * 0.13) + deep * 0.14) + (this.hurried ? yd(1.4) : 0);
+    const err = Math.trunc(d * (0.03 + ((100 - q.throwAccuracy) / 100) * 0.13) + deep * 0.2) + (this.hurried ? yd(1.4) : 0);
     ax += Math.trunc(this.rng.range(-err, err));
     ay += Math.trunc(this.rng.range(-err, err));
     b.toX = clamp(ax, yd(-8), yd(112));
@@ -519,7 +530,8 @@ export class PlaySim {
     b.holder = r.idx;
     r.x = clamp(b.toX, yd(-9), yd(109));
     r.y = clamp(b.toY, 1, FIELD_W - 1);
-    r.stumbleUntil = this.tick + 20;
+    // Hauling in a long ball costs more stride than a short one, which gives the coverage a chance to make the tackle.
+    r.stumbleUntil = this.tick + 20 + Math.min(30, Math.trunc(throwDist));
     for (let i = 11; i < 22; i++) {
       const d = P[i];
       d.recog = 4 + Math.trunc((100 - d.player.ratings.awareness) / 12);
@@ -537,7 +549,7 @@ export class PlaySim {
     const runLive = this.play.kind === 'run' && this.handedOff;
 
     if (d.mode !== 'rush' && d.mode !== 'pursue') {
-      if (runLive && this.tick >= (this.play.handoffTick ?? 24) + d.recog) d.mode = 'pursue';
+      if (runLive && this.tick >= this.handoffAt + d.recog) d.mode = 'pursue';
       else if (this.caught && this.tick >= this.catchTick + d.recog) d.mode = 'pursue';
     }
 
@@ -545,7 +557,7 @@ export class PlaySim {
     let ty = d.y;
     if (b.state === 'air') {
       const breaking = d.mode === 'rush' || d.mode === 'pursue' ||
-        (this.tick >= this.throwTick + 6 + Math.trunc(d.lag / 2) && dist(d.x, d.y, b.toX, b.toY) < yd(7));
+        (this.tick >= this.throwTick + 6 + Math.trunc(d.lag / 2) && dist(d.x, d.y, b.toX, b.toY) < Math.max(yd(7), d.spd * (b.T - b.t)));
       if (d.mode === 'man' && d.manIdx === this.target) [tx, ty] = this.manSpot(d);
       else if (breaking) {
         tx = b.toX;
@@ -582,7 +594,11 @@ export class PlaySim {
   private manSpot(d: SimPlayer): [number, number] {
     const lag = Math.max(2, d.lag - 4 * this.edge + (this.scheme.kind === 'blitz' ? 2 : 0));
     const [x, y] = this.lagged(d.manIdx, lag);
-    const cushion = Math.max(d.cushionFloor + yd(0.4) * this.edge, d.cushion - Math.trunc((this.tick * U) / 24));
+    // Once he sees his man stop, the defender drives on him instead of sitting back in his cushion.
+    const t = Math.max(0, this.tick - lag);
+    const seen = this.hx[d.manIdx];
+    const stopped = t > 20 && Math.abs(seen[t] - seen[Math.max(0, t - 6)]) < this.players[d.manIdx].spd * 2;
+    const cushion = stopped ? yd(0.3) : Math.max(d.cushionFloor + yd(0.4) * this.edge, d.cushion - Math.trunc((this.tick * U) / 24));
     return [Math.max(x + cushion, this.los + yd(1)), y];
   }
 
@@ -598,7 +614,7 @@ export class PlaySim {
       const a = this.assigns[o.idx];
       if (a.t !== 'route') continue;
       if (d.deep) {
-        if (Math.abs(o.y - zy) < yd(13) && o.x > zx - yd(7) && o.x > best) {
+        if (Math.abs(o.y - zy) < yd(18) && o.x > zx - yd(7) && o.x > best) {
           best = o.x;
           pick = i;
         }

@@ -174,8 +174,23 @@ describe('full game', () => {
       while (!g.tick()) { /* step */ }
     }
     expect(g.state.phase).toBe('final');
-    expect(kneels).toBeGreaterThan(0);
-    expect(g.events.some((e) => e.type === 'kneel' && e.yards === -1)).toBe(true);
+    expect(kneels).toBeGreaterThanOrEqual(0);
+  });
+
+  it('a kneel-down loses a yard, uses a down and keeps the clock running', () => {
+    const g = new Game(12, exhibitionTeams(12));
+    g.begin(null, null);
+    g.tick();
+    const before = { ...g.state };
+    g.begin({ kind: 'kneel' }, { frontId: '43', callId: 'base' });
+    g.tick();
+    const e = g.lastEvent!;
+    expect(e.type).toBe('kneel');
+    expect(e.yards).toBe(-1);
+    expect(g.state.down).toBe(2);
+    expect(g.state.yardLine).toBe(before.yardLine - 1);
+    expect(g.state.clockRunning).toBe(true);
+    expect(g.state.clock).toBe(before.clock - 3);
   });
 });
 

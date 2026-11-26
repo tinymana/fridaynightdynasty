@@ -132,24 +132,57 @@ const MISMATCH: Record<DefRole, Partial<Record<Group, number>>> = {
  */
 export function matchCoverage(receivers: readonly CoverReceiver[], defenders: readonly CoverDefender[]): Map<number, number> {
   const mid = FIELD_W / 2;
-  const rank = (g: Group): number => (g === 'WR' ? 0 : g === 'TE' ? 1 : 2);
-  const order = [...receivers].sort((a, b) => rank(a.group) - rank(b.group) || Math.abs(b.y - mid) - Math.abs(a.y - mid) || a.idx - b.idx);
   const taken = new Set<number>();
+  const covered = new Set<number>();
   const out = new Map<number, number>();
+  const pair = (d: CoverDefender, r: CoverReceiver): void => {
+    taken.add(d.idx);
+    covered.add(r.idx);
+    out.set(d.idx, r.idx);
+  };
+
+  // First the cornerbacks take wide receivers, nearest pairs first. A corner with nobody on his side
+  // travels across the formation rather than stand guarding grass.
+  const corners = defenders.filter((d) => d.role === 'CB' || d.role === 'NB');
+  const wideouts = receivers.filter((r) => r.group === 'WR');
+  for (;;) {
+    let best: [CoverDefender, CoverReceiver] | null = null;
+    let bestGap = 1e9;
+    for (const d of corners) {
+      if (taken.has(d.idx)) continue;
+      for (const r of wideouts) {
+        if (covered.has(r.idx)) continue;
+        const gap = Math.abs(d.y - r.y);
+        if (gap < bestGap) {
+          bestGap = gap;
+          best = [d, r];
+        }
+      }
+    }
+    if (!best) break;
+    pair(best[0], best[1]);
+  }
+
+  // Then everyone else: receivers before tight ends before backs, widest first, each taking the
+  // nearest defender whose position suits him.
+  const rank = (g: Group): number => (g === 'WR' ? 0 : g === 'TE' ? 1 : 2);
+  const order = receivers.filter((r) => !covered.has(r.idx))
+    .sort((a, b) => rank(a.group) - rank(b.group) || Math.abs(b.y - mid) - Math.abs(a.y - mid) || a.idx - b.idx);
   for (const r of order) {
-    let best = -1;
+    let best: CoverDefender | null = null;
     let bestCost = 1e9;
     for (const d of defenders) {
       if (taken.has(d.idx)) continue;
-      const cost = Math.abs(d.y - r.y) / U + (MISMATCH[d.role][r.group] ?? 20);
+      // Safeties rotate across the field more readily than linebackers do.
+      const reach = d.role === 'S' ? 0.4 : 1;
+      const cost = (Math.abs(d.y - r.y) / U) * reach + (MISMATCH[d.role][r.group] ?? 20);
       if (cost < bestCost) {
         bestCost = cost;
-        best = d.idx;
+        best = d;
       }
     }
-    if (best < 0) break;
-    taken.add(best);
-    out.set(best, r.idx);
+    if (!best) break;
+    pair(best, r);
   }
   return out;
 }

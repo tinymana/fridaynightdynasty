@@ -71,6 +71,8 @@ export interface OffPlay {
   kind: 'run' | 'pass';
   desc: string;
   formation: string;
+  /** A coach-designed play carries its own alignment instead of a library formation. */
+  slots?: readonly Slot[];
   assign: Record<string, OffAssign>;
   tags: readonly PlayTag[];
   handoffTick?: number;
@@ -94,6 +96,8 @@ export interface DefSlot extends Slot {
   cover?: boolean;
   /** The deep safety in man calls. */
   deep?: boolean;
+  /** A coach-designed defense gives each defender his job directly. */
+  assign?: DefAssign;
 }
 
 export interface DefFront {
@@ -126,6 +130,7 @@ export type OffDecision =
   | { kind: 'kneel' }
   | { kind: 'patKick' };
 
+/** A library front plus a call, or a coach-designed defense (`frontId` "@custom", its id in `callId`). */
 export interface DefDecision {
   frontId: string;
   callId: string;

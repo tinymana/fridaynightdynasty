@@ -1,5 +1,7 @@
 import {
-  DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, GROUPS, RULES, Rng, U, clamp, formationById, frontById, hashString, playById, schemeById, validateBook,
+  CUSTOM_FRONT, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, GROUPS, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, OFFENSE_PLAYS, RULES, Rng, U, clamp, formationOf, frontById, hashString,
+  schemeById, toFront, toScheme, validateBook, validateDefPlay, validateOffPlay,
+  type DefFront, type DefPlay, type DefScheme, type OffPlay,
   type DefDecision, type GamePlan, type Group, type ManageAction, type OffDecision, type PlayEvent, type PlayFlags, type PlayType,
   type Player, type Situation, type Slot, type Team,
 } from '@fnd/core';
@@ -35,6 +37,9 @@ export type LoggedDecision =
 export interface GameOptions {
   /** The eight offensive plays each team carries. Defaults to the starter book. */
   books?: readonly [readonly string[], readonly string[]];
+  /** Each coach's own designed plays and defenses. Re-validated here: nothing illegal reaches the field. */
+  plays?: readonly [readonly OffPlay[], readonly OffPlay[]];
+  defenses?: readonly [readonly DefPlay[], readonly DefPlay[]];
 }
 
 /** A substitution made because a starter is resting. */
@@ -63,6 +68,8 @@ export class Game {
   /** Every decision submitted, in order. With the seed, this reproduces the game exactly. */
   readonly log: LoggedDecision[] = [];
   readonly books: readonly [readonly string[], readonly string[]];
+  readonly designed: readonly [readonly OffPlay[], readonly OffPlay[]];
+  readonly defenses: readonly [readonly DefPlay[], readonly DefPlay[]];
   /** Depth charts for this game. Changed only through `manage`. */
   readonly depth: [Record<Group, string[]>, Record<Group, string[]>];
   /** Energy 0 to 100 per player ID. */
@@ -89,11 +96,23 @@ export class Game {
       phase: 'kickoff', kicking: other(receiver), kickFrom: RULES.kickoffFrom,
       timeouts: [RULES.timeoutsPerHalf, RULES.timeoutsPerHalf], clockRunning: false, openingReceiver: receiver,
     };
+    const checkAll = <T>(list: readonly unknown[], max: number, check: (x: unknown) => { ok: true; value: T } | { ok: false; problems: string[] }): T[] => {
+      if (list.length > max) throw new Error('too many designed plays');
+      const out = list.map((x) => {
+        const r = check(x);
+        if (!r.ok) throw new Error(r.problems[0]);
+        return r.value;
+      });
+      if (new Set(out.map((x) => (x as { id: string }).id)).size !== out.length) throw new Error('two designs share an id');
+      return out;
+    };
+    this.designed = [checkAll(opts.plays?.[0] ?? [], MAX_CUSTOM_PLAYS, validateOffPlay), checkAll(opts.plays?.[1] ?? [], MAX_CUSTOM_PLAYS, validateOffPlay)];
+    this.defenses = [checkAll(opts.defenses?.[0] ?? [], MAX_CUSTOM_DEFENSES, validateDefPlay), checkAll(opts.defenses?.[1] ?? [], MAX_CUSTOM_DEFENSES, validateDefPlay)];
     this.books = opts.books ?? [DEFAULT_BOOK, DEFAULT_BOOK];
-    for (const book of this.books) {
-      const problem = validateBook(book);
+    this.books.forEach((book, t) => {
+      const problem = validateBook(book, this.designed[t]);
       if (problem) throw new Error(problem);
-    }
+    });
     const copy = (t: Team): Record<Group, string[]> => {
       const out = {} as Record<Group, string[]>;
       for (const g of GROUPS) out[g] = [...t.depth[g]];
@@ -109,6 +128,28 @@ export class Game {
   /** Which team is on offense (or kicking off) for the next decision. */
   get offense(): 0 | 1 {
     return this.state.phase === 'kickoff' ? this.state.kicking : this.state.possession;
+  }
+
+  /** A play by id for one team: its coach's designs first, then the library. */
+  playOf(team: 0 | 1, id: string): OffPlay {
+    const p = this.designed[team].find((x) => x.id === id) ?? OFFENSE_PLAYS.find((x) => x.id === id);
+    if (!p) throw new Error(`unknown play ${id}`);
+    return p;
+  }
+
+  /** The plays in a team's book. */
+  bookPlays(team: 0 | 1): OffPlay[] {
+    return this.books[team].map((id) => this.playOf(team, id));
+  }
+
+  /** The front and call a defensive decision stands for. */
+  defenseOf(team: 0 | 1, def: DefDecision): { front: DefFront; scheme: DefScheme } {
+    if (def.frontId === CUSTOM_FRONT) {
+      const d = this.defenses[team].find((x) => x.id === def.callId);
+      if (!d) throw new Error('that defense is not one of this team\'s designs');
+      return { front: toFront(d), scheme: toScheme(d) };
+    }
+    return { front: frontById(def.frontId), scheme: schemeById(def.callId) };
   }
 
   player(id: string): Player {
@@ -236,10 +277,9 @@ export class Game {
     if (!def) throw new Error('defense decision required');
     if (!this.books[offTeam].includes(off.playId)) throw new Error(`play ${off.playId} is not in this team's playbook`);
 
-    const play = playById(off.playId);
-    const formation = formationById(play.formation);
-    const front = frontById(def.frontId);
-    const scheme = schemeById(def.callId);
+    const play = this.playOf(offTeam, off.playId);
+    const formation = formationOf(play);
+    const { front, scheme } = this.defenseOf(other(offTeam), def);
     const offPlayers = this.lineup(offTeam, formation.slots, this.lastSubs);
     const defPlayers = this.lineup(other(offTeam), front.slots, this.lastSubs);
     const ctx: Omit<PlayContext, 'rng'> = {
@@ -571,7 +611,7 @@ export class AutoCoach {
   offense(game: Game): OffDecision | null {
     if (game.state.phase === 'kickoff') return null;
     const t = game.state.possession;
-    return aiOffense(game.situation(t), game.books[t].map(playById), this.rng[t], this.plans[t]);
+    return aiOffense(game.situation(t), game.bookPlays(t), this.rng[t], this.plans[t]);
   }
   defense(game: Game): DefDecision | null {
     if (game.state.phase === 'kickoff') return null;
