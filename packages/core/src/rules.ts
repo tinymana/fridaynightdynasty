@@ -9,6 +9,11 @@ export const RULES = {
   twoPointFrom: 97,
   /** Seconds run off between plays while the clock is running. Tuned for 50 to 60 plays a team. */
   runoffSeconds: 32,
+  /** Chance of each foul. Before the snap: per snap. Holding: per play the offense gained on. Interference: per incomplete pass. */
+  falseStartChance: 0.03,
+  offsideChance: 0.02,
+  holdingChance: 0.035,
+  interferenceChance: 0.05,
   /** Overtime: each team gets a series from the opponent's ten. First and goal. */
   overtimeFrom: 90,
   /** After this many overtime periods a game still level ends as a tie. */

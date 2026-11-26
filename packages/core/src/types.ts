@@ -157,7 +157,10 @@ export type ManageAction =
   | { kind: 'depth'; team: 0 | 1; group: Group; order: string[] }
   | { kind: 'threshold'; team: 0 | 1; value: number };
 
-export type PlayType = 'run' | 'pass' | 'punt' | 'fieldGoal' | 'kickoff' | 'pat' | 'twoPoint' | 'kneel';
+export type PlayType = 'run' | 'pass' | 'punt' | 'fieldGoal' | 'kickoff' | 'pat' | 'twoPoint' | 'kneel' | 'penalty';
+
+/** The fouls the officials call. */
+export type PenaltyKind = 'falseStart' | 'offside' | 'holding' | 'interference';
 
 export interface PlayFlags {
   touchdown?: boolean;
@@ -177,6 +180,8 @@ export interface PlayFlags {
   recovered?: boolean;
   blocked?: boolean;
   roughing?: boolean;
+  /** Set on a penalty event: which foul it was. */
+  foul?: PenaltyKind;
 }
 
 /** One record per snap or kick. Every statistic is derived from these. */

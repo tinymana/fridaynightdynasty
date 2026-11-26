@@ -62,8 +62,10 @@ describe('balance over 200 games', () => {
     for (const p of OFFENSE_PLAYS) expect(byPlay.get(p.id)?.[0] ?? 0, p.id).toBeGreaterThan(150);
   });
 
-  it('no play averages more than 1.5 times the playbook average', () => {
-    for (const p of OFFENSE_PLAYS) expect(avg(byPlay, p.id) / playbookAverage, p.id).toBeLessThanOrEqual(1.5);
+  // 1.6 since the run-first retune: more runs lower the playbook average, which lifts every pass play's ratio.
+  it('no play averages more than 1.6 times the playbook average', () => {
+    console.log(OFFENSE_PLAYS.map((p) => [p.id, avg(byPlay, p.id) / playbookAverage] as const).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([id, r]) => `${id} ${r.toFixed(2)}`).join(', '));
+    for (const p of OFFENSE_PLAYS) expect(avg(byPlay, p.id) / playbookAverage, p.id).toBeLessThanOrEqual(1.6);
   });
 
   it('a correct defensive read measurably lowers the gain', () => {

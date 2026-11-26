@@ -8,14 +8,16 @@ const RUNOFF = 32;
 const KNEEL_SECONDS = 3;
 
 export const fieldGoalDistance = (yardLine: number): number => 100 - yardLine + 17;
-export const fieldGoalRange = (kicking: number): number => 28 + kicking * 0.27;
+/** High school kickers: a good one is reliable to about 40 yards. */
+export const fieldGoalRange = (kicking: number): number => 22 + kicking * 0.25;
 
 export function passChance(s: Situation, plan: GamePlan = DEFAULT_PLAN): number {
   let p: number;
-  if (s.down === 1) p = 0.42;
-  else if (s.down === 2) p = s.distance >= 7 ? 0.56 : s.distance <= 3 ? 0.3 : 0.45;
-  else p = s.distance >= 6 ? 0.84 : s.distance >= 3 ? 0.6 : 0.22;
-  if (s.quarter === 4 && s.clock < 300) p += s.scoreDiff < 0 ? 0.25 : s.scoreDiff > 0 ? -0.3 : 0;
+  // High school football is run first: about six snaps in ten on the ground.
+  if (s.down === 1) p = 0.29;
+  else if (s.down === 2) p = s.distance >= 7 ? 0.5 : s.distance <= 3 ? 0.2 : 0.34;
+  else p = s.distance >= 6 ? 0.8 : s.distance >= 3 ? 0.5 : 0.16;
+  if (s.quarter === 4 && s.clock < 300) p += s.scoreDiff < 0 ? 0.36 : s.scoreDiff > 0 ? -0.3 : 0;
   if (s.quarter === 2 && s.clock < 45) p += 0.3;
   if (s.yardLine >= 97) p -= 0.15;
   p += plan.passBias * 0.08;
@@ -78,7 +80,7 @@ export function choosePlay(s: Situation, book: readonly OffPlay[], rng: Rng, pla
 function goForIt(s: Situation, plan: GamePlan): boolean {
   const a = plan.aggression;
   if (a <= 0) return s.distance <= 1 && s.yardLine >= 60;
-  if (a === 1) return (s.distance <= 2 && s.yardLine >= 55) || (s.distance <= 1 && s.yardLine >= 45);
+  if (a === 1) return (s.distance <= 3 && s.yardLine >= 55) || (s.distance <= 1 && s.yardLine >= 40);
   return (s.distance <= 3 && s.yardLine >= 45) || (s.distance <= 1 && s.yardLine >= 30);
 }
 

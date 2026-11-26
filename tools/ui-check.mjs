@@ -87,7 +87,10 @@ while ((!seenOff || !seenDef) && n++ < 80 && s.mode !== 'final') {
     await page.screenshot({ path: `${out}/m2-defense.png` });
     await page.click('[data-act="d:coverZone"]');
     await sleep(40);
-    check('calls box names front and call', (await page.$eval('#calls', (e) => e.textContent)).includes('Nickel Cover Zone'));
+    // A flag before the snap means no play was run; try again on the next defensive snap.
+    const flagged = (await page.$eval('#banner', (e) => e.textContent)).startsWith('Flag');
+    if (flagged) seenDef = false;
+    else check('calls box names front and call', (await page.$eval('#calls', (e) => e.textContent)).includes('Nickel Cover Zone'));
   } else {
     let pick = acts.filter((a) => a.startsWith('p:') || a.startsWith('d:') || a.startsWith('k:') || a === 'pat');
     if (prompt.startsWith('4th') && acts.includes('punt')) pick = [acts.includes('fg') ? 'fg' : 'punt'];

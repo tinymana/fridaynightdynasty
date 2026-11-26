@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.8.0 — 2026-11-26
+
+Penalties, a run-first retune held by a realism scorecard, and school renaming.
+
+### Added
+- Penalties (`PenaltyKind`, play type `penalty`, `PlayFlags.foul`): false start and offside before the snap,
+  holding on a play the offense gained on, pass interference on an incompletion. Half the distance near a goal
+  line. The officials' random stream is keyed to the snap, separate from the play's.
+- `tests/realism.test.ts`: 16 measures over 150 AI games, each with a target range. `tools/realism.ts` prints them.
+- `editSchool` / `checkIdentity` in `@fnd/league`; `leagueEdit` API action (commissioner only); rename form in
+  the shared-league and solo dynasty screens. League game rooms carry the two schools' names and colours.
+
+### Changed
+- AI play calling is run first (about 58 percent runs); more fourth-down tries.
+- Kicking: range `22 + 0.25 x kicking`, steeper accuracy fall-off, extra points about 85 percent.
+- Pass rush: the quarterback reacts to a free rusher at 1.5 yards instead of 1.9 (sacks about 1.3 a team).
+- Fumble chance per tackle 0.03 (was 0.012). Open-field tackle base 0.535 (was 0.6). Run blocks hold longer.
+- Back Swing: the deep route is now a hook; the play was gaining 1.75 times the playbook average in games.
+- A call for a play outside the book is refused before the officials are consulted.
+- Game results differ from 0.7.x for the same seed and calls.
+
+### Known gaps
+- Scoring between two even teams is 17 points a team, at the low end of the target range.
+- The balance ceiling for one play is now 1.6 times the playbook average (was 1.5); Flood sits at 1.51.
+- No penalties on kicks or after the play, no declined-penalty choice for the coach, no player discipline rating.
+- The scorecard's ranges come from general knowledge of the high school game, not from a data set.
+
 ## 0.7.1 — 2026-11-26
 
 ### Added

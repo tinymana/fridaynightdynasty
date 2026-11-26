@@ -2,7 +2,7 @@ import {
   CUSTOM_FRONT, DEFAULT_BOOK, DEFAULT_SETUP, DEFENSE_FRONTS, DEFENSE_SCHEMES, GROUPS, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, OFFENSE_PLAYS, RULES, Rng, U, WEATHER, clamp, cleanSetup, formationOf, frontById, hashString,
   schemeById, toFront, toScheme, validateBook, validateDefPlay, validateOffPlay,
   type DefFront, type DefPlay, type DefScheme, type OffPlay,
-  type DefDecision, type GamePlan, type GameSetup, type Group, type KickStyle, type ManageAction, type OffDecision, type PlayEvent, type PlayFlags, type PlayType,
+  type DefDecision, type GamePlan, type GameSetup, type Group, type KickStyle, type PenaltyKind, type ManageAction, type OffDecision, type PlayEvent, type PlayFlags, type PlayType,
   type Player, type Situation, type Slot, type Team,
 } from '@fnd/core';
 import { DEFAULT_PLAN, aiDefense, aiKickoff, aiOffense, fieldGoalDistance } from '@fnd/football-ai';
@@ -88,6 +88,8 @@ export class Game {
   private readonly resting = new Set<string>();
   private instant = false;
   private twoPoint = false;
+  /** The log position of the snap being played: the officials' random stream is keyed to it. */
+  private snapN = 0;
   /** Overtime: which period, who had the ball first in it, and whether the first (0) or second (1) series is being played. */
   private ot: { period: number; first: 0 | 1; turn: 0 | 1 } | null = null;
   /** The defense went for the block on the last snap and the offense ran a real play. */
@@ -244,6 +246,19 @@ export class Game {
     }
     if (!off) throw new Error('offense decision required');
     const offTeam = s.possession;
+
+    // A call that is not allowed is refused whatever the officials do.
+    if (off.kind === 'play' && !this.books[offTeam].includes(off.playId)) throw new Error(`play ${off.playId} is not in this team's playbook`);
+    this.snapN = n;
+    // A flag before the snap: the call is thrown away and the down is replayed.
+    if (s.phase === 'scrimmage' && off.kind !== 'kneel') {
+      const roll = Rng.stream(this.seed, `flag:${n}`).range(0, 1);
+      if (roll < RULES.falseStartChance + RULES.offsideChance) {
+        this.deadBallFoul(roll < RULES.falseStartChance ? 'falseStart' : 'offside');
+        this.instant = true;
+        return;
+      }
+    }
 
     if (s.phase === 'scrimmage' && s.clockRunning) {
       if ((off.kind === 'play' || off.kind === 'punt' || off.kind === 'fieldGoal') && off.timeout && s.timeouts[offTeam] > 0) {
@@ -411,6 +426,44 @@ export class Game {
       s.clock = this.quarterSeconds;
       this.rest(10);
     }
+  }
+
+  /** A foul before the snap: five yards, replay the down. */
+  private deadBallFoul(kind: 'falseStart' | 'offside'): void {
+    const s = this.state;
+    const off = s.possession;
+    const text = kind === 'falseStart' ? `Flag: false start, ${this.teams[off].name}. Five yards, replay the down.` : `Flag: offside, ${this.teams[other(off)].name}. Five yards.`;
+    this.foul(kind, off, kind === 'falseStart' ? -5 : 5, this.snapshot(), 0, text, {});
+  }
+
+  /**
+   * Marks off a penalty from the line of scrimmage. `yards` is from the offense's point of view. Half the distance
+   * to the goal when the full penalty would be more than that. The down is replayed unless it gives a first down.
+   */
+  private foul(kind: PenaltyKind, off: 0 | 1, yards: number, before: ReturnType<Game['snapshot']>, seconds: number, text: string, who: Partial<PlayEvent>, automaticFirst = false): void {
+    const s = this.state;
+    const flags: PlayFlags = { foul: kind };
+    let moved: number;
+    if (yards < 0) {
+      moved = -Math.min(-yards, Math.max(1, Math.trunc(s.yardLine / 2)));
+      if (s.yardLine + moved < 1) moved = 1 - s.yardLine;
+      s.yardLine += moved;
+      s.distance -= moved;
+    } else {
+      moved = Math.min(yards, Math.max(1, Math.trunc((100 - s.yardLine) / 2)));
+      if (s.yardLine + moved > 99) moved = 99 - s.yardLine;
+      if (automaticFirst || moved >= s.distance) {
+        flags.firstDown = true;
+        this.firstDownAt(off, s.yardLine + moved);
+        text += automaticFirst ? '' : ' First down.';
+      } else {
+        s.yardLine += moved;
+        s.distance -= moved;
+      }
+    }
+    s.clockRunning = false;
+    this.emit('penalty', off, before, moved, flags, [0, 0], seconds, text, who);
+    this.afterPlayClock();
   }
 
   /** 0 in regulation, otherwise the overtime period being played. */
@@ -634,6 +687,16 @@ export class Game {
 
     const seconds = Math.ceil(r.ticks / 60);
     this.runClock(seconds);
+    // A flag on the play. The team it helps takes it whenever the penalty beats what the play gave them.
+    const flagRoll = Rng.stream(this.seed, `flag:${this.snapN}`).range(0, 1);
+    if (!r.turnover && !r.safety && !r.sack && (r.touchdown || r.yards > 0) && flagRoll > 1 - RULES.holdingChance) {
+      this.foul('holding', off, -10, before, seconds, `Flag on the play: holding, ${this.teams[off].name}. ${r.touchdown ? 'The touchdown comes back.' : `The ${yds(r.yards)} gain comes back.`} Ten yards, replay the down.`, who);
+      return;
+    }
+    if (r.incomplete && r.thrown && flagRoll > 1 - RULES.interferenceChance) {
+      this.foul('interference', off, 15, before, seconds, `Flag on the play: pass interference, ${this.teams[def].name}. Fifteen yards and a first down.`, who, true);
+      return;
+    }
     const flags: PlayFlags = {};
     let yards = r.yards;
     let text: string;

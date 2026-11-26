@@ -459,7 +459,7 @@ function commit(off: OffDecision, def: DefDecision): void {
   }
   game.tick();
   const e = game.lastEvent;
-  if (!e || e.type === 'kneel') return showResult(e);
+  if (!e || e.type === 'kneel' || e.type === 'penalty') return showResult(e);
   setPanelWaiting(e.type === 'punt' ? 'Punt' : e.type === 'fieldGoal' ? 'Field goal attempt' : 'Extra point');
   if (e.type === 'punt') startKick(offTeam, los - 10, Math.min(los + e.yards, 104), CY_YD, e);
   else startKick(offTeam, los - 7, 110, e.flags.good ? CY_YD : CY_YD + 13, e);
@@ -527,13 +527,13 @@ function showResult(e: PlayEvent | null): void {
   }
   lastQuarter = s.quarter;
   const big = !!e && (e.flags.touchdown || e.flags.blocked || e.flags.recovered || e.flags.interception || e.flags.fumbleLost || e.flags.safety || ((e.type === 'fieldGoal' || e.type === 'twoPoint') && !!e.flags.good));
-  banner.className = big ? 'big' : '';
+  banner.className = big ? 'big' : e?.type === 'penalty' ? 'flag' : '';
   banner.innerHTML = `${e ? e.text : 'Time runs out.'}<small>${period}${situationText()}</small>`;
   if (e) {
     if (e.flags.touchdown || ((e.type === 'fieldGoal' || e.type === 'pat' || e.type === 'twoPoint') && e.flags.good)) sfx.score();
     else if (e.flags.interception || e.flags.fumbleLost || e.flags.safety || e.flags.turnoverOnDowns) sfx.bad();
     else if (e.flags.firstDown) sfx.first();
-    else if (e.flags.incomplete || e.type === 'punt' || e.type === 'kickoff' || e.type === 'kneel') sfx.whistle();
+    else if (e.flags.incomplete || e.type === 'punt' || e.type === 'kickoff' || e.type === 'kneel' || e.type === 'penalty') sfx.whistle();
     else sfx.tackle();
   }
   const base = cut ? 3000 : big || period ? 2600 : e?.type === 'kneel' ? 1000 : 1700;

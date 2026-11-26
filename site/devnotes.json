@@ -2,6 +2,37 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.8.0",
+      "date": "2026-11-26",
+      "title": "Real football: flags, a run-first game and commissioner tools",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Penalties. False starts and offside before the snap, holding and pass interference on the play. A hold brings the gain back; interference is fifteen yards and a first down."
+        },
+        {
+          "tag": "new",
+          "text": "Commissioners can rename any school and pick its jersey, helmet, pants and trim colors, in a league with friends or in a solo dynasty. The school keeps its players, strength and record."
+        },
+        {
+          "tag": "tune",
+          "text": "AI coaches now call a high school game: about six plays in ten are runs, they go for it more on fourth down, and kickers are high school kickers, good to about 40 yards."
+        },
+        {
+          "tag": "tune",
+          "text": "More sacks, more fumbles, fewer field goals. Quarterbacks hold the ball a beat longer under pressure."
+        },
+        {
+          "tag": "improved",
+          "text": "A realism scorecard now checks every change against 16 real-football numbers over 150 AI games, from yards per carry to penalties per team."
+        },
+        {
+          "tag": "note",
+          "text": "Because the football changed, games play out differently from earlier versions with the same calls."
+        }
+      ]
+    },
+    {
       "version": "0.7.1",
       "date": "2026-11-26",
       "title": "Overtime",
@@ -425,6 +456,11 @@
       "text": "High school overtime from the ten-yard line. Playable now."
     },
     {
+      "status": "testing",
+      "title": "Penalties and a realism scorecard",
+      "text": "Flags on the field, and the AI game held to real high school numbers by an automatic scorecard. In the game now."
+    },
+    {
       "status": "planned",
       "title": "Kids grow up",
       "text": "Graduation, incoming freshmen from feeder schools, player development, morale and academics."
@@ -440,9 +476,9 @@
       "text": "League, section and state brackets, with overtime."
     },
     {
-      "status": "planned",
+      "status": "next",
       "title": "Commissioner tools",
-      "text": "Advance and roll back weeks, assign coaches, set schedules and keep an audit log."
+      "text": "Renaming schools and picking colors is in. Still to come: joining late, handing over a school and removing a coach."
     },
     {
       "status": "planned",

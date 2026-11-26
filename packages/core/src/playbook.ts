@@ -95,7 +95,7 @@ export const OFFENSE_PLAYS: readonly OffPlay[] = [
   }),
   run('draw', 'Draw', 'gun', 'Show pass, then hand it off late.', ['inside'], 40, { RB: carry([[-4, 1], [-1, 0.5], [3, 0.5]]) }),
   pass('swing', 'Back Swing', 'gun', 'Dump it to the back in space.', ['quick'], 1, 36, {
-    RB: route([[-2, -6], [-1.5, -12]]), WR1: route([[6, 0], [5, 1]]), WR3: route([[14, 0]], true), WR2: route([[10, 0], [9, -3]]),
+    RB: route([[-2, -6], [-1.5, -12]]), WR1: route([[6, 0], [5, 1]]), WR3: route([[8, 0], [7, 2]]), WR2: route([[10, 0], [9, -3]]),
   }),
   pass('stick', 'Stick', 'gun', 'Short and safe. Take what is there.', ['quick', 'short'], 2, 40, {
     TE: route([[5, 0], [5.5, 3]]), WR2: route([[5, 0], [6, 4]]), WR3: route([[5, 0], [4, 1]]), WR1: route([[14, 0]], true), RB: route([[0, 5], [1, 10]]),
