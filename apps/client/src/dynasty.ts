@@ -1,6 +1,6 @@
 import { GROUPS, WEATHER, overall, type GameSetup, type Team } from '@fnd/core';
 import {
-  CLASS_NAMES, CLASS_SHORT, MAX_CALL_UPS, REGULAR_WEEKS, STATES, career, incomingOf, programOf, recordOf, setCallUp, createDynasty, createLeague, editSchool, gameSeed, gameSetup, loadDynasty, nextSeason, playWeek, standings, stateByCode, teamFor, userGame, weekGames, winnerOf,
+  CLASS_NAMES, CLASS_SHORT, MAX_CALL_UPS, REGULAR_WEEKS, STATES, career, incomingOf, occasionFor, programOf, recordOf, setCallUp, createDynasty, createLeague, editSchool, gameSeed, gameSetup, loadDynasty, nextSeason, playWeek, standings, stateByCode, teamFor, userGame, weekGames, winnerOf,
   type Dynasty, type GameResult, type ProgramPlayer,
 } from '@fnd/league';
 import { bindSchoolForm, schoolFormHtml } from './school-form';
@@ -181,8 +181,10 @@ export class DynastyScreen {
       const opp = hm === d.user ? aw : hm;
       const wx = WEATHER[gameSetup(d, d.week, hm, aw).weather];
       const oppRow = table.find((r) => r.school === opp)!;
+      const night = occasionFor(d.week, hm);
+      const nightText = night === 'homecoming' ? `Homecoming at ${esc(schools[hm].name)}. ` : night === 'seniorNight' ? `Senior night at ${esc(schools[hm].name)}. ` : night === 'opener' ? `Home opener for ${esc(schools[hm].name)}. ` : '';
       next = `<div class="dy-next"><div class="big">${weekName(d.week)}: ${hm === d.user ? 'home to' : 'away at'} ${esc(schools[opp].name)} ${esc(schools[opp].mascot)}</div>
-        <div>They are ${oppRow.wins}-${oppRow.losses}${oppRow.ties ? `-${oppRow.ties}` : ''}. Forecast: ${wx.name.toLowerCase()}. ${d.setup.quarterMinutes}-minute quarters.</div>
+        <div>${nightText}They are ${oppRow.wins}-${oppRow.losses}${oppRow.ties ? `-${oppRow.ties}` : ''}. Forecast: ${wx.name.toLowerCase()}. ${d.setup.quarterMinutes}-minute quarters.</div>
         <div class="orow"><button class="seg on" id="dyPlay">Coach the game</button><button class="seg" id="dySim">Let my assistant coach it</button></div></div>`;
     } else {
       const [hm, aw] = weekGames(d)[0];

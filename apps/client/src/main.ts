@@ -7,6 +7,8 @@ import {
 import { fieldGoalDistance } from '@fnd/football-ai';
 import { AutoCoach, Game, gameHash, replayGame, simulateGame, summarize, type LoggedDecision, type MoveKind, type PlaySim, type ReturnSim } from '@fnd/match-sim';
 import { leagueTeams, type Career, type RoomView } from '@fnd/online';
+import { occasionFor, type Occasion } from '@fnd/league';
+import { FIGHT_SONG_BEAT, chantFor, crowdLevel, fightSong, halftimeShow, type CrowdInput, type Note } from './atmosphere';
 import { OnlineError, online } from './net/online';
 import { cutinFor } from './cutins';
 import { DynastyScreen, type DynastyGame } from './dynasty';
@@ -14,7 +16,7 @@ import { SharedLeagueScreen } from './shared-league';
 import { openDefenseDesigner, openOffenseDesigner, practiceTeams, type DesignerHost } from './designer';
 import { voice } from './net/voice';
 import { FieldScene, createGame, type FieldView, type ViewPlayer } from './scene';
-import { setMuted, sfx, unlockAudio } from './audio';
+import { announce, band, crowd, refreshAtmosphere, setCrowd, setMuted, setPa, sfx, unlockAudio } from './audio';
 import titleUrl from './assets/title.jpg';
 import logoUrl from './assets/logo.webp';
 import devnotes from '../../../site/devnotes.json';
@@ -98,6 +100,12 @@ let wantTimeout = false;
 /** Fourth down on defense: sell out for the block. */
 let wantBlock = false;
 let lastQuarter = 1;
+/** Atmosphere for the game being played: what night it is, the home school's fight song, and a snap counter for chants. */
+let occasion: Occasion = null;
+let fightTune: Note[] = [];
+let snapCount = 0;
+let chantUntil = 0;
+let firstDowns = 0;
 let keyHandler: ((k: string) => void) | null = null;
 /** Designs are kept in this browser. They are checked again every time they are loaded, and again by the engine and the server. */
 function loadDesigns<T>(key: string, max: number, check: (raw: unknown) => { ok: true; value: T } | { ok: false }): T[] {
@@ -429,6 +437,7 @@ function startPractice(make: (seed: number) => PlaySim, label: string): void {
   unlockAudio();
   practiceRun = { make, n: 0, pause: 0, told: false };
   mode = 'menu';
+  setCrowd(0);
   scene.setTeams(practiceTeams);
   $('game').classList.add('practice');
   show('game');
@@ -463,6 +472,7 @@ function next(): void {
   $('calls').classList.add('hidden');
   const s = game.state;
   if (s.phase === 'final') return showFinal();
+  atmosphereBeforeSnap();
   if (net) return onlineNext();
   updateBug();
   if (s.phase === 'kickoff') {
@@ -499,6 +509,10 @@ function runKickoff(off: OffDecision | null): void {
   clockOn = false;
   $('pclock').classList.add('hidden');
   setPanelWaiting('Kickoff');
+  if (!quiet()) {
+    setCrowd(0.5);
+    crowd.rise(speed === 1 ? 1.2 : 0.5);
+  }
   game.begin(off, null);
   game.tick();
   const e = game.lastEvent!;
@@ -644,8 +658,94 @@ function ballOn(): string {
   return s.yardLine < 50 ? `${teams[s.possession].abbr} ${s.yardLine}` : `${teams[other(s.possession)].abbr} ${100 - s.yardLine}`;
 }
 
+/** Sets up the stands and the band for a new game. Team 0 is at home. */
+function startAtmosphere(): void {
+  const lg = net?.view.league;
+  occasion = dynastyGame ? occasionFor(dynastyGame.week, dynastyGame.home) : lg ? occasionFor(lg.week, lg.home) : null;
+  let h = 0;
+  for (const ch of `${teams[0].id}:${teams[0].name}`) h = (Math.imul(h, 31) + ch.charCodeAt(0)) >>> 0;
+  fightTune = fightSong(h);
+  snapCount = 0;
+  chantUntil = 0;
+  firstDowns = 0;
+}
+
+function crowdInput(): CrowdInput {
+  const s = game.state;
+  return { possession: s.phase === 'kickoff' ? other(s.kicking) : s.possession, down: s.phase === 'scrimmage' ? s.down : 1, yardLine: s.phase === 'scrimmage' ? s.yardLine : 50, quarter: s.quarter, homeLead: s.score[0] - s.score[1], occasion };
+}
+const quiet = (): boolean => speed === 0 || turbo;
+
+/** Before each snap: the stands settle to the level the situation calls for, and sometimes start a chant. */
+function atmosphereBeforeSnap(): void {
+  const s = game.state;
+  if (s.phase === 'final') return;
+  const c = crowdInput();
+  setCrowd(quiet() ? 0.12 : crowdLevel(c));
+  if (quiet() || s.phase !== 'scrimmage') return;
+  const chant = chantFor(c, snapCount++);
+  const now = performance.now();
+  if (chant && now >= chantUntil) {
+    crowd[chant]();
+    chantUntil = now + 9000;
+  }
+}
+
+/** After each play: the stands react for the home team, the band answers a score, the PA calls it. */
+function atmosphereAfterPlay(e: PlayEvent | null, half: boolean): void {
+  if (quiet()) return;
+  const s = game.state;
+  const later = (ms: number, f: () => void): void => { window.setTimeout(() => { if (!quiet() && mode !== 'menu') f(); }, ms); };
+  if (e) {
+    const f = e.flags;
+    const scorer = f.defensiveTouchdown ? other(e.offense) : e.offense;
+    const kickTry = e.type === 'fieldGoal' || e.type === 'pat' || e.type === 'twoPoint';
+    if (f.touchdown || f.defensiveTouchdown) {
+      if (scorer === 0) {
+        crowd.cheer(1);
+        later(500, () => band.play(fightTune, FIGHT_SONG_BEAT));
+        announce(`Touchdown, ${teams[0].mascot}!`);
+      } else {
+        crowd.groan(0.8);
+        crowd.cheer(0.22);
+        announce(`Touchdown, ${teams[1].name}.`);
+      }
+    } else if (kickTry && !f.roughing) {
+      if (f.good) e.offense === 0 ? (crowd.cheer(0.6), band.stab(fightTune)) : crowd.groan(0.4);
+      else e.offense === 0 ? crowd.groan(0.6) : crowd.cheer(0.5);
+    } else if (f.interception || f.fumbleLost || f.turnoverOnDowns || f.safety || f.blocked) {
+      if (e.offense === 1) {
+        crowd.cheer(0.9);
+        announce(`${teams[0].mascot} ball!`);
+      } else crowd.groan(0.9);
+    } else if (f.sack) e.offense === 1 ? crowd.cheer(0.6) : crowd.groan(0.4);
+    else if (e.type === 'penalty') crowd.groan(0.3);
+    else if (f.firstDown && e.offense === 0) {
+      crowd.cheer(e.yards >= 15 ? 0.55 : 0.3);
+      if (firstDowns++ % 2 === 0) band.stab(fightTune);
+      if (firstDowns % 3 === 1) announce(`First down, ${teams[0].mascot}.`);
+    } else if (e.offense === 0 && e.yards >= 15) crowd.cheer(0.5);
+    else if (e.offense === 1 && f.incomplete && e.down >= 3) crowd.cheer(0.5);
+    else if ((e.type === 'kickoff' || e.type === 'punt') && (e.returnYards ?? 0) >= 30) crowd.cheer(0.5);
+  }
+  if (s.phase === 'final') {
+    setCrowd(0.2);
+    if (s.score[0] > s.score[1]) {
+      crowd.cheer(1);
+      later(700, () => band.play(fightTune, FIGHT_SONG_BEAT, 2));
+    }
+    later(1500, () => announce(`Final score: ${teams[0].name} ${s.score[0]}, ${teams[1].name} ${s.score[1]}. Drive home safely.`));
+  } else if (half) {
+    setCrowd(0.2);
+    later(900, () => band.play(fightTune, FIGHT_SONG_BEAT, 2));
+    later(300, () => announce(`At the half: ${teams[0].name} ${s.score[0]}, ${teams[1].name} ${s.score[1]}.`));
+  }
+}
+
 function showResult(e: PlayEvent | null): void {
   updateBug();
+  // A call sheet left up by a play that never ran (the clock ran out first) comes down.
+  if ($('panel').querySelector('[data-act]')) setPanelWaiting('');
   setStaticIfIdle();
   const s = game.state;
   const banner = $('banner');
@@ -663,10 +763,15 @@ function showResult(e: PlayEvent | null): void {
     void cutEl.offsetWidth;
     cutEl.style.animation = '';
   }
+  const lastQuarterWas = lastQuarter;
   lastQuarter = s.quarter;
   const big = !!e && (e.flags.touchdown || e.flags.blocked || e.flags.recovered || e.flags.interception || e.flags.fumbleLost || e.flags.safety || ((e.type === 'fieldGoal' || e.type === 'twoPoint') && !!e.flags.good));
   banner.className = big ? 'big' : e?.type === 'penalty' ? 'flag' : '';
-  banner.innerHTML = `${e ? e.text : 'Time runs out.'}<small>${period}${situationText()}</small>`;
+  const half = s.phase !== 'final' && s.quarter !== lastQuarterWas && lastQuarterWas === 2;
+  const show = half && speed !== 0 ? halftimeShow(game.seed, occasion, teams[0], teams[1]) : null;
+  banner.innerHTML = `${e ? e.text : 'Time runs out.'}<small>${period}${situationText()}</small>`
+    + (show ? `<div class="show"><b>${show.title}</b>${show.lines.map((l) => `<span>${l}</span>`).join('')}</div>` : '');
+  atmosphereAfterPlay(e, half);
   if (e) {
     if (e.flags.touchdown || e.flags.defensiveTouchdown || ((e.type === 'fieldGoal' || e.type === 'pat' || e.type === 'twoPoint') && e.flags.good)) sfx.score();
     else if (e.flags.interception || e.flags.fumbleLost || e.flags.safety || e.flags.turnoverOnDowns) sfx.bad();
@@ -674,7 +779,7 @@ function showResult(e: PlayEvent | null): void {
     else if (e.flags.incomplete || e.type === 'punt' || e.type === 'kickoff' || e.type === 'kneel' || e.type === 'penalty') sfx.whistle();
     else sfx.tackle();
   }
-  const base = cut ? 3000 : big || period ? 2600 : e?.type === 'kneel' ? 1000 : 1700;
+  const base = show ? 7000 : cut ? 3000 : big || period ? 2600 : e?.type === 'kneel' ? 1000 : 1700;
   timer = turbo ? 40 : speed === 0 ? Math.min(base, 900) : speed === 1 ? base : Math.round(base * 0.5);
   mode = 'post';
 }
@@ -1191,6 +1296,7 @@ const dynasty = new DynastyScreen($('dyBody'), $('dyTitle'), {
 function showSetup(fresh = true): void {
   unlockAudio();
   mode = 'menu';
+  setCrowd(0);
   closeSideline();
   stopOnline();
   dynastyGame = null;
@@ -1222,6 +1328,8 @@ function startGame(team: 0 | 1, conditions: GameSetup = setup): void {
   game = new Game(seed, teams, { books, plays, defenses, setup: conditions });
   coach = new AutoCoach(seed);
   showWeather();
+  startAtmosphere();
+  setCrowd(0.3);
   lastQuarter = 1;
   kick = null;
   viewSim = null;
@@ -1478,6 +1586,8 @@ function enterOnlineGame(): void {
   const catchUp = net.queue.length > 1 ? net.queue.splice(0, net.queue.length) : [];
   game = replayGame(seed, teams, catchUp, { books: v.books, plays: v.designs.plays, defenses: v.designs.defenses, setup: cleanSetup(v.setup) });
   showWeather();
+  startAtmosphere();
+  setCrowd(0.3);
   lastQuarter = game.state.quarter;
   kick = null;
   viewSim = null;
@@ -1643,6 +1753,7 @@ $('again').addEventListener('click', () => {
     leagueReturn = null;
     stopOnline();
     mode = 'menu';
+    setCrowd(0);
     show('shared');
     void shared.open(code);
     return;
@@ -1650,6 +1761,7 @@ $('again').addEventListener('click', () => {
   if (!dynastyGame) return showSetup();
   dynastyGame = null;
   mode = 'menu';
+  setCrowd(0);
   dynasty.render();
   show('dynasty');
 });
@@ -1728,7 +1840,21 @@ let muted = false;
 $('mute').addEventListener('click', () => {
   muted = !muted;
   setMuted(muted);
+  refreshAtmosphere();
   $('mute').textContent = muted ? 'Sound off' : 'Sound on';
+});
+let paOn = true;
+try { paOn = localStorage.getItem('fnd.pa') !== 'off'; } catch { /* private mode */ }
+const showPa = (): void => {
+  setPa(paOn);
+  $('pa').textContent = paOn ? 'Announcer on' : 'Announcer off';
+  $('pa').classList.toggle('on', paOn);
+};
+showPa();
+$('pa').addEventListener('click', () => {
+  paOn = !paOn;
+  try { localStorage.setItem('fnd.pa', paOn ? 'on' : 'off'); } catch { /* private mode */ }
+  showPa();
 });
 window.addEventListener('keydown', (ev) => {
   if (ev.repeat || ev.metaKey || ev.ctrlKey || ev.altKey) return;

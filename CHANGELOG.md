@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.12.0 — 2026-11-26
+
+Friday night atmosphere. Client only: no simulation or server change.
+
+### Added
+- `apps/client/src/atmosphere.ts` (pure, tested): `crowdLevel`, `chantFor`, `fightSong` (a four-bar tune from the
+  school's seed), `halftimeShow`.
+- `apps/client/src/audio.ts`: a looping crowd bed with eased level, cheers and groans, "de-fense" and clap chants,
+  a brass section and drum line, and `announce` (browser speech synthesis). No audio files.
+- `occasionFor(week, home)` in the league package: home opener, homecoming, senior night, championship.
+- Half-time show card in the result banner; an Announcer button; the occasion on the dynasty screen.
+- `tests/atmosphere.test.ts`, `tools/halftime-shot.mjs`.
+
+### Fixed
+- A call sheet left on screen when the clock ran out before the snap is cleared.
+
 ## 0.11.0 — 2026-11-26
 
 Freshmen, JV and varsity.

@@ -77,6 +77,9 @@
   .card.st .nm { font-size: 15px; }
   #banner.flag { border-color: #facc15; color: #fde047; }
   #banner.big { border-color: var(--red); font-size: 16px; font-weight: 700; }
+  #banner .show { margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--line); font-size: 12px; max-width: 520px; }
+  #banner .show b { display: block; color: var(--accent); letter-spacing: 1px; text-transform: uppercase; font-size: 12px; margin-bottom: 2px; }
+  #banner .show span { display: block; color: var(--text, #e8ecff); }
   #banner small { display: block; color: var(--dim); font-size: 11px; margin-top: 3px; font-weight: 400; }
   #tag { position: absolute; left: 8px; top: 8px; background: var(--red); color: #fff; font-size: 11px; letter-spacing: 2px; padding: 3px 8px; border-radius: 3px; }
   #calls { position: absolute; right: 8px; top: 8px; background: rgba(8, 9, 20, 0.8); font-size: 11px; padding: 4px 8px; border-radius: 3px; color: var(--dim); text-align: right; line-height: 1.4; }
@@ -347,6 +350,7 @@
       <button class="seg" data-speed="4">Fast</button>
       <button class="seg" data-speed="0">Skip</button>
       <button class="seg" id="mute">Sound on</button>
+      <button class="seg" id="pa" title="The public address announcer calls scores and first downs in your browser's voice">Announcer on</button>
       <button class="seg" id="sidelineBtn">Sideline <kbd>[S]</kbd></button>
       <button class="seg hidden" id="voiceBtn">Voice chat</button>
       <button class="seg hidden" id="micBtn">Mute mic</button>

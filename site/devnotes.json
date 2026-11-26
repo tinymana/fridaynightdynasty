@@ -2,6 +2,45 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.12.0",
+      "date": "2026-11-26",
+      "title": "Friday night atmosphere",
+      "items": [
+        {
+          "tag": "new",
+          "text": "A crowd. The stands murmur through the game and get louder when it matters: third down for the visitors, the home team near the goal line, a close fourth quarter. They roar for a home touchdown and groan at a turnover."
+        },
+        {
+          "tag": "new",
+          "text": "Chants. \"De-fense\" with stomps when the visitors have to convert, and a clap-along when the home team is driving."
+        },
+        {
+          "tag": "new",
+          "text": "A pep band. Every school has its own fight song, made from the school itself so it is always the same tune. The band plays it after home touchdowns, at half time and after a home win, with a drum line underneath and a horn stab on first downs."
+        },
+        {
+          "tag": "new",
+          "text": "A public address announcer calls touchdowns, turnovers, some first downs, the half-time score and the final. It uses your browser's voice, and has its own on/off button next to Sound."
+        },
+        {
+          "tag": "new",
+          "text": "Half-time shows. Every game has one: a band set and something happening on the field. In a dynasty each school's home schedule has a home opener, homecoming and senior night. Homecoming crowns a king from your senior class and a queen; senior night honors your seniors by name. The title game has both bands."
+        },
+        {
+          "tag": "new",
+          "text": "The dynasty screen tells you when this week is homecoming, senior night or a home opener, and those crowds are louder."
+        },
+        {
+          "tag": "note",
+          "text": "All of the sound is generated on the spot. There are no audio files, so it adds nothing to the download. It has been checked for errors but not by ear: tell us if anything is too loud, too quiet or just odd."
+        },
+        {
+          "tag": "note",
+          "text": "The king and queen are crowned at homecoming, which is the football-season dance. Prom is in the spring."
+        }
+      ]
+    },
+    {
       "version": "0.11.0",
       "date": "2026-11-26",
       "title": "Freshmen, JV and varsity",
@@ -582,9 +621,9 @@
       "text": "Players who age from freshman to senior, a JV squad that plays its own schedule, and call-ups to the varsity. Playable now in solo dynasty."
     },
     {
-      "status": "planned",
+      "status": "testing",
       "title": "Friday night atmosphere",
-      "text": "Crowd, band and chants, plus half-time moments through the season such as homecoming and senior night."
+      "text": "Crowd, chants, a pep band with a fight song for every school, a PA announcer, and half-time shows with homecoming and senior night. Playable now."
     },
     {
       "status": "planned",

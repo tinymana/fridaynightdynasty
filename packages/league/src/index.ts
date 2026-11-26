@@ -173,6 +173,23 @@ export function schedule(): [number, number][][] {
   return weeks;
 }
 
+/** A night that is more than a game. */
+export type Occasion = 'opener' | 'homecoming' | 'seniorNight' | 'championship' | null;
+
+/**
+ * What the night is for the home school. Its first home game is the home opener, its last is senior night and
+ * the one in the middle is homecoming; the title game is its own occasion. Every school gets one of each.
+ */
+export function occasionFor(week: number, home: number): Occasion {
+  if (week >= REGULAR_WEEKS) return 'championship';
+  const weeks = schedule().map((games, w) => (games.some(([h]) => h === home) ? w : -1)).filter((w) => w >= 0);
+  const at = weeks.indexOf(week);
+  if (at < 0) return null;
+  if (at === weeks.length - 1) return 'seniorNight';
+  if (at === Math.floor(weeks.length / 2)) return 'homecoming';
+  return at === 0 ? 'opener' : null;
+}
+
 export interface GameResult {
   /** 0 to 6 for the regular season; 7 is the championship. */
   week: number;
