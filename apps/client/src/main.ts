@@ -44,7 +44,16 @@ interface Net {
   busy: boolean;
   sync: 'ok' | 'bad';
 }
-interface KickAnim { x0: number; x1: number; y0: number; y1: number; t: number; T: number; e: PlayEvent }
+interface KickAnim {
+  x0: number; x1: number; y0: number; y1: number; t: number;
+  /** Time the ball is in the air, then time the return takes (0 when there is none). */
+  T: number; R: number;
+  e: PlayEvent;
+  /** Where everyone stood at the kick, the kicking team, and the returner's index among them (-1 for none). */
+  start: ViewPlayer[]; kicking: 0 | 1; returner: number;
+  /** Field yards the return covers, along x toward the kicking team's side. */
+  run: number;
+}
 
 /** Small per-browser conveniences. Storage can be missing or throw, so every access is guarded. */
 const store = {
@@ -207,8 +216,40 @@ function buildView(): FieldView {
   if (kick) {
     const k = kick;
     const f = k.T <= 0 ? 1 : Math.min(1, k.t / k.T);
-    const x = k.x0 + (k.x1 - k.x0) * f;
-    return { players: lineup, ball: { x, y: k.y0 + (k.y1 - k.y0) * f, z: Math.round(4 * 22 * f * (1 - f)), visible: true }, los: null, toGain: null, focusX: x, frame };
+    const g = k.R <= 0 ? 0 : Math.min(1, Math.max(0, (k.t - k.T) / k.R));
+    const ballX = k.x0 + (k.x1 - k.x0) * f;
+    const ballY = k.y0 + (k.y1 - k.y0) * f;
+    // The returner's path: straight upfield with a little weave, easing to a stop where he is brought down.
+    const ease = 1 - (1 - g) * (1 - g);
+    const rx = k.x1 + k.run * ease;
+    const ry = k.y1 + Math.sin(g * 6) * 2.2 * (1 - g);
+    const scored = !!k.e.flags.touchdown;
+    const players: ViewPlayer[] = k.start.map((p, i) => {
+      if (i === k.returner) {
+        // He settles under the ball while it is in the air, then runs it back.
+        const x = g > 0 ? rx : p.x + (k.x1 - p.x) * f;
+        const y = g > 0 ? ry : p.y + (k.y1 - p.y) * f;
+        return { ...p, x, y, moving: f < 1 || (g > 0 && g < 1), hasBall: f >= 1, down: g >= 1 && !scored };
+      }
+      if (k.returner < 0) return p;
+      if (p.team === k.kicking) {
+        // Coverage: run downfield in lanes during the kick, then close on the ball carrier.
+        const laneX = p.x + (k.x1 - p.x) * 0.55 * f;
+        const close = 0.2 + 0.75 * ((i * 37) % 11) / 11;
+        const x = laneX + (rx - laneX) * g * close;
+        const y = p.y + (ry - p.y) * g * close;
+        return { ...p, x, y, moving: g < 1, down: false };
+      }
+      // Blockers: fall back in front of the returner, then lead him upfield.
+      const lead = Math.sign(k.x0 - k.x1) * (3 + (i % 4) * 2.5);
+      const tx = k.x1 + lead + k.run * ease * 0.8;
+      return { ...p, x: p.x + (tx - p.x) * Math.max(f * 0.5, g), y: p.y + ((k.y1 + ((i % 5) - 2) * 4) - p.y) * Math.max(f * 0.3, g * 0.7), moving: g < 1, down: false };
+    });
+    const flying = f < 1 || k.returner < 0;
+    return {
+      players, ball: { x: flying ? ballX : rx, y: flying ? ballY : ry, z: flying ? Math.round(4 * 22 * f * (1 - f)) : 0, visible: flying },
+      los: null, toGain: null, focusX: flying ? ballX : rx, frame,
+    };
   }
   return { players: lineup, ball: { x: spot.x, y: spot.y, z: 0, visible: mode !== 'menu' }, los: marks?.los ?? null, toGain: marks?.toGain ?? null, focusX: spot.x, frame };
 }
@@ -271,7 +312,7 @@ function step(dt: number): FieldView | null {
     case 'kick':
       if (kick) {
         kick.t += dt;
-        if (kick.t >= kick.T) {
+        if (kick.t >= kick.T + kick.R) {
           const e = kick.e;
           kick = null;
           setStatic();
@@ -468,7 +509,23 @@ function commit(off: OffDecision, def: DefDecision): void {
 function startKick(team: 0 | 1, from: number, to: number, toY: number, e: PlayEvent): void {
   const [x0, y0] = abs(team, from, CY_YD);
   const [x1, y1] = abs(team, to, toY);
-  kick = { x0, x1, y0, y1, t: 0, T: speed === 0 ? 0 : speed === 1 ? 1200 : 450, e };
+  // A return is run back on the field: the nearest receiver fields the kick and the coverage closes on him.
+  const start = lineup.map((p) => ({ ...p }));
+  const yards = (e.type === 'kickoff' || e.type === 'punt') && !e.flags.onside && !e.flags.blocked ? e.returnYards ?? 0 : 0;
+  let returner = -1;
+  if (yards > 0) {
+    let best = Infinity;
+    start.forEach((p, i) => {
+      const d = Math.abs(p.x - x1) + Math.abs(p.y - y1) * 0.5;
+      if (p.team !== team && d < best) { best = d; returner = i; }
+    });
+  }
+  const run = returner >= 0 ? Math.sign(x0 - x1) * yards : 0;
+  const pace = speed === 1 ? 1 : 0.4;
+  kick = {
+    x0, x1, y0, y1, t: 0, T: speed === 0 ? 0 : Math.round(1200 * pace), R: speed === 0 || returner < 0 ? 0 : Math.round(Math.min(4200, 700 + yards * 95) * pace),
+    e, start, kicking: team, returner, run,
+  };
   mode = 'kick';
   sfx.kick();
 }

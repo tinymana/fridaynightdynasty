@@ -559,7 +559,7 @@ export class Game {
     }
     s.clockRunning = false;
     this.emit('kickoff', kick, before, r.kickYards, { touchback: r.touchback, touchdown: r.touchdown }, points, r.touchback ? 0 : 6, text,
-      { kicker: kicker.id, receiver: returner.id });
+      { kicker: kicker.id, receiver: returner.id, returnYards: r.touchback ? 0 : r.returnYards });
     this.afterPlayClock();
   }
 
@@ -593,7 +593,7 @@ export class Game {
       s.clockRunning = false;
       const text = r.touchback ? `${short(punter)} punts into the end zone. Touchback.`
         : `${short(punter)} punts ${yds(r.grossYards)}${returned ? `, returned ${yds(returned)}` : rushed ? ', no return' : ', fair catch'}.`;
-      this.emit('punt', off, before, r.grossYards, { touchback: r.touchback }, [0, 0], 8, text, { kicker: punter.id });
+      this.emit('punt', off, before, r.grossYards, { touchback: r.touchback }, [0, 0], 8, text, { kicker: punter.id, returnYards: r.touchback ? 0 : returned });
     }
     this.afterPlayClock();
   }

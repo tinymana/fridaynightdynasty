@@ -15,6 +15,10 @@
           "text": "Commissioners can rename any school and pick its jersey, helmet, pants and trim colors, in a league with friends or in a solo dynasty. The school keeps its players, strength and record."
         },
         {
+          "tag": "new",
+          "text": "Kick and punt returns are run back on the field: the returner fields the ball, blockers set up in front of him and the coverage closes in."
+        },
+        {
           "tag": "tune",
           "text": "AI coaches now call a high school game: about six plays in ten are runs, they go for it more on fourth down, and kickers are high school kickers, good to about 40 yards."
         },
@@ -459,6 +463,36 @@
       "status": "testing",
       "title": "Penalties and a realism scorecard",
       "text": "Flags on the field, and the AI game held to real high school numbers by an automatic scorecard. In the game now."
+    },
+    {
+      "status": "next",
+      "title": "Returns and runs after the catch",
+      "text": "Interception and fumble returns, and kick and punt returns played out player by player with real blocks and tackles."
+    },
+    {
+      "status": "next",
+      "title": "Ball-carrier moves",
+      "text": "Stiff arms, jukes, spins and dives for backs and receivers, driven by their ratings."
+    },
+    {
+      "status": "next",
+      "title": "Audibles and a special teams sheet",
+      "text": "Change the play at the line, and pick special teams calls from their own tab on the call sheet."
+    },
+    {
+      "status": "next",
+      "title": "Freshmen, JV and varsity",
+      "text": "Players who age from freshman to senior, a JV squad that plays its own schedule, and call-ups to varsity."
+    },
+    {
+      "status": "planned",
+      "title": "Friday night atmosphere",
+      "text": "Crowd, band and chants, plus half-time moments through the season such as homecoming and senior night."
+    },
+    {
+      "status": "planned",
+      "title": "A cleaner look",
+      "text": "A pass over every screen for spacing, type and touch targets."
     },
     {
       "status": "planned",

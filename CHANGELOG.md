@@ -9,6 +9,8 @@ Penalties, a run-first retune held by a realism scorecard, and school renaming.
   holding on a play the offense gained on, pass interference on an incompletion. Half the distance near a goal
   line. The officials' random stream is keyed to the snap, separate from the play's.
 - `tests/realism.test.ts`: 16 measures over 150 AI games, each with a target range. `tools/realism.ts` prints them.
+- `PlayEvent.returnYards` for kickoffs and punts; the client plays the return out on the field. The return
+  itself is still decided by the kick formula; the players shown are an illustration of that result.
 - `editSchool` / `checkIdentity` in `@fnd/league`; `leagueEdit` API action (commissioner only); rename form in
   the shared-league and solo dynasty screens. League game rooms carry the two schools' names and colours.
 
@@ -24,6 +26,7 @@ Penalties, a run-first retune held by a realism scorecard, and school renaming.
 ### Known gaps
 - Scoring between two even teams is 17 points a team, at the low end of the target range.
 - The balance ceiling for one play is now 1.6 times the playbook average (was 1.5); Flood sits at 1.51.
+- Returns are animated from the result, not simulated player by player: no blocks or tackles are decided on them.
 - No penalties on kicks or after the play, no declined-penalty choice for the coach, no player discipline rating.
 - The scorecard's ranges come from general knowledge of the high school game, not from a data set.
 

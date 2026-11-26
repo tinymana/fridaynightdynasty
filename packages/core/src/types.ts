@@ -206,6 +206,8 @@ export interface PlayEvent {
   receiver?: string;
   tackler?: string;
   kicker?: string;
+  /** Kickoffs and punts: how far the ball was run back. Absent or 0 for a touchback, fair catch or no return. */
+  returnYards?: number;
   points: [number, number];
   scoreAfter: [number, number];
   seconds: number;
