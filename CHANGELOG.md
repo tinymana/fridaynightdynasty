@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.1 — 2026-11-25
+
+### Added
+- Start screen artwork and the Friday Night Dynasty logo; the title screen shows the current version.
+- `site/`: a deployable website with features, roadmap and dev notes, all driven by `site/devnotes.json`.
+  The game reads the same file for its version label. `npm run build:site` rebuilds the game into `site/play/`.
+- Tools: `tools/site-shots.mjs` (recaptures the website screenshots), `tools/site-check.mjs` (loads the site in Chrome).
+
+### Changed
+- Home placeholder team is now the Wildcats in navy, white and red.
+- Build order revised: online head-to-head follows Milestone 2, and the league is built online-first.
+
 ## 0.1.0-m1-rc1 — 2026-11-25
 
 Milestone 1 release candidate: coach-only exhibition football. Awaiting creative director sign-off and playtest.

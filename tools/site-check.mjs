@@ -1,0 +1,15 @@
+import puppeteer from 'puppeteer-core';
+const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: 'new', args: ['--no-sandbox', '--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+const p = await b.newPage(); const errs = [];
+p.on('pageerror', (e) => errs.push(String(e))); p.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+p.on('requestfailed', (r) => errs.push('failed ' + r.url()));
+await p.setViewport({ width: 1280, height: 900 });
+await p.goto('http://localhost:8765/index.html', { waitUntil: 'networkidle0' });
+await p.screenshot({ path: '/tmp/fnd-shots/site-full.png', fullPage: true });
+console.log('notes', await p.$$eval('.note', (n) => n.length), 'roadmap', await p.$$eval('.road', (n) => n.length), 'latest', await p.$eval('#latest-version', (e) => e.textContent));
+await p.click('#play-here'); await new Promise((r) => setTimeout(r, 1500));
+const frame = p.frames().find((f) => f.url().includes('play/'));
+console.log('iframe loaded', !!frame, frame ? await frame.$eval('#version', (e) => e.textContent) : '');
+await p.setViewport({ width: 400, height: 800 }); await p.goto('http://localhost:8765/index.html', { waitUntil: 'networkidle0' });
+await p.screenshot({ path: '/tmp/fnd-shots/site-mobile.png', fullPage: true });
+console.log('errors', errs.length ? errs : 'none'); await b.close();

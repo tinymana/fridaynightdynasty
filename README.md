@@ -30,3 +30,11 @@ Current state: **Milestone 1 release candidate** (exhibition game). See `CHANGEL
 - Statistics are derived only from play events.
 
 `tests/rules.test.ts` enforces the first two and the package dependency table.
+
+## Releasing an update
+
+1. Add an entry at the top of `site/devnotes.json` (version, date, title, items tagged new, improved or fixed).
+   Update a roadmap item's `status` there when a milestone moves (done, testing, next, planned).
+2. Add the matching section to `CHANGELOG.md` and bump `version` in `package.json`.
+3. Run `npm test`, then `npm run build:site`. Optionally `node tools/site-shots.mjs` to refresh the screenshots.
+4. Deploy the `site/` folder to any static host (it includes a `_headers` file for Cloudflare Pages and Netlify).

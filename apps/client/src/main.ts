@@ -7,6 +7,8 @@ import { AutoCoach, Game, gameHash, simulateGame, summarize, type PlaySim } from
 import { FieldScene, createGame, type FieldView, type ViewPlayer } from './scene';
 import { setMuted, sfx, unlockAudio } from './audio';
 import titleUrl from './assets/title.jpg';
+import logoUrl from './assets/logo.webp';
+import devnotes from '../../../site/devnotes.json';
 
 /** Client controller: turns the coach's choices into engine decisions and engine state into a view. */
 
@@ -500,6 +502,8 @@ function showFinal(): void {
 // ---------------------------------------------------------------- wiring
 
 ($('titleArt') as HTMLImageElement).src = titleUrl;
+($('setupLogo') as HTMLImageElement).src = logoUrl;
+$('version').textContent = `v${devnotes.notes[0].version} \u00B7 ${devnotes.notes[0].title}`;
 $('title').addEventListener('click', showSetup);
 $('again').addEventListener('click', showSetup);
 document.querySelectorAll<HTMLElement>('[data-speed]').forEach((el) => el.addEventListener('click', () => {

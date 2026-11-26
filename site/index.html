@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Friday Night Dynasty: a retro high school football coaching game</title>
+    <meta name="description" content="Call the plays, build the program, chase the title. A retro high school football dynasty game where you are the head coach. Play free in your browser." />
+    <meta property="og:title" content="Friday Night Dynasty" />
+    <meta property="og:description" content="A retro high school football dynasty game where you are the head coach. Play free in your browser." />
+    <meta property="og:image" content="assets/title_screen.webp" />
+    <meta name="theme-color" content="#121741" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <link rel="apple-touch-icon" href="assets/icon-192.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="nav">
+      <a class="nav-logo" href="#top"><img src="assets/logo.webp" alt="Friday Night Dynasty" /></a>
+      <nav>
+        <a href="#features">Features</a>
+        <a href="#roadmap">Roadmap</a>
+        <a href="#notes">Dev notes</a>
+        <a class="btn small" href="play/index.html">Play now</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <img class="hero-art" src="assets/title_screen.webp" alt="Title screen: a coach with a headset and clipboard watches his team huddle under stadium lights at sunset" />
+        <div class="hero-cta">
+          <a class="btn big" href="play/index.html">&#9654; Play now</a>
+          <button class="btn big alt" id="play-here">Play here</button>
+          <p class="hero-sub">Free in your browser · Mouse, keyboard or touch · You call the plays, your players carry them out</p>
+          <p class="hero-version" id="latest-version"></p>
+        </div>
+      </section>
+
+      <section id="play" class="panel game-panel" hidden>
+        <div class="game-bar">
+          <strong>Friday Night Dynasty</strong>
+          <span class="spacer"></span>
+          <button class="btn small" id="fullscreen">&#x26F6; Full screen</button>
+          <a class="btn small alt" href="play/index.html">Open on its own page</a>
+          <button class="btn small alt" id="close-game">&#x2715; Close</button>
+        </div>
+        <div class="game-frame"></div>
+        <p class="fineprint">Tip: click the game once so it can hear your keyboard. Number keys pick a play.</p>
+      </section>
+
+      <section id="features" class="features">
+        <h2 class="section-title">You are the head coach</h2>
+        <p class="section-sub">What is in the game today.</p>
+        <div class="feature-grid">
+          <article class="panel feature">
+            <img src="assets/shot_offense.webp" alt="Eight offensive play cards with route diagrams under the field" loading="lazy" />
+            <h3>Call the plays</h3>
+            <p>Eight plays, each drawn up on a card. Run it inside, stretch it wide or throw it deep, then punt, kick or go for it on fourth down.</p>
+          </article>
+          <article class="panel feature">
+            <img src="assets/shot_defense.webp" alt="Four defensive call cards showing rushers and zones" loading="lazy" />
+            <h3>Out-guess the other sideline</h3>
+            <p>Stuff the run, drop into zone or send the blitz. Guess right and your defense gets the edge. Guess wrong and you will see why.</p>
+          </article>
+          <article class="panel feature">
+            <img src="assets/shot_live.webp" alt="A pass play in progress on the pixel-art field" loading="lazy" />
+            <h3>Watch it unfold</h3>
+            <p>All 22 players run the play on the field. Watch at normal speed, fast, or skip ahead. Touchdowns and turnovers always get a replay.</p>
+          </article>
+          <article class="panel feature">
+            <img src="assets/shot_final.webp" alt="Final score screen with team statistics and scoring summary" loading="lazy" />
+            <h3>Every game adds up</h3>
+            <p>A full four quarters with a score bug, team totals and a scoring summary. Every game can be replayed exactly from its seed.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="roadmap" class="roadmap">
+        <h2 class="section-title">The road to a dynasty</h2>
+        <p class="section-sub">Where the game is headed, in build order. Friends coaching rival schools in your dynasty is the goal the whole plan points at.</p>
+        <ol id="roadmap-list" class="road-list"><li class="fineprint">Loading…</li></ol>
+      </section>
+
+      <section id="notes" class="notes">
+        <h2 class="section-title">Dev notes</h2>
+        <p class="section-sub">What changed, newest first.</p>
+        <div id="notes-list" class="notes-list"><p class="fineprint">Loading…</p></div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>Friday Night Dynasty is a work of fiction by Tiny Mana Studios. Every school, player, coach and college in the game is invented.</p>
+      <p>This is an early build. School names, colours and on-field art are placeholders.</p>
+    </footer>
+
+    <script src="main.js" defer></script>
+  </body>
+</html>

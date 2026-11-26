@@ -1,0 +1,52 @@
+{
+  "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
+  "notes": [
+    {
+      "version": "0.1.1",
+      "date": "2026-11-25",
+      "title": "Start screen, logo and this site",
+      "items": [
+        { "tag": "new", "text": "Friday Night Dynasty start screen and logo." },
+        { "tag": "new", "text": "This website, with dev notes and the roadmap. The game's title screen shows its version from the same notes file." },
+        { "tag": "improved", "text": "The home side is now the Wildcats, in navy, white and red to match the artwork." },
+        { "tag": "improved", "text": "Build order changed: online head-to-head moves up to right after play calling, and the league is built online-first so friends can coach rival schools from the first season." }
+      ]
+    },
+    {
+      "version": "0.1",
+      "date": "2026-11-25",
+      "title": "Kickoff: coach-only exhibition",
+      "items": [
+        { "tag": "new", "text": "A full four-quarter exhibition game. You call the plays; the AI controls all 22 players and coaches the other sideline." },
+        { "tag": "new", "text": "Starter playbook: 8 offensive plays and 4 defensive calls, each with a diagram. Guess the offense right and your defense gets an edge." },
+        { "tag": "new", "text": "Coach's decisions: punt, field goal, extra point or two-point try, and timeouts." },
+        { "tag": "new", "text": "Watch at normal speed, fast, or skip to the result. Scoring plays and turnovers you fast-forwarded are replayed at normal speed." },
+        { "tag": "new", "text": "Kickoffs, punts, field goals, safeties, interceptions, fumbles and sacks, with a score bug and a final summary." },
+        { "tag": "new", "text": "Every game is reproducible from its seed and the list of coaching decisions, which is what will make online results fair." }
+      ]
+    },
+    {
+      "version": "0.0",
+      "date": "2026-11-25",
+      "title": "Design foundation",
+      "items": [
+        { "tag": "new", "text": "Game design, architecture plan, data model and acceptance criteria for every milestone." },
+        { "tag": "new", "text": "Direction set: coach-only. Nobody steers a player; every decision is a coach's decision." }
+      ]
+    }
+  ],
+  "roadmap": [
+    { "status": "testing", "title": "Exhibition football", "text": "Coach a full game against the AI. Playable now; waiting on playtest sign-off." },
+    { "status": "next", "title": "Playbooks and smarter football", "text": "More formations and plays, build your own 8-play book, in-game substitutions, a game plan and a sharper AI coach." },
+    { "status": "planned", "title": "Online head-to-head", "text": "Invite a friend by link and coach against each other live, with hidden play calls." },
+    { "status": "planned", "title": "Complete statistics", "text": "Full box scores for teams and players, checked so every number adds up." },
+    { "status": "planned", "title": "Eight-school league", "text": "Eight fictional schools with rosters, rivals, schedules and standings. Any school can be run by a person or the AI." },
+    { "status": "planned", "title": "Dynasty seasons with friends", "text": "Persistent rosters and week-by-week seasons. Invite coaches to run rival schools; the week advances when everyone is ready." },
+    { "status": "planned", "title": "Kids grow up", "text": "Graduation, incoming freshmen from feeder schools, player development, morale and academics." },
+    { "status": "planned", "title": "Run the program", "text": "Coaching staff, facilities, fundraising and community expectations." },
+    { "status": "planned", "title": "Playoffs and championships", "text": "League, section and state brackets, with overtime." },
+    { "status": "planned", "title": "Commissioner tools", "text": "Advance and roll back weeks, assign coaches, set schedules and keep an audit log." },
+    { "status": "planned", "title": "Records, alumni and legacy", "text": "Record books, hall of fame, college offers, and a coaching career with job offers." },
+    { "status": "planned", "title": "Regional and national", "text": "More states, showcase games, rankings and a fictional national championship." }
+  ]
+}

@@ -6,6 +6,7 @@
     "strict": true,
     "noUnusedLocals": false,
     "skipLibCheck": true,
+    "resolveJsonModule": true,
     "lib": ["ES2022", "DOM"],
     "types": ["node"],
     "paths": {
@@ -14,5 +15,5 @@
       "@fnd/match-sim": ["./packages/match-sim/src/index.ts"]
     }
   },
-  "include": ["packages", "apps", "tools", "tests", "vite.config.ts"]
+  "include": ["packages", "apps", "tools", "tests", "site/devnotes.json", "vite.config.ts"]
 }
