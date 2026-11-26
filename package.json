@@ -1,7 +1,7 @@
 {
   "name": "friday-night-dynasty",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "sim": "tsx tools/headless.ts",
     "check:browser": "node tools/browser-check.mjs",
-    "build:site": "vite build && cp dist/index.html site/play/index.html"
+    "build:site": "vite build && cp dist/index.html site/play/index.html",
+    "check:ui": "node tools/ui-check.mjs",
+    "probe": "tsx tools/probe.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.10",

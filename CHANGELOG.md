@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.2.0 — 2026-11-25
+
+Milestone 2 release candidate: playbooks, fronts and smarter football.
+
+### Added
+- `core`: slot-based formations (5), a 24-play library, 4 defensive fronts combined with 4 calls, 39-player rosters
+  with depth charts, playbook validation. Plays, formations and fronts are all data, in the shape a play designer will write.
+- `match-sim`: man coverage matched to the offensive formation at the snap, lead blockers, quarterback runs,
+  fatigue (energy drains with distance and contact, tired players are slower), automatic substitution with a
+  threshold and a return margin, depth chart and threshold changes as logged decisions, kneel-downs, per-team playbooks.
+- `football-ai`: game plans (run-pass lean, fourth-down aggression), situational play weights by tag, front selection,
+  kneel-out arithmetic, prevent defense, a two-point chart.
+- `client`: playbook builder, front picker, 20-second play clock with AI fallback, sideline menu (depth chart with
+  energy, game plan, substitution threshold), kneel button.
+- Tests: 119 in all, including a 42-case coach suite, a 40-case on-field suite and the 200-game balance criteria.
+- Tools: `npm run probe -- <playId>` (one play against every front and call), `npm run check:ui`.
+
+### Changed
+- `DefDecision` is now a front plus a call. `Team` holds a roster and depth chart instead of fixed starters.
+- Retuned tackling, blocking, catching and pass rush for the larger library.
+
+### Balance baseline (300 AI-versus-AI games rotating through all 24 plays)
+- 18.7 points and 55.8 plays per team; 4.3 yards per carry; 60% completions; 0.6 sacks and 0.9 turnovers per team.
+- Highest-averaging play is 1.35 times the playbook average. Home side won 51.9% of decided games.
+
+### Known gaps
+- Sacks are lower than intended (target about 2 per team). Quarterback Draw and Quick Slants are the weakest plays.
+- Featured players in the game plan, and penalties, are not implemented.
+
 ## 0.1.1 — 2026-11-25
 
 ### Added

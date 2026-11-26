@@ -1,6 +1,7 @@
 import {
-  DEFENSE_CALLS, DEF_POS, OFFENSE_PLAYS, OFF_POS, RULES, U, callById, exhibitionTeams, playById,
-  type DefCall, type DefDecision, type OffDecision, type OffPlay, type PlayEvent, type Team,
+  BOOK_SIZE, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, FORMATIONS, OFFENSE_PLAYS, RULES, U, defAssignment, exhibitionTeams,
+  formationById, frontById, overall, playById, validateBook,
+  type DefDecision, type DefFront, type DefScheme, type Group, type OffAssign, type OffDecision, type OffPlay, type PlayEvent, type Team,
 } from '@fnd/core';
 import { fieldGoalDistance } from '@fnd/football-ai';
 import { AutoCoach, Game, gameHash, simulateGame, summarize, type PlaySim } from '@fnd/match-sim';
@@ -14,6 +15,7 @@ import devnotes from '../../../site/devnotes.json';
 
 const W_YD = 53.333;
 const CY_YD = W_YD / 2;
+const PLAY_CLOCK_MS = 20000;
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const other = (t: 0 | 1): 0 | 1 => (t === 0 ? 1 : 0);
 const css = (n: number): string => `#${n.toString(16).padStart(6, '0')}`;
@@ -21,6 +23,23 @@ const ord = (n: number): string => ['', '1st', '2nd', '3rd', '4th'][n] ?? `${n}t
 
 type Mode = 'menu' | 'choose' | 'presnap' | 'live' | 'replay' | 'kick' | 'post' | 'final';
 interface KickAnim { x0: number; x1: number; y0: number; y1: number; t: number; T: number; e: PlayEvent }
+
+/** Small per-browser conveniences. Storage can be missing or throw, so every access is guarded. */
+const store = {
+  get<T>(key: string, fallback: T): T {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw === null ? fallback : (JSON.parse(raw) as T);
+    } catch {
+      return fallback;
+    }
+  },
+  set(key: string, value: unknown): void {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch { /* not available: the choice lasts for this visit only */ }
+  },
+};
 
 let teams: readonly [Team, Team];
 let game: Game;
@@ -43,6 +62,18 @@ let pendingEvent: PlayEvent | null = null;
 let wantTimeout = false;
 let lastQuarter = 1;
 let keyHandler: ((k: string) => void) | null = null;
+let book: string[] = (() => {
+  const saved = store.get<string[]>('fnd.book.v1', [...DEFAULT_BOOK]);
+  return validateBook(saved) === null ? saved : [...DEFAULT_BOOK];
+})();
+let bookDraft: string[] = [];
+let frontId: string = DEFENSE_FRONTS[0].id;
+let useClock = store.get<boolean>('fnd.clock.v1', true);
+let clockLeft = 0;
+let clockOn = false;
+let sidelineOpen = false;
+let sidelineTab: 'depth' | 'plan' = 'depth';
+let sidelineGroup: Group = 'RB';
 
 const scene = new FieldScene();
 scene.onFrame = (dt) => step(dt);
@@ -54,14 +85,14 @@ const abs = (team: 0 | 1, x: number, y: number): [number, number] => (team === 0
 
 function scrimmageLineup(off: 0 | 1, los: number): ViewPlayer[] {
   const out: ViewPlayer[] = [];
-  const play = OFFENSE_PLAYS[0];
-  const call = DEFENSE_CALLS[0];
-  for (const pos of OFF_POS) {
-    const [x, y] = abs(off, los + play.formation[pos][0], CY_YD + play.formation[pos][1]);
+  const formation = formationById(playById(game.books[off][0]).formation);
+  const front = frontById(off === user ? DEFENSE_FRONTS[0].id : frontId);
+  for (const slot of formation.slots) {
+    const [x, y] = abs(off, los + slot.at[0], CY_YD + slot.at[1]);
     out.push({ team: off, x, y, moving: false, down: false, hasBall: false });
   }
-  for (const pos of DEF_POS) {
-    const [x, y] = abs(off, Math.min(los + call.formation[pos][0], 108), CY_YD + call.formation[pos][1]);
+  for (const slot of front.slots) {
+    const [x, y] = abs(off, Math.min(los + slot.at[0], 108), CY_YD + slot.at[1]);
     out.push({ team: other(off), x, y, moving: false, down: false, hasBall: false });
   }
   return out;
@@ -93,8 +124,7 @@ function setStatic(): void {
     const off = s.possession;
     lineup = scrimmageLineup(off, los);
     const a = abs(off, los, CY_YD)[0];
-    marks = { los: a, toGain: s.phase === 'conversion' ? 100 : abs(off, Math.min(los + s.distance, 100), CY_YD)[0] };
-    if (s.phase === 'conversion') marks.toGain = 100;
+    marks = { los: a, toGain: s.phase === 'conversion' ? abs(off, 100, CY_YD)[0] : abs(off, Math.min(los + s.distance, 100), CY_YD)[0] };
     spot = { x: a, y: CY_YD };
   }
 }
@@ -132,6 +162,13 @@ function step(dt: number): FieldView | null {
   if (mode === 'menu' || !game) return null;
   dt = Math.min(dt, 100);
   switch (mode) {
+    case 'choose':
+      if (clockOn && !sidelineOpen) {
+        clockLeft -= dt;
+        showPlayClock();
+        if (clockLeft <= 0) playClockExpired();
+      }
+      break;
     case 'presnap':
       timer -= dt;
       if (timer <= 0) {
@@ -210,12 +247,39 @@ function next(): void {
   setStatic();
   wantTimeout = false;
   if (s.possession === user) {
+    startPlayClock();
     showOffensePanel();
   } else {
     pendingOff = coach.offense(game)!;
-    if (pendingOff.kind !== 'play') commit(pendingOff, { callId: 'base' });
-    else showDefensePanel();
+    if (pendingOff.kind !== 'play') commit(pendingOff, { frontId, callId: 'base' });
+    else {
+      startPlayClock();
+      showDefensePanel();
+    }
   }
+}
+
+function startPlayClock(): void {
+  clockOn = useClock;
+  clockLeft = PLAY_CLOCK_MS;
+  showPlayClock();
+}
+
+function showPlayClock(): void {
+  const el = $('pclock');
+  el.classList.toggle('hidden', !clockOn || mode !== 'choose');
+  const secs = Math.max(0, Math.ceil(clockLeft / 1000));
+  el.textContent = `:${String(secs).padStart(2, '0')}`;
+  el.classList.toggle('low', secs <= 5);
+}
+
+/** Time is up: the AI coach makes the call from your game plan. */
+function playClockExpired(): void {
+  clockOn = false;
+  if (mode !== 'choose') return;
+  closeSideline();
+  if (game.state.possession === user) commit(coach.offense(game)!, coach.defense(game)!);
+  else commit(pendingOff!, coach.defense(game)!);
 }
 
 function commit(off: OffDecision, def: DefDecision): void {
@@ -223,17 +287,22 @@ function commit(off: OffDecision, def: DefDecision): void {
   const offTeam = s.possession;
   const los = s.phase === 'conversion' ? RULES.twoPointFrom : s.yardLine;
   keyHandler = null;
+  clockOn = false;
+  $('pclock').classList.add('hidden');
   game.begin(off, def);
   const tb = game.lastTimeoutBy;
   if (game.live) {
     viewSim = game.live;
     viewOffense = offTeam;
     const play = off.kind === 'play' ? playById(off.playId) : null;
-    const call = callById(def.callId);
+    const front = frontById(def.frontId);
+    const scheme = DEFENSE_SCHEMES.find((c) => c.id === def.callId)!;
+    const subs = game.lastSubs.filter((x) => x.team === user).map((x) => `${x.slot}: #${x.out.number} resting, #${x.in.number} in`);
     const calls = $('calls');
-    calls.innerHTML = `${teams[offTeam].abbr} <b>${play?.name ?? ''}</b><br>${teams[other(offTeam)].abbr} <b>${call.name}</b>${tb !== null ? `<br>Timeout ${teams[tb].abbr}` : ''}`;
+    calls.innerHTML = `${teams[offTeam].abbr} <b>${play?.name ?? ''}</b><br>${teams[other(offTeam)].abbr} <b>${front.name} ${scheme.name}</b>`
+      + (tb !== null ? `<br>Timeout ${teams[tb].abbr}` : '') + (subs.length ? `<br>${subs.slice(0, 3).join('<br>')}` : '');
     calls.classList.remove('hidden');
-    setPanelWaiting(`${play?.name ?? ''} against ${call.name}`);
+    setPanelWaiting(`${play?.name ?? ''} against ${front.name} ${scheme.name}`);
     updateBug();
     mode = 'presnap';
     timer = speed === 0 ? 0 : speed === 1 ? 900 : 300;
@@ -241,7 +310,7 @@ function commit(off: OffDecision, def: DefDecision): void {
   }
   game.tick();
   const e = game.lastEvent;
-  if (!e) return showResult(null);
+  if (!e || e.type === 'kneel') return showResult(e);
   setPanelWaiting(e.type === 'punt' ? 'Punt' : e.type === 'fieldGoal' ? 'Field goal attempt' : 'Extra point');
   if (e.type === 'punt') startKick(offTeam, los - 10, Math.min(los + e.yards, 104), CY_YD, e);
   else startKick(offTeam, los - 7, 110, e.flags.good ? CY_YD : CY_YD + 13, e);
@@ -290,6 +359,7 @@ function ballOn(): string {
 
 function showResult(e: PlayEvent | null): void {
   updateBug();
+  setStaticIfIdle();
   const s = game.state;
   const banner = $('banner');
   let period = '';
@@ -303,12 +373,17 @@ function showResult(e: PlayEvent | null): void {
     if (e.flags.touchdown || ((e.type === 'fieldGoal' || e.type === 'pat' || e.type === 'twoPoint') && e.flags.good)) sfx.score();
     else if (e.flags.interception || e.flags.fumbleLost || e.flags.safety || e.flags.turnoverOnDowns) sfx.bad();
     else if (e.flags.firstDown) sfx.first();
-    else if (e.flags.incomplete || e.type === 'punt' || e.type === 'kickoff') sfx.whistle();
+    else if (e.flags.incomplete || e.type === 'punt' || e.type === 'kickoff' || e.type === 'kneel') sfx.whistle();
     else sfx.tackle();
   }
-  const base = big || period ? 2600 : 1700;
+  const base = big || period ? 2600 : e?.type === 'kneel' ? 1000 : 1700;
   timer = speed === 0 ? Math.min(base, 900) : speed === 1 ? base : Math.round(base * 0.5);
   mode = 'post';
+}
+
+/** After a play with no field animation (a kneel-down), show the new spot straight away. */
+function setStaticIfIdle(): void {
+  if (!viewSim && !kick) setStatic();
 }
 
 // ----------------------------------------------------------------- score bug
@@ -333,46 +408,42 @@ function updateBug(): void {
   $('mid').querySelector('.dd')!.textContent = dd;
 }
 
-// -------------------------------------------------------------------- panels
-
-function setPanelWaiting(text: string): void {
-  $('panel').innerHTML = `<div class="waiting">${text}</div>`;
-  $('prompt').textContent = '';
-  keyHandler = null;
-}
+// ------------------------------------------------------------------ diagrams
 
 const SX = (lateral: number): number => 50 + lateral * 2.05;
 
 function offenseDiagram(p: OffPlay): string {
-  const Y = (d: number): number => 35 - Math.max(-6.5, Math.min(d, 20)) * 1.55;
-  let marks = '';
+  const Y = (d: number): number => 35 - Math.max(-7.5, Math.min(d, 20)) * 1.55;
+  const formation = formationById(p.formation);
+  let dots = '';
   let paths = '';
-  for (const pos of OFF_POS) {
-    const [d0, l0] = p.formation[pos];
-    const a = p.assign[pos];
+  for (const slot of formation.slots) {
+    const [d0, l0] = slot.at;
+    const a: OffAssign = p.assign[slot.id] ?? { t: 'block' };
     const x = SX(l0);
     const y = Y(d0);
-    if (a.t === 'block' && ['LT', 'LG', 'C', 'RG', 'RT'].includes(pos)) marks += `<rect x="${x - 1.8}" y="${y - 1.8}" width="3.6" height="3.6" fill="#f3f1e7"/>`;
-    else marks += `<circle cx="${x}" cy="${y}" r="2" fill="${a.t === 'carry' ? '#f2c14e' : a.t === 'qb' ? '#1c6b2c' : '#f3f1e7'}" stroke="#f3f1e7" stroke-width="0.8"/>`;
-    if (a.t === 'route' || a.t === 'carry') {
+    if (slot.group === 'OL') dots += `<rect x="${x - 1.8}" y="${y - 1.8}" width="3.6" height="3.6" fill="#f3f1e7"/>`;
+    else dots += `<circle cx="${x}" cy="${y}" r="2" fill="${a.t === 'carry' ? '#f2c14e' : a.t === 'qb' ? '#1c6b2c' : '#f3f1e7'}" stroke="#f3f1e7" stroke-width="0.8"/>`;
+    if (a.t === 'route' || a.t === 'carry' || a.t === 'lead') {
       const pts: [number, number][] = [[d0, l0]];
       for (const [dx, dy] of a.pts) pts.push(a.t === 'route' ? [d0 + dx, l0 + dy] : [dx, dy]);
       const n = pts.length;
       if (a.t === 'carry') pts.push([pts[n - 1][0] + 5, pts[n - 1][1]]);
-      else if (a.go) pts.push([pts[n - 1][0] + (pts[n - 1][0] - pts[n - 2][0]) * 0.8, pts[n - 1][1] + (pts[n - 1][1] - pts[n - 2][1]) * 0.8]);
+      else if (a.t === 'route' && a.go && n > 1) pts.push([pts[n - 1][0] + (pts[n - 1][0] - pts[n - 2][0]) * 0.8, pts[n - 1][1] + (pts[n - 1][1] - pts[n - 2][1]) * 0.8]);
       const colour = a.t === 'carry' ? '#f2c14e' : '#ffffff';
-      paths += `<polyline points="${pts.map(([d, l]) => `${SX(l).toFixed(1)},${Y(d).toFixed(1)}`).join(' ')}" fill="none" stroke="${colour}" stroke-width="${a.t === 'carry' ? 1.8 : 1.1}" stroke-linejoin="round" marker-end="url(#ar${a.t === 'carry' ? 'c' : 'r'})"/>`;
+      const style = a.t === 'lead' ? 'stroke-dasharray="2 1.5"' : `marker-end="url(#ar${a.t === 'carry' ? 'c' : 'r'})"`;
+      paths += `<polyline points="${pts.map(([d, l]) => `${SX(l).toFixed(1)},${Y(d).toFixed(1)}`).join(' ')}" fill="none" stroke="${colour}" stroke-width="${a.t === 'carry' ? 1.8 : 1.1}" stroke-linejoin="round" ${style}/>`;
     }
   }
-  return `<svg viewBox="0 0 100 46" aria-hidden="true"><defs><marker id="arr" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto"><path d="M0 0L6 3L0 6z" fill="#fff"/></marker><marker id="arc" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="3.5" markerHeight="3.5" orient="auto"><path d="M0 0L6 3L0 6z" fill="#f2c14e"/></marker></defs><line x1="0" x2="100" y1="${Y(0)}" y2="${Y(0)}" stroke="#4f8ef7" stroke-width="0.7"/>${paths}${marks}</svg>`;
+  return `<svg viewBox="0 0 100 48" aria-hidden="true"><defs><marker id="arr" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto"><path d="M0 0L6 3L0 6z" fill="#fff"/></marker><marker id="arc" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="3.5" markerHeight="3.5" orient="auto"><path d="M0 0L6 3L0 6z" fill="#f2c14e"/></marker></defs><line x1="0" x2="100" y1="${Y(0)}" y2="${Y(0)}" stroke="#4f8ef7" stroke-width="0.7"/>${paths}${dots}</svg>`;
 }
 
-function defenseDiagram(c: DefCall): string {
+function defenseDiagram(front: DefFront, c: DefScheme): string {
   const Y = (d: number): number => 40 - d * 2.1;
   let out = '';
-  for (const pos of DEF_POS) {
-    const [d0, l0] = c.formation[pos];
-    const a = c.assign[pos];
+  for (const slot of front.slots) {
+    const [d0, l0] = slot.at;
+    const a = defAssignment(slot, c.id);
     const x = SX(l0);
     const y = Y(d0);
     if (a.t === 'rush') out += `<line x1="${x}" y1="${y}" x2="${SX(l0 * 0.6)}" y2="${Y(-2)}" stroke="#ff6b6b" stroke-width="1.3" marker-end="url(#ard)"/><circle cx="${x}" cy="${y}" r="2.1" fill="#ff6b6b"/>`;
@@ -380,6 +451,17 @@ function defenseDiagram(c: DefCall): string {
     else out += `<circle cx="${x}" cy="${y}" r="2.1" fill="#f3f1e7"/>${a.t === 'read' ? `<circle cx="${x}" cy="${y}" r="3.6" fill="none" stroke="#f3f1e7" stroke-width="0.6"/>` : ''}`;
   }
   return `<svg viewBox="0 0 100 46" aria-hidden="true"><defs><marker id="ard" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="3.5" markerHeight="3.5" orient="auto"><path d="M0 0L6 3L0 6z" fill="#ff6b6b"/></marker></defs><line x1="0" x2="100" y1="${Y(0)}" y2="${Y(0)}" stroke="#4f8ef7" stroke-width="0.7"/>${out}</svg>`;
+}
+
+const playCard = (p: OffPlay, act: string, hint: string, extra = ''): string =>
+  `<button class="card${extra}" data-act="${act}">${offenseDiagram(p)}<span class="nm">${p.name} <span class="kind">${p.kind}</span></span><span class="form">${formationById(p.formation).name}</span><span class="ds">${p.desc}${hint}</span></button>`;
+
+// -------------------------------------------------------------------- panels
+
+function setPanelWaiting(text: string): void {
+  $('panel').innerHTML = `<div class="waiting">${text}</div>`;
+  $('prompt').textContent = '';
+  keyHandler = null;
 }
 
 function timeoutButton(): string {
@@ -392,49 +474,64 @@ function showOffensePanel(twoPointPick = false): void {
   const s = game.state;
   const panel = $('panel');
   mode = 'choose';
+  showPlayClock();
+  const defense = (): DefDecision => coach.defense(game)!;
   if (s.phase === 'conversion' && !twoPointPick) {
     $('prompt').textContent = 'Touchdown! Choose the try';
     panel.innerHTML = `<div class="wide"><button class="act" data-act="pat">Kick extra point <kbd>[1]</kbd><small>1 point</small></button><button class="act" data-act="two">Go for two <kbd>[2]</kbd><small>One play from the 3</small></button></div>`;
-    bind({ pat: () => commit({ kind: 'patKick' }, coach.defense(game)!), two: () => showOffensePanel(true) }, (k) => (k === '1' ? 'pat' : k === '2' ? 'two' : null));
+    bind({ pat: () => commit({ kind: 'patKick' }, defense()), two: () => showOffensePanel(true) }, (k) => (k === '1' ? 'pat' : k === '2' ? 'two' : null));
     return;
   }
   $('prompt').textContent = s.phase === 'conversion' ? 'Two-point play' : s.down === 4 ? '4th down: go, punt or kick' : 'Call your play';
-  let html = OFFENSE_PLAYS.map((p, i) => `<button class="card" data-act="p:${p.id}">${offenseDiagram(p)}<span class="nm">${p.name} <span class="kind">${p.kind}</span></span><span class="ds">${p.desc} <kbd>[${i + 1}]</kbd></span></button>`).join('');
+  const plays = game.books[user].map(playById);
+  let html = plays.map((p, i) => playCard(p, `p:${p.id}`, ` <kbd>[${i + 1}]</kbd>`)).join('');
   if (s.phase === 'scrimmage') {
     const fg = fieldGoalDistance(s.yardLine);
-    html += `<div class="wide"><button class="act" data-act="punt">Punt <kbd>[P]</kbd></button>${fg <= 60 ? `<button class="act" data-act="fg">Field goal <kbd>[F]</kbd><small>${fg} yards</small></button>` : ''}${timeoutButton()}</div>`;
+    const canKneel = (s.quarter === 2 || s.quarter === 4) && s.down < 4;
+    html += `<div class="wide"><button class="act" data-act="punt">Punt <kbd>[P]</kbd></button>${fg <= 60 ? `<button class="act" data-act="fg">Field goal <kbd>[F]</kbd><small>${fg} yards</small></button>` : ''}${canKneel ? '<button class="act" data-act="kneel">Kneel <kbd>[K]</kbd><small>Lose a yard, keep the clock running</small></button>' : ''}${timeoutButton()}</div>`;
   }
   panel.innerHTML = html;
   const acts: Record<string, () => void> = {
-    punt: () => commit({ kind: 'punt', timeout: wantTimeout }, coach.defense(game)!),
-    fg: () => commit({ kind: 'fieldGoal', timeout: wantTimeout }, coach.defense(game)!),
+    punt: () => commit({ kind: 'punt', timeout: wantTimeout }, defense()),
+    fg: () => commit({ kind: 'fieldGoal', timeout: wantTimeout }, defense()),
+    kneel: () => commit({ kind: 'kneel' }, defense()),
     timeout: () => { wantTimeout = !wantTimeout; showOffensePanel(twoPointPick); },
   };
-  for (const p of OFFENSE_PLAYS) acts[`p:${p.id}`] = () => commit({ kind: 'play', playId: p.id, timeout: wantTimeout }, coach.defense(game)!);
+  for (const p of plays) acts[`p:${p.id}`] = () => commit({ kind: 'play', playId: p.id, timeout: wantTimeout }, defense());
   bind(acts, (k) => {
     const n = Number(k);
-    if (n >= 1 && n <= OFFENSE_PLAYS.length) return `p:${OFFENSE_PLAYS[n - 1].id}`;
-    return k === 'p' ? 'punt' : k === 'f' ? 'fg' : k === 't' ? 'timeout' : null;
+    if (n >= 1 && n <= plays.length) return `p:${plays[n - 1].id}`;
+    return k === 'p' ? 'punt' : k === 'f' ? 'fg' : k === 'k' ? 'kneel' : k === 't' ? 'timeout' : null;
   });
 }
 
 function showDefensePanel(): void {
   mode = 'choose';
-  $('prompt').textContent = game.state.phase === 'conversion' ? 'Defend the two-point try' : 'Call your defense';
+  showPlayClock();
+  $('prompt').textContent = game.state.phase === 'conversion' ? 'Defend the two-point try' : 'Pick a front, then call it';
+  const front = frontById(frontId);
   const tb = timeoutButton();
-  $('panel').innerHTML = DEFENSE_CALLS.map((c, i) => `<button class="card" data-act="d:${c.id}">${defenseDiagram(c)}<span class="nm">${c.name} <span class="kind">${{ run: 'vs run', pass: 'vs pass', blitz: 'pressure', balanced: 'balanced' }[c.kind]}</span></span><span class="ds">${c.desc} <kbd>[${i + 1}]</kbd></span></button>`).join('') + (tb ? `<div class="wide">${tb}</div>` : '');
+  const keys = ['Q', 'W', 'E', 'R'];
+  const fronts = `<div class="fronts"><span class="lbl">Front</span>${DEFENSE_FRONTS.map((f, i) => `<button class="act${f.id === frontId ? ' on' : ''}" data-act="f:${f.id}" title="${f.desc}">${f.name} <kbd>[${keys[i]}]</kbd></button>`).join('')}</div>`;
+  const kindLabel = { run: 'vs run', pass: 'vs pass', blitz: 'pressure', balanced: 'balanced' };
+  $('panel').innerHTML = fronts
+    + DEFENSE_SCHEMES.map((c, i) => `<button class="card" data-act="d:${c.id}">${defenseDiagram(front, c)}<span class="nm">${c.name} <span class="kind">${kindLabel[c.kind]}</span></span><span class="form">${front.name}: ${front.desc}</span><span class="ds">${c.desc} <kbd>[${i + 1}]</kbd></span></button>`).join('')
+    + (tb ? `<div class="wide">${tb}</div>` : '');
   const acts: Record<string, () => void> = { timeout: () => { wantTimeout = !wantTimeout; showDefensePanel(); } };
-  for (const c of DEFENSE_CALLS) acts[`d:${c.id}`] = () => commit(pendingOff!, { callId: c.id, timeout: wantTimeout });
+  for (const f of DEFENSE_FRONTS) acts[`f:${f.id}`] = () => { frontId = f.id; setStatic(); showDefensePanel(); };
+  for (const c of DEFENSE_SCHEMES) acts[`d:${c.id}`] = () => commit(pendingOff!, { frontId, callId: c.id, timeout: wantTimeout });
   bind(acts, (k) => {
     const n = Number(k);
-    if (n >= 1 && n <= DEFENSE_CALLS.length) return `d:${DEFENSE_CALLS[n - 1].id}`;
+    if (n >= 1 && n <= DEFENSE_SCHEMES.length) return `d:${DEFENSE_SCHEMES[n - 1].id}`;
+    const fi = keys.indexOf(k.toUpperCase());
+    if (fi >= 0) return `f:${DEFENSE_FRONTS[fi].id}`;
     return k === 't' ? 'timeout' : null;
   });
 }
 
 function bind(acts: Record<string, () => void>, keys: (k: string) => string | null): void {
   const run = (a: string | null): void => {
-    if (!a || !acts[a] || mode !== 'choose') return;
+    if (!a || !acts[a] || mode !== 'choose' || sidelineOpen) return;
     if ($('panel').querySelector(`[data-act="${a}"]`) === null) return;
     sfx.select();
     acts[a]();
@@ -443,19 +540,120 @@ function bind(acts: Record<string, () => void>, keys: (k: string) => string | nu
   keyHandler = (k) => run(keys(k));
 }
 
-// --------------------------------------------------------------- screens
+// ------------------------------------------------------------------ sideline
 
-function show(id: 'title' | 'setup' | 'game' | 'final'): void {
-  for (const s of ['title', 'setup', 'game', 'final']) $(s).classList.toggle('hidden', s !== id);
+const DEPTH_GROUPS: Group[] = ['QB', 'RB', 'WR', 'TE', 'OL', 'DL', 'LB', 'CB', 'S'];
+const GROUP_NAMES: Record<Group, string> = { QB: 'Quarterbacks', RB: 'Running backs', WR: 'Receivers', TE: 'Tight ends', OL: 'Offensive line', DL: 'Defensive line', LB: 'Linebackers', CB: 'Cornerbacks', S: 'Safeties', K: 'Kicker', P: 'Punter' };
+const STARTERS: Record<Group, number> = { QB: 1, RB: 2, WR: 4, TE: 2, OL: 5, DL: 5, LB: 4, CB: 3, S: 2, K: 1, P: 1 };
+
+function openSideline(): void {
+  if (!game || mode === 'menu' || mode === 'final') return;
+  sidelineOpen = true;
+  $('sideline').classList.remove('hidden');
+  renderSideline();
 }
 
-function showSetup(): void {
+function closeSideline(): void {
+  if (!sidelineOpen) return;
+  sidelineOpen = false;
+  $('sideline').classList.add('hidden');
+}
+
+function renderSideline(): void {
+  $('slTabs').innerHTML = `<button class="seg${sidelineTab === 'depth' ? ' on' : ''}" data-tab="depth">Depth chart</button><button class="seg${sidelineTab === 'plan' ? ' on' : ''}" data-tab="plan">Game plan</button>`;
+  $('slTabs').querySelectorAll<HTMLElement>('[data-tab]').forEach((el) => el.addEventListener('click', () => {
+    sidelineTab = el.dataset.tab as 'depth' | 'plan';
+    renderSideline();
+  }));
+  const body = $('slBody');
+  if (sidelineTab === 'plan') {
+    const plan = coach.plans[user];
+    const seg = (name: string, value: number, labels: [number, string][]): string =>
+      `<div class="opts">${labels.map(([v, l]) => `<button class="seg${v === value ? ' on' : ''}" data-${name}="${v}">${l}</button>`).join('')}</div>`;
+    body.innerHTML = `<p class="sl-note">Your game plan is what the AI coach follows when the play clock runs out before you call a play.</p>`
+      + `<div class="sl-field"><div class="t">Run or pass</div>${seg('bias', plan.passBias, [[-2, 'Run heavy'], [-1, 'Lean run'], [0, 'Balanced'], [1, 'Lean pass'], [2, 'Pass heavy']])}</div>`
+      + `<div class="sl-field"><div class="t">Fourth downs and tries</div>${seg('agg', plan.aggression, [[0, 'Conservative'], [1, 'Normal'], [2, 'Aggressive']])}</div>`
+      + `<div class="sl-field"><div class="t">Rest starters below ${game.subThreshold[user]}% energy</div>${seg('thr', game.subThreshold[user], [[0, 'Never'], [35, '35%'], [55, '55%'], [70, '70%']])}</div>`
+      + `<p class="sl-note">A tired player is slower. A resting starter returns once he has recovered 20 points above the line.</p>`;
+    body.querySelectorAll<HTMLElement>('[data-bias]').forEach((el) => el.addEventListener('click', () => { plan.passBias = Number(el.dataset.bias); renderSideline(); }));
+    body.querySelectorAll<HTMLElement>('[data-agg]').forEach((el) => el.addEventListener('click', () => { plan.aggression = Number(el.dataset.agg); renderSideline(); }));
+    body.querySelectorAll<HTMLElement>('[data-thr]').forEach((el) => el.addEventListener('click', () => { game.manage({ kind: 'threshold', team: user, value: Number(el.dataset.thr) }); renderSideline(); }));
+    return;
+  }
+  const ids = game.depth[user][sidelineGroup];
+  const rows = ids.map((id, i) => {
+    const p = game.player(id);
+    const e = Math.round(game.energy[id]);
+    return `<div class="sl-row${i < STARTERS[sidelineGroup] ? ' start' : ''}"><span class="rk">${i + 1}</span><span>#${p.number} ${p.name}</span><span>${overall(p)}</span>`
+      + `<span class="bar${e < 40 ? ' low' : e < 65 ? ' mid' : ''}" title="${e}% energy"><i style="width:${e}%"></i></span>`
+      + `<span class="mv"><button data-mv="${i}:-1" ${i === 0 ? 'disabled' : ''} aria-label="Move up">▲</button><button data-mv="${i}:1" ${i === ids.length - 1 ? 'disabled' : ''} aria-label="Move down">▼</button></span></div>`;
+  }).join('');
+  body.innerHTML = `<div class="sl-groups">${DEPTH_GROUPS.map((g) => `<button class="seg${g === sidelineGroup ? ' on' : ''}" data-grp="${g}">${g}</button>`).join('')}</div>`
+    + `<div class="sl-row" style="color:var(--dim)"><span></span><span>${GROUP_NAMES[sidelineGroup]}</span><span>Rating</span><span>Energy</span><span></span></div>${rows}`
+    + `<p class="sl-note">The top ${STARTERS[sidelineGroup]} can start, depending on the formation. Changes take effect on the next snap.</p>`;
+  body.querySelectorAll<HTMLElement>('[data-grp]').forEach((el) => el.addEventListener('click', () => { sidelineGroup = el.dataset.grp as Group; renderSideline(); }));
+  body.querySelectorAll<HTMLElement>('[data-mv]').forEach((el) => el.addEventListener('click', () => {
+    const [i, d] = (el.dataset.mv ?? '').split(':').map(Number);
+    const order = [...game.depth[user][sidelineGroup]];
+    const j = i + d;
+    if (j < 0 || j >= order.length) return;
+    [order[i], order[j]] = [order[j], order[i]];
+    game.manage({ kind: 'depth', team: user, group: sidelineGroup, order });
+    renderSideline();
+  }));
+}
+
+// ---------------------------------------------------------- playbook builder
+
+function showBookScreen(): void {
+  bookDraft = [...book];
+  show('bookScreen');
+  renderBook();
+}
+
+function renderBook(): void {
+  const problem = validateBook(bookDraft);
+  $('bookCount').textContent = `${bookDraft.length} of ${BOOK_SIZE}${problem && bookDraft.length === BOOK_SIZE ? ` · ${problem}` : ''}`;
+  ($('bookSave') as HTMLButtonElement).disabled = problem !== null;
+  $('bookSave').style.opacity = problem ? '0.4' : '1';
+  $('bookList').innerHTML = FORMATIONS.map((f) => {
+    const plays = OFFENSE_PLAYS.filter((p) => p.formation === f.id);
+    return `<h3>${f.name}</h3><div class="book-grid">${plays.map((p) => playCard(p, `b:${p.id}`, '', bookDraft.includes(p.id) ? ' sel' : '')).join('')}</div>`;
+  }).join('');
+  $('bookList').querySelectorAll<HTMLElement>('[data-act]').forEach((el) => el.addEventListener('click', () => {
+    const id = (el.dataset.act ?? '').slice(2);
+    if (bookDraft.includes(id)) bookDraft = bookDraft.filter((x) => x !== id);
+    else if (bookDraft.length < BOOK_SIZE) bookDraft.push(id);
+    else return;
+    sfx.select();
+    renderBook();
+  }));
+}
+
+function bookSummary(): void {
+  const runs = book.filter((id) => playById(id).kind === 'run').length;
+  $('bookSummary').textContent = `${runs} runs, ${book.length - runs} passes${book.join() === DEFAULT_BOOK.join() ? ' (starter book)' : ''}`;
+}
+
+// --------------------------------------------------------------- screens
+
+function show(id: 'title' | 'setup' | 'game' | 'final' | 'bookScreen'): void {
+  for (const s of ['title', 'setup', 'game', 'final', 'bookScreen']) $(s).classList.toggle('hidden', s !== id);
+}
+
+function showSetup(fresh = true): void {
   unlockAudio();
   mode = 'menu';
-  seed = (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0;
-  teams = exhibitionTeams(seed);
-  $('teams').innerHTML = teams.map((t, i) => `<button class="team-card" data-team="${i}"><div class="swatch" style="background:linear-gradient(90deg, ${css(t.colors.jersey)} 0 60%, ${css(t.colors.trim)} 60% 80%, ${css(t.colors.helmet)} 80%)"></div><div class="nm">${t.name} ${t.mascot}</div><div class="sub">${i === 0 ? 'Home' : 'Visitors'} · QB ${t.offense.QB.name} #${t.offense.QB.number}</div></button>`).join('');
+  closeSideline();
+  if (fresh) {
+    seed = (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0;
+    teams = exhibitionTeams(seed);
+  }
+  const qb = (t: Team) => t.roster.find((p) => p.id === t.depth.QB[0])!;
+  $('teams').innerHTML = teams.map((t, i) => `<button class="team-card" data-team="${i}"><div class="swatch" style="background:linear-gradient(90deg, ${css(t.colors.jersey)} 0 60%, ${css(t.colors.trim)} 60% 80%, ${css(t.colors.helmet)} 80%)"></div><div class="nm">${t.name} ${t.mascot}</div><div class="sub">${i === 0 ? 'Home' : 'Visitors'} · QB ${qb(t).name} #${qb(t).number}</div></button>`).join('');
   $('teams').querySelectorAll<HTMLElement>('[data-team]').forEach((el) => el.addEventListener('click', () => startGame(Number(el.dataset.team) as 0 | 1)));
+  ($('clockToggle') as HTMLInputElement).checked = useClock;
+  bookSummary();
   show('setup');
 }
 
@@ -463,11 +661,14 @@ function startGame(team: 0 | 1): void {
   unlockAudio();
   sfx.select();
   user = team;
-  game = new Game(seed, teams);
+  const books: [string[], string[]] = [[...DEFAULT_BOOK], [...DEFAULT_BOOK]];
+  books[user] = [...book];
+  game = new Game(seed, teams, { books });
   coach = new AutoCoach(seed);
   lastQuarter = 1;
   kick = null;
   viewSim = null;
+  frontId = DEFENSE_FRONTS[0].id;
   scene.setTeams(teams);
   show('game');
   setStatic();
@@ -484,6 +685,7 @@ function startGame(team: 0 | 1): void {
 
 function showFinal(): void {
   mode = 'final';
+  closeSideline();
   const s = game.state;
   const [a, b] = summarize(game.events);
   const verdict = s.score[user] > s.score[other(user)] ? 'You win' : s.score[user] < s.score[other(user)] ? 'You lose' : 'Tie game';
@@ -503,9 +705,23 @@ function showFinal(): void {
 
 ($('titleArt') as HTMLImageElement).src = titleUrl;
 ($('setupLogo') as HTMLImageElement).src = logoUrl;
-$('version').textContent = `v${devnotes.notes[0].version} \u00B7 ${devnotes.notes[0].title}`;
-$('title').addEventListener('click', showSetup);
-$('again').addEventListener('click', showSetup);
+$('version').textContent = `v${devnotes.notes[0].version} · ${devnotes.notes[0].title}`;
+$('title').addEventListener('click', () => showSetup());
+$('again').addEventListener('click', () => showSetup());
+$('editBook').addEventListener('click', showBookScreen);
+$('bookReset').addEventListener('click', () => { bookDraft = [...DEFAULT_BOOK]; renderBook(); });
+$('bookSave').addEventListener('click', () => {
+  if (validateBook(bookDraft) !== null) return;
+  book = [...bookDraft];
+  store.set('fnd.book.v1', book);
+  showSetup(false);
+});
+$('clockToggle').addEventListener('change', (ev) => {
+  useClock = (ev.target as HTMLInputElement).checked;
+  store.set('fnd.clock.v1', useClock);
+});
+$('sidelineBtn').addEventListener('click', openSideline);
+$('slClose').addEventListener('click', closeSideline);
 document.querySelectorAll<HTMLElement>('[data-speed]').forEach((el) => el.addEventListener('click', () => {
   speed = Number(el.dataset.speed);
   document.querySelectorAll('[data-speed]').forEach((x) => x.classList.toggle('on', x === el));
@@ -526,12 +742,16 @@ window.addEventListener('keydown', (ev) => {
     }
     return;
   }
-  if (mode === 'choose' && keyHandler) keyHandler(k);
+  if ($('game').classList.contains('hidden')) return;
+  if (k === 'escape' && sidelineOpen) return closeSideline();
+  if (k === 's') return sidelineOpen ? closeSideline() : openSideline();
+  if (mode === 'choose' && keyHandler && !sidelineOpen) keyHandler(k);
 });
 
-/** Debug hooks used by the browser determinism check. */
+/** Debug hooks used by the browser checks. */
 (window as unknown as Record<string, unknown>).__fnd = {
   selftest: (s: number): string => gameHash(simulateGame(s, exhibitionTeams(s))),
-  state: () => ({ mode, phase: game?.state.phase, score: game?.state.score, quarter: game?.state.quarter, clock: game?.state.clock }),
+  state: () => ({ mode, phase: game?.state.phase, score: game?.state.score, quarter: game?.state.quarter, clock: game?.state.clock, sidelineOpen, playClock: clockOn ? Math.ceil(clockLeft / 1000) : null, book }),
   setSpeed: (n: number) => { speed = n; },
+  setPlayClock: (on: boolean) => { useClock = on; clockOn = clockOn && on; },
 };
