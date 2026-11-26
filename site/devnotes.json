@@ -2,6 +2,53 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.4.0",
+      "date": "2026-11-25",
+      "title": "Design your own plays, coach records and the Hall of Fame",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Play designer. Open Edit playbook and press Design a play: drag your eleven into place, give each player a job, and click the field to draw routes and running lanes."
+        },
+        {
+          "tag": "new",
+          "text": "Defense designer. Place your eleven defenders and tell each one to rush, cover a man, drop to a zone or read the play."
+        },
+        {
+          "tag": "new",
+          "text": "The game checks every design against the rules and tells you in plain words what to fix, such as too few players on the line."
+        },
+        {
+          "tag": "new",
+          "text": "Practice field. Run a design dozens of times against any defense (or any play) and see average gain, completions, sacks and turnovers. Watch one to see it on the real field."
+        },
+        {
+          "tag": "new",
+          "text": "Keep up to 12 plays and 6 defenses of your own. Your plays go in your eight-play book; your defenses are under the Mine tab on defense."
+        },
+        {
+          "tag": "new",
+          "text": "Your designs come with you into online games. The server checks them again, and both coaches see the same play."
+        },
+        {
+          "tag": "new",
+          "text": "Coach profile. Every finished online game counts toward your career wins, losses, points and best winning streak. Championships will count once dynasty seasons arrive."
+        },
+        {
+          "tag": "new",
+          "text": "Hall of Fame. The ten best records among all online coaches, one button from the menu."
+        },
+        {
+          "tag": "tune",
+          "text": "Coverage now lines up against the formation in front of it, so corners follow receivers wherever you put them."
+        },
+        {
+          "tag": "note",
+          "text": "Known gap: a very carefully built custom play can still gain more than it should against the AI. Tightening that is ongoing."
+        }
+      ]
+    },
+    {
       "version": "0.3.1",
       "date": "2026-11-25",
       "title": "Sideline voice chat",
@@ -182,9 +229,24 @@
       "text": "Talk to the other coach during an online game, free and straight from your browser. Playable now on the website."
     },
     {
-      "status": "next",
+      "status": "testing",
       "title": "Design your own plays",
-      "text": "Draw up offensive and defensive plays in an editor, test them on a practice field, and add them to your book."
+      "text": "Draw up offensive and defensive plays in an editor, test them on a practice field, and carry them into games. Playable now."
+    },
+    {
+      "status": "testing",
+      "title": "Coach profile and Hall of Fame",
+      "text": "Career wins, losses and championships for every online coach, and a top-ten Hall of Fame. Records count now; championships arrive with dynasty seasons."
+    },
+    {
+      "status": "next",
+      "title": "Bigger playbook and special teams",
+      "text": "A 20-play starter book, plus special-teams calls: onside and squib kicks, fake punts and field goals, and going for the block."
+    },
+    {
+      "status": "next",
+      "title": "Game length options",
+      "text": "Choose how long the four quarters are before kickoff."
     },
     {
       "status": "planned",
@@ -230,6 +292,11 @@
       "status": "planned",
       "title": "Regional and national",
       "text": "More states, showcase games, rankings and a fictional national championship."
+    },
+    {
+      "status": "planned",
+      "title": "Weather",
+      "text": "Rain, wind, cold and heat that change how the ball is thrown, kicked and held on to."
     }
   ]
 }

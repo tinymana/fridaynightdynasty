@@ -32,6 +32,20 @@ const signIn = async (p, name, pin) => { await p.type('#oName', name); await p.t
 try {
   const a = await open('host');
   const b = await open('guest');
+  // The guest brings a play and a defense of his own design.
+  await b.click('#editBook');
+  await b.click('#newPlay');
+  await b.click('#dsSave');
+  await b.click('#newDef');
+  await b.click('#dsSave');
+  const mineId = (await b.$eval('.mine [data-act]', (e) => e.dataset.act)).slice(2);
+  await b.click('[data-act="b:toss"]');
+  await b.click(`[data-act="b:${mineId}"]`);
+  await b.click('#bookSave');
+  await b.click('#hallBtn');
+  await sleep(400);
+  check('the Hall of Fame starts empty', (await b.$eval('#hallBody', (e) => e.textContent)).includes('No finished online games'));
+  await b.click('#hallBack');
   await signIn(a, 'Coach Ann', '1111');
   await signIn(b, 'coach bo', '2222');
   await a.click('[data-host="0"]');
@@ -57,7 +71,7 @@ try {
   await b.waitForSelector('#game:not(.hidden)');
   for (const p of [a, b]) await p.evaluate(() => window.__fnd.setSpeed(0));
 
-  let shot = false, rejoined = false, plays = 0;
+  let shot = false, rejoined = false, plays = 0, ownPlay = 0, ownDef = 0;
   let pages = [a, b];
   for (let i = 0; i < 6000; i++) {
     const states = await Promise.all(pages.map(st));
@@ -68,11 +82,16 @@ try {
       const p = pages[k];
       const prompt = await p.$eval('#prompt', (e) => e.textContent);
       const acts = await p.$$eval('#panel [data-act]', (els) => els.map((e) => e.dataset.act));
-      let pick = acts.filter((x) => x.startsWith('p:') || x.startsWith('d:') || x === 'pat');
+      let pick = acts.filter((x) => x.startsWith('p:') || x.startsWith('d:') || x.startsWith('m:') || x === 'pat');
+      if (acts.includes('f:@custom') && i % 3 === 0) { await p.click('#panel [data-act="f:@custom"]').catch(() => {}); continue; }
+      if (acts.includes(`p:${mineId}`) && i % 2 === 0) pick = [`p:${mineId}`];
       if (prompt.startsWith('4th') && acts.includes('punt')) pick = [acts.includes('fg') ? 'fg' : 'punt'];
       if (!pick.length) continue;
-      await p.click(`#panel [data-act="${pick[(i + k) % pick.length]}"]`).catch(() => {});
+      const chosen = pick[(i + k) % pick.length];
+      await p.click(`#panel [data-act="${chosen}"]`).catch(() => {});
       plays++;
+      if (chosen === `p:${mineId}`) ownPlay++;
+      if (chosen.startsWith('m:')) ownDef++;
       if (!shot && k === 0) { await sleep(150); await p.screenshot({ path: `${out}/online-waiting.png` }); shot = true; }
     }
     // Part way through, the guest closes his browser and comes back on a "new device".
@@ -99,7 +118,25 @@ try {
   check('rejoined guest is in sync', sb.online.sync === 'ok' && sb.online.localHash === sb.online.serverHash);
   check('final screen says it matches the server', (await pages[0].$eval('#finalMeta', (e) => e.textContent)).includes('matches the server'));
   await pages[0].screenshot({ path: `${out}/online-final.png` });
-  console.log('final score', sa.score, 'calls made', plays);
+  console.log('final score', sa.score, 'calls made', plays, 'designed plays called', ownPlay, 'designed defenses called', ownDef);
+  check('designed plays and defenses were called online', ownPlay > 3 && ownDef > 3);
+  // Careers and the Hall of Fame.
+  await sleep(3200);
+  const want = (mine, theirs) => (mine > theirs ? '1-0' : mine < theirs ? '0-1' : '0-0-1');
+  const fa = await pages[0].$eval('#finalCareer', (e) => e.textContent);
+  const fb = await pages[1].$eval('#finalCareer', (e) => e.textContent);
+  check('host final screen shows his career record', fa.includes('COACH ANN') && fa.includes(want(sa.score[0], sa.score[1])));
+  check('guest final screen shows his career record', fb.includes('COACH BO') && fb.includes(want(sa.score[1], sa.score[0])));
+  await pages[0].click('#again');
+  await sleep(600);
+  check('the sign-in box shows the career record', (await pages[0].$eval('#oCareer', (e) => e.textContent)).includes('career record'));
+  await pages[0].click('#hallBtn2');
+  await sleep(500);
+  const hall = await pages[0].$eval('#hallBody', (e) => e.textContent);
+  check('both coaches are in the Hall of Fame', hall.includes('COACH ANN') && hall.includes('COACH BO'));
+  check('the Hall of Fame has one row per coach', (await pages[0].$$eval('#hallBody tr', (r) => r.length)) === 3);
+  await pages[0].screenshot({ path: `${out}/hall.png` });
+  console.log('   hall:', hall.replace(/\s+/g, ' '));
 } catch (e) {
   errors.push(String(e));
 } finally {

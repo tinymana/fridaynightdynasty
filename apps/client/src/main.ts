@@ -1,12 +1,14 @@
 import {
-  BOOK_SIZE, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, FORMATIONS, OFFENSE_PLAYS, RULES, U, defAssignment, exhibitionTeams,
-  formationById, frontById, overall, playById, validateBook,
-  type DefDecision, type DefFront, type DefScheme, type Group, type ManageAction, type OffAssign, type OffDecision, type OffPlay, type PlayEvent, type Team,
+  BOOK_SIZE, CUSTOM_FRONT, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, FORMATIONS, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, OFFENSE_PLAYS, RULES, U,
+  defAssignment, draftFromDefense, draftFromFront, draftFromPlay, exhibitionTeams, formationOf, frontById, newDesignId, overall, playById, schemeById,
+  toFront, toScheme, validateBook, validateDefPlay, validateOffPlay,
+  type DefDecision, type DefFront, type DefPlay, type DefScheme, type Group, type ManageAction, type OffAssign, type OffDecision, type OffPlay, type PlayEvent, type Team,
 } from '@fnd/core';
 import { fieldGoalDistance } from '@fnd/football-ai';
 import { AutoCoach, Game, gameHash, replayGame, simulateGame, summarize, type LoggedDecision, type PlaySim } from '@fnd/match-sim';
-import type { RoomView } from '@fnd/online';
+import type { Career, RoomView } from '@fnd/online';
 import { OnlineError, online } from './net/online';
+import { openDefenseDesigner, openOffenseDesigner, practiceTeams, type DesignerHost } from './designer';
 import { voice } from './net/voice';
 import { FieldScene, createGame, type FieldView, type ViewPlayer } from './scene';
 import { setMuted, sfx, unlockAudio } from './audio';
@@ -79,10 +81,28 @@ let pendingEvent: PlayEvent | null = null;
 let wantTimeout = false;
 let lastQuarter = 1;
 let keyHandler: ((k: string) => void) | null = null;
+/** Designs are kept in this browser. They are checked again every time they are loaded, and again by the engine and the server. */
+function loadDesigns<T>(key: string, max: number, check: (raw: unknown) => { ok: true; value: T } | { ok: false }): T[] {
+  const raw = store.get<unknown>(key, []);
+  if (!Array.isArray(raw)) return [];
+  const out: T[] = [];
+  for (const x of raw.slice(0, max)) {
+    const r = check(x);
+    if (r.ok) out.push(r.value);
+  }
+  return out;
+}
+let myPlays: OffPlay[] = loadDesigns('fnd.plays.v1', MAX_CUSTOM_PLAYS, validateOffPlay);
+let myDefs: DefPlay[] = loadDesigns('fnd.defs.v1', MAX_CUSTOM_DEFENSES, validateDefPlay);
+/** A play by id outside a game: one of this coach's designs, or a library play. */
+const myPlay = (id: string): OffPlay => myPlays.find((p) => p.id === id) ?? playById(id);
 let book: string[] = (() => {
   const saved = store.get<string[]>('fnd.book.v1', [...DEFAULT_BOOK]);
-  return validateBook(saved) === null ? saved : [...DEFAULT_BOOK];
+  return Array.isArray(saved) && validateBook(saved, myPlays) === null ? saved : [...DEFAULT_BOOK];
 })();
+/** A practice run being watched from the designer. */
+let practiceRun: { make: (seed: number) => PlaySim; n: number; pause: number; told: boolean } | null = null;
+let career: Career | null = null;
 let bookDraft: string[] = [];
 let frontId: string = DEFENSE_FRONTS[0].id;
 let useClock = store.get<boolean>('fnd.clock.v1', true);
@@ -102,12 +122,14 @@ createGame('phaser', scene);
 
 // ------------------------------------------------------------------ geometry
 
+/** The front last picked, or the first library front while a designed defense is selected. */
+const libraryFront = (): string => (frontId === CUSTOM_FRONT ? DEFENSE_FRONTS[0].id : frontId);
 const abs = (team: 0 | 1, x: number, y: number): [number, number] => (team === 0 ? [x, y] : [100 - x, W_YD - y]);
 
 function scrimmageLineup(off: 0 | 1, los: number): ViewPlayer[] {
   const out: ViewPlayer[] = [];
-  const formation = formationById(playById(game.books[off][0]).formation);
-  const front = frontById(off === user ? DEFENSE_FRONTS[0].id : frontId);
+  const formation = formationOf(game.playOf(off, game.books[off][0]));
+  const front = frontById(off === user ? DEFENSE_FRONTS[0].id : libraryFront());
   for (const slot of formation.slots) {
     const [x, y] = abs(off, los + slot.at[0], CY_YD + slot.at[1]);
     out.push({ team: off, x, y, moving: false, down: false, hasBall: false });
@@ -180,6 +202,7 @@ function buildView(): FieldView {
 // ---------------------------------------------------------------- game loop
 
 function step(dt: number): FieldView | null {
+  if (practiceRun) return stepPractice(Math.min(dt, 100));
   if (mode === 'menu' || !game) return null;
   dt = Math.min(dt, 100);
   switch (mode) {
@@ -252,6 +275,62 @@ function step(dt: number): FieldView | null {
   return buildView();
 }
 
+/** One practice run from the designer, drawn on the real field. */
+function stepPractice(dt: number): FieldView {
+  const run = practiceRun!;
+  const sim = viewSim!;
+  if (run.pause > 0) run.pause -= dt;
+  else if (!sim.done) {
+    acc += dt;
+    for (let n = 0; acc >= 16.667 && n < 8 && !sim.done; n++) {
+      acc -= 16.667;
+      frame++;
+      sim.step();
+    }
+  } else if (!run.told) {
+    run.told = true;
+    const r = sim.result!;
+    const what = r.touchdown ? 'Touchdown' : r.turnover === 'interception' ? 'Intercepted' : r.turnover ? 'Fumble lost' : r.sack ? `Sacked for a loss of ${-r.yards}` : r.incomplete ? 'Incomplete' : `${r.kind === 'pass' ? 'Complete' : 'Run'} for ${r.yards} ${Math.abs(r.yards) === 1 ? 'yard' : 'yards'}`;
+    $('prompt').textContent = '';
+    $('banner').className = '';
+    $('banner').innerHTML = `${what}<small>Practice run ${run.n}</small>`;
+    $('banner').classList.remove('hidden');
+  }
+  return buildView();
+}
+
+function startPractice(make: (seed: number) => PlaySim, label: string): void {
+  unlockAudio();
+  practiceRun = { make, n: 0, pause: 0, told: false };
+  mode = 'menu';
+  scene.setTeams(practiceTeams);
+  $('game').classList.add('practice');
+  show('game');
+  $('panel').innerHTML = `<div class="wide"><button class="act" id="prAgain">Run it again</button><button class="act" id="prBack">Back to the designer</button></div><div class="waiting">${label.replace(/[&<>]/g, '')} on the practice field</div>`;
+  $('prAgain').addEventListener('click', nextPractice);
+  $('prBack').addEventListener('click', () => {
+    practiceRun = null;
+    viewSim = null;
+    $('game').classList.remove('practice');
+    $('banner').classList.add('hidden');
+    show('designer');
+  });
+  nextPractice();
+  scene.snapCamera(30);
+}
+
+function nextPractice(): void {
+  if (!practiceRun) return;
+  practiceRun.n++;
+  practiceRun.pause = 700;
+  practiceRun.told = false;
+  viewSim = practiceRun.make(practiceRun.n * 7919 + (Date.now() & 0xffff));
+  viewOffense = 0;
+  marks = { los: 30, toGain: 40 };
+  acc = 0;
+  $('banner').classList.add('hidden');
+}
+
 function next(): void {
   $('banner').classList.add('hidden');
   $('calls').classList.add('hidden');
@@ -277,7 +356,7 @@ function next(): void {
     showOffensePanel();
   } else {
     pendingOff = coach.offense(game)!;
-    if (pendingOff.kind !== 'play') commit(pendingOff, { frontId, callId: 'base' });
+    if (pendingOff.kind !== 'play') commit(pendingOff, { frontId: libraryFront(), callId: 'base' });
     else {
       startPlayClock();
       showDefensePanel();
@@ -320,15 +399,15 @@ function commit(off: OffDecision, def: DefDecision): void {
   if (game.live) {
     viewSim = game.live;
     viewOffense = offTeam;
-    const play = off.kind === 'play' ? playById(off.playId) : null;
-    const front = frontById(def.frontId);
-    const scheme = DEFENSE_SCHEMES.find((c) => c.id === def.callId)!;
+    const play = off.kind === 'play' ? game.playOf(offTeam, off.playId) : null;
+    const called = game.defenseOf(other(offTeam), def);
+    const defName = def.frontId === CUSTOM_FRONT ? called.scheme.name : `${called.front.name} ${called.scheme.name}`;
     const subs = game.lastSubs.filter((x) => x.team === user).map((x) => `${x.slot}: #${x.out.number} resting, #${x.in.number} in`);
     const calls = $('calls');
-    calls.innerHTML = `${teams[offTeam].abbr} <b>${play?.name ?? ''}</b><br>${teams[other(offTeam)].abbr} <b>${front.name} ${scheme.name}</b>`
+    calls.innerHTML = `${teams[offTeam].abbr} <b>${play?.name ?? ''}</b><br>${teams[other(offTeam)].abbr} <b>${defName}</b>`
       + (tb !== null ? `<br>Timeout ${teams[tb].abbr}` : '') + (subs.length ? `<br>${subs.slice(0, 3).join('<br>')}` : '');
     calls.classList.remove('hidden');
-    setPanelWaiting(`${play?.name ?? ''} against ${front.name} ${scheme.name}`);
+    setPanelWaiting(`${play?.name ?? ''} against ${defName}`);
     updateBug();
     mode = 'presnap';
     timer = speed === 0 ? 0 : speed === 1 ? 900 : 300;
@@ -441,7 +520,7 @@ const SX = (lateral: number): number => 50 + lateral * 2.05;
 
 function offenseDiagram(p: OffPlay): string {
   const Y = (d: number): number => 35 - Math.max(-7.5, Math.min(d, 20)) * 1.55;
-  const formation = formationById(p.formation);
+  const formation = formationOf(p);
   let dots = '';
   let paths = '';
   for (const slot of formation.slots) {
@@ -481,7 +560,7 @@ function defenseDiagram(front: DefFront, c: DefScheme): string {
 }
 
 const playCard = (p: OffPlay, act: string, hint: string, extra = ''): string =>
-  `<button class="card${extra}" data-act="${act}">${offenseDiagram(p)}<span class="nm">${p.name} <span class="kind">${p.kind}</span></span><span class="form">${formationById(p.formation).name}</span><span class="ds">${p.desc}${hint}</span></button>`;
+  `<button class="card${extra}" data-act="${act}">${offenseDiagram(p)}<span class="nm">${p.name} <span class="kind">${p.kind}</span></span><span class="form">${p.slots ? 'Your design' : formationOf(p).name}</span><span class="ds">${p.desc}${hint}</span></button>`;
 
 // -------------------------------------------------------------------- panels
 
@@ -509,7 +588,7 @@ function showOffensePanel(twoPointPick = false): void {
     return;
   }
   $('prompt').textContent = s.phase === 'conversion' ? 'Two-point play' : s.down === 4 ? '4th down: go, punt or kick' : 'Call your play';
-  const plays = game.books[user].map(playById);
+  const plays = game.bookPlays(user);
   let html = plays.map((p, i) => playCard(p, `p:${p.id}`, ` <kbd>[${i + 1}]</kbd>`)).join('');
   if (s.phase === 'scrimmage') {
     const fg = fieldGoalDistance(s.yardLine);
@@ -535,20 +614,41 @@ function showDefensePanel(): void {
   mode = 'choose';
   showPlayClock();
   $('prompt').textContent = game.state.phase === 'conversion' ? 'Defend the two-point try' : 'Pick a front, then call it';
-  const front = frontById(frontId);
+  const mine = game.defenses[user];
+  if (frontId === CUSTOM_FRONT && !mine.length) frontId = DEFENSE_FRONTS[0].id;
+  const custom = frontId === CUSTOM_FRONT;
+  const front = frontById(libraryFront());
   const tb = timeoutButton();
   const keys = ['Q', 'W', 'E', 'R'];
-  const fronts = `<div class="fronts"><span class="lbl">Front</span>${DEFENSE_FRONTS.map((f, i) => `<button class="act${f.id === frontId ? ' on' : ''}" data-act="f:${f.id}" title="${f.desc}">${f.name} <kbd>[${keys[i]}]</kbd></button>`).join('')}</div>`;
+  const fronts = `<div class="fronts"><span class="lbl">Front</span>${DEFENSE_FRONTS.map((f, i) => `<button class="act${f.id === frontId ? ' on' : ''}" data-act="f:${f.id}" title="${f.desc}">${f.name} <kbd>[${keys[i]}]</kbd></button>`).join('')}${mine.length ? `<button class="act${custom ? ' on' : ''}" data-act="f:${CUSTOM_FRONT}" title="The defenses you designed">Mine <kbd>[A]</kbd></button>` : ''}</div>`;
   const kindLabel = { run: 'vs run', pass: 'vs pass', blitz: 'pressure', balanced: 'balanced' };
+  if (custom) {
+    $('panel').innerHTML = fronts
+      + mine.map((d, i) => `<button class="card" data-act="m:${d.id}">${defenseDiagram(toFront(d), toScheme(d))}<span class="nm">${d.name} <span class="kind">${kindLabel[d.kind]}</span></span><span class="form">Your design</span><span class="ds">Designed defense <kbd>[${i + 1}]</kbd></span></button>`).join('')
+      + (tb ? `<div class="wide">${tb}</div>` : '');
+    const acts: Record<string, () => void> = { timeout: () => { wantTimeout = !wantTimeout; showDefensePanel(); } };
+    for (const f of DEFENSE_FRONTS) acts[`f:${f.id}`] = () => { frontId = f.id; setStatic(); showDefensePanel(); };
+    for (const d of mine) acts[`m:${d.id}`] = () => submitDef({ frontId: CUSTOM_FRONT, callId: d.id, timeout: wantTimeout });
+    bind(acts, (k) => {
+      const n = Number(k);
+      if (n >= 1 && n <= mine.length) return `m:${mine[n - 1].id}`;
+      const fi = keys.indexOf(k.toUpperCase());
+      if (fi >= 0) return `f:${DEFENSE_FRONTS[fi].id}`;
+      return k === 't' ? 'timeout' : null;
+    });
+    return;
+  }
   $('panel').innerHTML = fronts
     + DEFENSE_SCHEMES.map((c, i) => `<button class="card" data-act="d:${c.id}">${defenseDiagram(front, c)}<span class="nm">${c.name} <span class="kind">${kindLabel[c.kind]}</span></span><span class="form">${front.name}: ${front.desc}</span><span class="ds">${c.desc} <kbd>[${i + 1}]</kbd></span></button>`).join('')
     + (tb ? `<div class="wide">${tb}</div>` : '');
   const acts: Record<string, () => void> = { timeout: () => { wantTimeout = !wantTimeout; showDefensePanel(); } };
   for (const f of DEFENSE_FRONTS) acts[`f:${f.id}`] = () => { frontId = f.id; setStatic(); showDefensePanel(); };
+  acts[`f:${CUSTOM_FRONT}`] = () => { frontId = CUSTOM_FRONT; showDefensePanel(); };
   for (const c of DEFENSE_SCHEMES) acts[`d:${c.id}`] = () => submitDef({ frontId, callId: c.id, timeout: wantTimeout });
   bind(acts, (k) => {
     const n = Number(k);
     if (n >= 1 && n <= DEFENSE_SCHEMES.length) return `d:${DEFENSE_SCHEMES[n - 1].id}`;
+    if (k === 'a' && mine.length) return `f:${CUSTOM_FRONT}`;
     const fi = keys.indexOf(k.toUpperCase());
     if (fi >= 0) return `f:${DEFENSE_FRONTS[fi].id}`;
     return k === 't' ? 'timeout' : null;
@@ -658,14 +758,21 @@ function showBookScreen(): void {
 }
 
 function renderBook(): void {
-  const problem = validateBook(bookDraft);
-  $('bookCount').textContent = `${bookDraft.length} of ${BOOK_SIZE}${problem && bookDraft.length === BOOK_SIZE ? ` · ${problem}` : ''}`;
+  const problem = validateBook(bookDraft, myPlays);
+  $('bookCount').textContent = `${bookDraft.length} of ${BOOK_SIZE}${problem && bookDraft.length === BOOK_SIZE ? ` \u00b7 ${problem}` : ''}`;
   ($('bookSave') as HTMLButtonElement).disabled = problem !== null;
   $('bookSave').style.opacity = problem ? '0.4' : '1';
-  $('bookList').innerHTML = FORMATIONS.map((f) => {
+  const tools = (kind: 'p' | 'd', id: string): string => `<div class="mine-tools"><button class="seg" data-edit="${kind}:${id}">Edit</button><button class="seg" data-del="${kind}:${id}">Delete</button></div>`;
+  const minePlays = `<h3>My plays <span class="count">${myPlays.length} of ${MAX_CUSTOM_PLAYS}</span></h3>`
+    + `<div class="book-grid">${myPlays.map((p) => `<div class="mine">${playCard(p, `b:${p.id}`, '', bookDraft.includes(p.id) ? ' sel' : '')}${tools('p', p.id)}</div>`).join('')}`
+    + (myPlays.length < MAX_CUSTOM_PLAYS ? '<button class="card new" id="newPlay"><span class="plus">+</span><span class="nm">Design a play</span><span class="ds">Line up your eleven, draw the routes and try it on the practice field.</span></button>' : '') + '</div>';
+  const mineDefs = `<h3>My defenses <span class="count">${myDefs.length} of ${MAX_CUSTOM_DEFENSES}</span></h3><p class="sub">Every defense you design comes to every game with you. Call one from the Mine tab on defense.</p>`
+    + `<div class="book-grid">${myDefs.map((d) => `<div class="mine"><div class="card still">${defenseDiagram(toFront(d), toScheme(d))}<span class="nm">${d.name}</span><span class="form">Your design</span></div>${tools('d', d.id)}</div>`).join('')}`
+    + (myDefs.length < MAX_CUSTOM_DEFENSES ? '<button class="card new" id="newDef"><span class="plus">+</span><span class="nm">Design a defense</span><span class="ds">Place your eleven and give each a job: rush, cover a man, drop to a zone or read.</span></button>' : '') + '</div>';
+  $('bookList').innerHTML = minePlays + FORMATIONS.map((f) => {
     const plays = OFFENSE_PLAYS.filter((p) => p.formation === f.id);
     return `<h3>${f.name}</h3><div class="book-grid">${plays.map((p) => playCard(p, `b:${p.id}`, '', bookDraft.includes(p.id) ? ' sel' : '')).join('')}</div>`;
-  }).join('');
+  }).join('') + mineDefs;
   $('bookList').querySelectorAll<HTMLElement>('[data-act]').forEach((el) => el.addEventListener('click', () => {
     const id = (el.dataset.act ?? '').slice(2);
     if (bookDraft.includes(id)) bookDraft = bookDraft.filter((x) => x !== id);
@@ -674,17 +781,91 @@ function renderBook(): void {
     sfx.select();
     renderBook();
   }));
+  $('bookList').querySelector('#newPlay')?.addEventListener('click', () => designOffense(null));
+  $('bookList').querySelector('#newDef')?.addEventListener('click', () => designDefense(null));
+  $('bookList').querySelectorAll<HTMLElement>('[data-edit]').forEach((el) => el.addEventListener('click', () => {
+    const [kind, id] = (el.dataset.edit ?? '').split(':');
+    if (kind === 'p') designOffense(id);
+    else designDefense(id);
+  }));
+  $('bookList').querySelectorAll<HTMLElement>('[data-del]').forEach((el) => el.addEventListener('click', () => {
+    const [kind, id] = (el.dataset.del ?? '').split(':');
+    if (el.dataset.sure !== '1') {
+      el.dataset.sure = '1';
+      el.textContent = 'Really delete?';
+      return;
+    }
+    if (kind === 'p') {
+      myPlays = myPlays.filter((p) => p.id !== id);
+      store.set('fnd.plays.v1', myPlays);
+      bookDraft = bookDraft.filter((x) => x !== id);
+      settleBook();
+    } else {
+      myDefs = myDefs.filter((d) => d.id !== id);
+      store.set('fnd.defs.v1', myDefs);
+    }
+    renderBook();
+  }));
+}
+
+/** After a design changes or goes, the saved book must still be a legal book. */
+function settleBook(): void {
+  if (validateBook(book, myPlays) === null) return;
+  book = [...DEFAULT_BOOK];
+  store.set('fnd.book.v1', book);
+}
+
+const designerHost: DesignerHost = {
+  saveOffense(play) {
+    const i = myPlays.findIndex((p) => p.id === play.id);
+    if (i >= 0) myPlays[i] = play;
+    else if (myPlays.length < MAX_CUSTOM_PLAYS) myPlays.push(play);
+    store.set('fnd.plays.v1', myPlays);
+    settleBook();
+    show('bookScreen');
+    renderBook();
+  },
+  saveDefense(def) {
+    const i = myDefs.findIndex((d) => d.id === def.id);
+    if (i >= 0) myDefs[i] = def;
+    else if (myDefs.length < MAX_CUSTOM_DEFENSES) myDefs.push(def);
+    store.set('fnd.defs.v1', myDefs);
+    show('bookScreen');
+    renderBook();
+  },
+  close() {
+    show('bookScreen');
+    renderBook();
+  },
+  watch: startPractice,
+};
+
+function designOffense(id: string | null): void {
+  const old = id ? myPlays.find((p) => p.id === id) : undefined;
+  const draft = old ? draftFromPlay(old, old.id, old.name) : draftFromPlay(OFFENSE_PLAYS.find((p) => p.kind === 'pass') ?? OFFENSE_PLAYS[0], newDesignId(Math.random), `My play ${myPlays.length + 1}`);
+  $('dsTitle').textContent = old ? 'Edit your play' : 'Design a play';
+  show('designer');
+  openOffenseDesigner($('dsRoot'), draft, designerHost);
+}
+
+function designDefense(id: string | null): void {
+  const old = id ? myDefs.find((d) => d.id === id) : undefined;
+  const draft = old ? draftFromDefense(old, old.id, old.name) : draftFromFront(DEFENSE_FRONTS[0], schemeById('base'), newDesignId(Math.random), `My defense ${myDefs.length + 1}`);
+  $('dsTitle').textContent = old ? 'Edit your defense' : 'Design a defense';
+  show('designer');
+  openDefenseDesigner($('dsRoot'), draft, designerHost);
 }
 
 function bookSummary(): void {
-  const runs = book.filter((id) => playById(id).kind === 'run').length;
-  $('bookSummary').textContent = `${runs} runs, ${book.length - runs} passes${book.join() === DEFAULT_BOOK.join() ? ' (starter book)' : ''}`;
+  const runs = book.filter((id) => myPlay(id).kind === 'run').length;
+  const own = book.filter((id) => myPlays.some((p) => p.id === id)).length;
+  $('bookSummary').textContent = `${runs} runs, ${book.length - runs} passes${book.join() === DEFAULT_BOOK.join() ? ' (starter book)' : ''}${own ? `, ${own} of your own` : ''}${myDefs.length ? ` \u00b7 ${myDefs.length} designed ${myDefs.length === 1 ? 'defense' : 'defenses'}` : ''}`;
 }
 
 // --------------------------------------------------------------- screens
 
-function show(id: 'title' | 'setup' | 'game' | 'final' | 'bookScreen' | 'lobby'): void {
-  for (const s of ['title', 'setup', 'game', 'final', 'bookScreen', 'lobby']) $(s).classList.toggle('hidden', s !== id);
+function show(id: 'title' | 'setup' | 'game' | 'final' | 'bookScreen' | 'lobby' | 'designer' | 'hall'): void {
+  for (const s of ['title', 'setup', 'game', 'final', 'bookScreen', 'lobby', 'designer', 'hall']) $(s).classList.toggle('hidden', s !== id);
 }
 
 function showSetup(fresh = true): void {
@@ -711,7 +892,11 @@ function startGame(team: 0 | 1): void {
   user = team;
   const books: [string[], string[]] = [[...DEFAULT_BOOK], [...DEFAULT_BOOK]];
   books[user] = [...book];
-  game = new Game(seed, teams, { books });
+  const plays: [OffPlay[], OffPlay[]] = [[], []];
+  const defenses: [DefPlay[], DefPlay[]] = [[], []];
+  plays[user] = myPlays;
+  defenses[user] = myDefs;
+  game = new Game(seed, teams, { books, plays, defenses });
   coach = new AutoCoach(seed);
   lastQuarter = 1;
   kick = null;
@@ -747,6 +932,8 @@ function showFinal(): void {
   const official = net ? (net.sync === 'ok' && net.view.hash === gameHash(game) ? ' · matches the server' : ' · DOES NOT MATCH THE SERVER') : '';
   $('finalMeta').textContent = `Seed ${seed} · ${game.log.length} decisions · game fingerprint ${gameHash(game)}${official}`;
   if (net) window.clearInterval(net.timer);
+  $('finalCareer').textContent = '';
+  if (net) void loadCareer(true);
   $('log').innerHTML = game.events.filter((e) => e.points[0] + e.points[1] > 0).map((e) => `<div><b>Q${e.quarter} ${Math.floor(e.clock / 60)}:${String(e.clock % 60).padStart(2, '0')}</b> ${e.text} <b>${e.scoreAfter[0]}–${e.scoreAfter[1]}</b></div>`).join('') || '<div>No scoring.</div>';
   show('final');
 }
@@ -765,10 +952,12 @@ function renderOnlineBox(): void {
   $('oSignedIn').classList.toggle('hidden', !session);
   if (!session || !teams) return;
   $('oWho').textContent = `Signed in as ${session.name}`;
+  renderCareer();
+  void loadCareer(false);
   $('oHostRow').innerHTML = teams.map((t, i) => `<button class="seg" data-host="${i}">Host as ${t.name}</button>`).join('');
   $('oHostRow').querySelectorAll<HTMLElement>('[data-host]').forEach((el) => el.addEventListener('click', async () => {
     try {
-      openLobby((await online.host(session!.token, Number(el.dataset.host) as 0 | 1, book)).room);
+      openLobby((await online.host(session!.token, Number(el.dataset.host) as 0 | 1, book, myPlays, myDefs)).room);
     } catch (e) {
       signedOutCheck(e);
       onlineMessage('oMsg', e);
@@ -776,9 +965,45 @@ function renderOnlineBox(): void {
   }));
 }
 
+const recordText = (c: Career): string => `${c.wins}-${c.losses}${c.ties ? `-${c.ties}` : ''}`;
+
+function renderCareer(): void {
+  const c = career;
+  $('oCareer').innerHTML = !c ? '' : c.games === 0
+    ? 'No online games yet. Your record starts with your first finished game.'
+    : `<b>${recordText(c)}</b> career record \u00b7 <b>${c.championships}</b> ${c.championships === 1 ? 'championship' : 'championships'} \u00b7 ${c.pointsFor} points for, ${c.pointsAgainst} against \u00b7 best winning streak ${c.bestStreak}`;
+}
+
+/** Fetches this coach's record. After a game the server may still be writing it, so the final screen asks twice. */
+async function loadCareer(final: boolean, again = true): Promise<void> {
+  if (!session) return;
+  try {
+    career = (await online.profile(session.token)).career;
+    renderCareer();
+    if (final && career) $('finalCareer').textContent = `Coach ${career.name}: ${recordText(career)} career \u00b7 ${career.championships} ${career.championships === 1 ? 'championship' : 'championships'}`;
+    if (final && again) window.setTimeout(() => void loadCareer(true, false), 2500);
+  } catch (e) {
+    signedOutCheck(e);
+  }
+}
+
+async function showHall(): Promise<void> {
+  show('hall');
+  $('hallBody').innerHTML = '<div class="waiting">Loading the Hall of Fame</div>';
+  try {
+    const list = (await online.hall()).hall;
+    $('hallBody').innerHTML = list.length === 0
+      ? '<p>No finished online games yet. The first coach to finish one goes straight in.</p>'
+      : `<table><tr><th>#</th><th>Coach</th><th>Record</th><th>Win %</th><th>Titles</th><th>Points</th><th>Best streak</th></tr>${list.map((c, i) => `<tr class="${session && c.name === session.name ? 'me' : ''}"><td>${i + 1}</td><td>${c.name.replace(/[&<>]/g, '')}</td><td><b>${recordText(c)}</b></td><td>${Math.round((100 * (c.wins + c.ties / 2)) / c.games)}</td><td>${c.championships}</td><td>${c.pointsFor}\u2013${c.pointsAgainst}</td><td>${c.bestStreak}</td></tr>`).join('')}</table>`;
+  } catch (e) {
+    $('hallBody').innerHTML = `<p>${e instanceof OnlineError ? e.message : 'Something went wrong.'}</p>`;
+  }
+}
+
 function signedOutCheck(e: unknown): void {
   if (e instanceof OnlineError && e.code === 'signed_out') {
     session = null;
+    career = null;
     store.set('fnd.session.v1', null);
     renderOnlineBox();
   }
@@ -789,6 +1014,7 @@ async function signIn(): Promise<void> {
   const pin = ($('oPin') as HTMLInputElement).value;
   try {
     const r = await online.enter(name, pin);
+    career = null;
     session = { token: r.token, name: r.coach.name };
     store.set('fnd.session.v1', session);
     renderOnlineBox();
@@ -800,7 +1026,7 @@ async function signIn(): Promise<void> {
 async function joinByPin(): Promise<void> {
   if (!session) return;
   try {
-    openLobby((await online.join(session.token, ($('oJoinPin') as HTMLInputElement).value.trim(), book)).room);
+    openLobby((await online.join(session.token, ($('oJoinPin') as HTMLInputElement).value.trim(), book, myPlays, myDefs)).room);
   } catch (e) {
     signedOutCheck(e);
     onlineMessage('oMsg', e);
@@ -901,7 +1127,7 @@ function enterOnlineGame(): void {
   user = v.you;
   coach = new AutoCoach(seed, [v.plan, v.plan]);
   const catchUp = net.queue.length > 1 ? net.queue.splice(0, net.queue.length) : [];
-  game = replayGame(seed, teams, catchUp, { books: v.books });
+  game = replayGame(seed, teams, catchUp, { books: v.books, plays: v.designs.plays, defenses: v.designs.defenses });
   lastQuarter = game.state.quarter;
   kick = null;
   viewSim = null;
@@ -995,7 +1221,7 @@ function pump(): void {
 function checkSync(): void {
   if (!net || net.queue.length || game.log.length !== net.view.logSize) return;
   // The play just begun is still being drawn here, so compare a finished copy built from the same log.
-  const probe = replayGame(seed, teams, game.log, { books: net.view.books });
+  const probe = replayGame(seed, teams, game.log, { books: net.view.books, plays: net.view.designs.plays, defenses: net.view.designs.defenses });
   if (gameHash(probe) !== net.view.hash) {
     net.sync = 'bad';
     console.error('out of sync with the server', gameHash(probe), net.view.hash);
@@ -1049,7 +1275,7 @@ $('again').addEventListener('click', () => showSetup());
 $('editBook').addEventListener('click', showBookScreen);
 $('bookReset').addEventListener('click', () => { bookDraft = [...DEFAULT_BOOK]; renderBook(); });
 $('bookSave').addEventListener('click', () => {
-  if (validateBook(bookDraft) !== null) return;
+  if (validateBook(bookDraft, myPlays) !== null) return;
   book = [...bookDraft];
   store.set('fnd.book.v1', book);
   showSetup(false);
@@ -1060,7 +1286,9 @@ $('clockToggle').addEventListener('change', (ev) => {
 });
 $('oEnter').addEventListener('click', () => void signIn());
 $('oPin').addEventListener('keydown', (ev) => { if ((ev as KeyboardEvent).key === 'Enter') void signIn(); });
-$('oOut').addEventListener('click', () => { session = null; store.set('fnd.session.v1', null); renderOnlineBox(); });
+for (const id of ['hallBtn', 'hallBtn2']) $(id).addEventListener('click', () => void showHall());
+$('hallBack').addEventListener('click', () => showSetup(false));
+$('oOut').addEventListener('click', () => { session = null; career = null; store.set('fnd.session.v1', null); renderOnlineBox(); });
 $('oJoin').addEventListener('click', () => void joinByPin());
 $('oJoinPin').addEventListener('keydown', (ev) => { if ((ev as KeyboardEvent).key === 'Enter') void joinByPin(); });
 $('lobbyStart').addEventListener('click', () => { if (net) void netRequest(() => online.start(net!.token, net!.pin)); });
@@ -1101,7 +1329,7 @@ window.addEventListener('keydown', (ev) => {
 /** Debug hooks used by the browser checks. */
 (window as unknown as Record<string, unknown>).__fnd = {
   selftest: (s: number): string => gameHash(simulateGame(s, exhibitionTeams(s))),
-  state: () => ({ mode, phase: game?.state.phase, score: game?.state.score, quarter: game?.state.quarter, clock: game?.state.clock, sidelineOpen, playClock: clockOn ? Math.ceil(clockLeft / 1000) : null, book,
+  state: () => ({ mode, myPlays: myPlays.length, myDefs: myDefs.length, career, practice: practiceRun ? { n: practiceRun.n, done: !!viewSim?.done } : null, phase: game?.state.phase, score: game?.state.score, quarter: game?.state.quarter, clock: game?.state.clock, sidelineOpen, playClock: clockOn ? Math.ceil(clockLeft / 1000) : null, book,
     online: net ? { pin: net.pin, state: net.view.state, turn: net.view.turn, you: net.view.you, sync: net.sync, serverHash: net.view.hash, localHash: game ? gameHash(game) : '', queued: net.queue.length, serverScore: net.view.score, mine: !!net.view.mine, voice: voice.state, peer: voice.peerState(String(net.view.you === 0 ? 1 : 0)), voiceSeen: net.view.voice } : null }),
   setSpeed: (n: number) => { speed = n; },
   setTurbo: (on: boolean) => { turbo = on; },

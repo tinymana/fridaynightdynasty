@@ -24,7 +24,7 @@ const snap = (n: number): number => Math.round(n * 2) / 2;
 const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 
 /** Fresh starters for practice runs, the same for every design so results compare. */
-const practiceTeams = exhibitionTeams(4242);
+export const practiceTeams = exhibitionTeams(4242);
 const practiceGame = new Game(4242, practiceTeams);
 
 export function practiceSim(play: OffPlay, front: DefFront, scheme: DefScheme, seed: number): PlaySim {
@@ -134,7 +134,7 @@ export function openOffenseDesigner(root: HTMLElement, start: OffDraft, host: De
     <div class="ds-main"><svg id="dsField" class="ds-field" role="img" aria-label="Play diagram. Drag a player to move him."></svg><div class="ds-side" id="dsSide"></div></div>
     <div id="dsProblems" class="ds-problems" role="status" aria-live="polite"></div>
     <div class="ds-practice"><span class="lbl">Practice field</span><select id="dsVs" aria-label="Defense to practise against"><option value="all">Every front and call</option>${DEFENSE_FRONTS.flatMap((f) => DEFENSE_SCHEMES.map((s) => `<option value="${f.id}|${s.id}">${f.name} ${s.name}</option>`)).join('')}</select>
-      <button class="seg" id="dsRun">Run it 50 times</button><button class="seg" id="dsWatch">Watch one</button></div>
+      <button class="seg" id="dsRun">Run practice</button><button class="seg" id="dsWatch">Watch one</button></div>
     <div id="dsStats"></div>`;
   const q = <T extends Element>(id: string): T => root.querySelector(`#${id}`) as T;
   const svg = q<SVGSVGElement>('dsField');
@@ -273,7 +273,7 @@ export function openOffenseDesigner(root: HTMLElement, start: OffDraft, host: De
     const r = check();
     if (!r.ok) return;
     const pairs = against().map((x) => ({ play: r.value, ...x }));
-    lastStats = statsHtml(practice(pairs, Math.max(4, Math.round(50 / pairs.length) * (pairs.length > 1 ? 4 : 1))), false);
+    lastStats = statsHtml(practice(pairs, pairs.length > 1 ? 4 : 50), false);
     q<HTMLElement>('dsStats').innerHTML = lastStats;
   });
   q<HTMLElement>('dsWatch').addEventListener('click', () => {
@@ -305,7 +305,7 @@ export function openDefenseDesigner(root: HTMLElement, start: DefDraft, host: De
     <div class="ds-main"><svg id="dsField" class="ds-field" role="img" aria-label="Defense diagram. Drag a defender to move him."></svg><div class="ds-side" id="dsSide"></div></div>
     <div id="dsProblems" class="ds-problems" role="status" aria-live="polite"></div>
     <div class="ds-practice"><span class="lbl">Practice field</span><select id="dsVs" aria-label="Offense to practise against"><option value="all">Every library play</option>${OFFENSE_PLAYS.map((p) => `<option value="${p.id}">${p.name}</option>`).join('')}</select>
-      <button class="seg" id="dsRun">Run it 50 times</button><button class="seg" id="dsWatch">Watch one</button></div>
+      <button class="seg" id="dsRun">Run practice</button><button class="seg" id="dsWatch">Watch one</button></div>
     <div id="dsStats"></div>`;
   const q = <T extends Element>(id: string): T => root.querySelector(`#${id}`) as T;
   const svg = q<SVGSVGElement>('dsField');

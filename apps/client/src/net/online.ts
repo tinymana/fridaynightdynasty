@@ -4,8 +4,8 @@
  * Nothing here can report a score or a result. A coach sends his own sideline's
  * call; the server runs the play and both browsers replay it from the shared log.
  */
-import type { DefDecision, GamePlan, OffDecision } from '@fnd/core';
-import type { RoomView } from '@fnd/online';
+import type { DefDecision, DefPlay, GamePlan, OffDecision, OffPlay } from '@fnd/core';
+import type { Career, RoomView } from '@fnd/online';
 
 const DEFAULT_URL = 'https://epvpekylasvxoipxyvku.supabase.co/functions/v1/fnd';
 /** Tests point the game at a local mock server by setting window.__fndOnlineUrl before the page loads. */
@@ -48,8 +48,11 @@ export interface Signed {
 
 export const online = {
   enter: (name: string, pin: string) => post<Signed>({ action: 'enter', name, pin }),
-  host: (token: string, team: 0 | 1, book: string[]) => post<{ room: RoomView }>({ action: 'host', token, team, book }),
-  join: (token: string, pin: string, book: string[], have = 0) => post<{ room: RoomView }>({ action: 'join', token, pin, book, have }),
+  /** A coach brings his eight-play book and his own designs. The server checks every design again before seating him. */
+  host: (token: string, team: 0 | 1, book: string[], plays: OffPlay[] = [], defenses: DefPlay[] = []) => post<{ room: RoomView }>({ action: 'host', token, team, book, plays, defenses }),
+  join: (token: string, pin: string, book: string[], plays: OffPlay[] = [], defenses: DefPlay[] = [], have = 0) => post<{ room: RoomView }>({ action: 'join', token, pin, book, plays, defenses, have }),
+  profile: (token: string) => post<{ career: Career | null }>({ action: 'profile', token }),
+  hall: () => post<{ hall: Career[] }>({ action: 'hall' }),
   leave: (token: string, pin: string) => post<object>({ action: 'leave', token, pin }),
   start: (token: string, pin: string) => post<{ room: RoomView }>({ action: 'start', token, pin }),
   game: (token: string, pin: string, have: number) => post<{ room: RoomView }>({ action: 'game', token, pin, have }),

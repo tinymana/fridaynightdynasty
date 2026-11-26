@@ -1,7 +1,7 @@
 {
   "name": "friday-night-dynasty",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,7 +16,8 @@
     "bundle:function": "esbuild supabase/functions/fnd/index.ts --bundle --format=esm --platform=neutral --target=es2022 \"--external:npm:*\" --minify --legal-comments=none --outfile=supabase/functions/fnd/dist/index.js",
     "mock:online": "tsx tools/mock-online.ts",
     "check:online": "node tools/online-check.mjs",
-    "check:voice": "node tools/voice-check.mjs"
+    "check:voice": "node tools/voice-check.mjs",
+    "check:designer": "node tools/designer-check.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.10",

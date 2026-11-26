@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.4.0 — 2026-11-25
+
+Play designer, coach careers and the Hall of Fame.
+
+### Added
+- Play designer for offense and defense (`apps/client/src/designer.ts`): drag players, assign jobs, draw paths,
+  live legality messages, and a practice field that runs a design against any front and call (or any library play)
+  and can show a run on the real field.
+- Designed plays and defenses are plain validated data (`packages/core/src/designer.ts`). They are checked when
+  loaded from the browser, again by the engine, and again by the server when a coach sits down. Up to 12 plays
+  and 6 defenses per coach.
+- Online games carry both coaches' designs; each browser replays them from the room and still matches the
+  server's game fingerprint.
+- Coach careers: games, wins, losses, ties, points, current and best winning streak, championships (always 0
+  until dynasty seasons exist). A finished online game is recorded exactly once.
+- Hall of Fame: `hall` API action and screen, top ten by wins, then win rate, then point margin.
+- `profile` API action; record shown in the sign-in box and on the final screen.
+- Migration `0002_fnd_careers.sql` (adds columns to `fnd.coaches`).
+- `npm run check:designer` and an extended `check:online`. 195 automated tests.
+
+### Changed
+- Man coverage is assigned from the formation actually on the field; corners take the widest receivers.
+- Handoffs and pitches need the carrier within reach of the quarterback.
+
+### Known gaps
+- Designer balance target not met: the best design found by random search gains about 2.8 times the library
+  average against the AI; the target is 2 times or less.
+- The live server function has still not been called from a real browser by us; the sandbox cannot reach it.
+- No human playtest yet for any milestone.
+
 ## 0.3.1 — 2026-11-25
 
 ### Added
