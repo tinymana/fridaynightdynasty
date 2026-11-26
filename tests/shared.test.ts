@@ -231,3 +231,46 @@ describe('a whole shared season', () => {
     expect(y2.schools.map((s) => s.coach)).toEqual(v.schools.map((s) => s.coach));
   });
 });
+
+describe('the commissioner renames schools and picks colours', () => {
+  const identity = { name: 'Tiny Mana Prep', mascot: 'Wizards', abbr: 'tmp', colors: { jersey: 0x112233, helmet: 0xffffff, pants: 0x000000, trim: 0xff8800 } };
+  it('only the commissioner can, the change is checked, and everyone sees it', async () => {
+    const { w, a, b, code } = await league();
+    expect((await w.call({ action: 'leagueEdit', token: b, code, school: 7, identity })).error!.code).toBe('not_host');
+    const v = (await w.call({ action: 'leagueEdit', token: a, code, school: 0, identity })).league!;
+    expect(v.schools[0]).toMatchObject({ name: 'Tiny Mana Prep', mascot: 'Wizards', abbr: 'TMP', colors: identity.colors, coach: 'COACH A' });
+    expect((await poll(w, b, code)).schools[0].name).toBe('Tiny Mana Prep');
+    // Refused: a name already used, a bad short name, a bad colour, a name that is not a name, a school that does not exist.
+    for (const bad of [
+      { school: 1, identity },
+      { school: 1, identity: { ...identity, name: 'Other Prep' } },
+      { school: 1, identity: { ...identity, name: 'Other Prep', abbr: 'X' } },
+      { school: 1, identity: { ...identity, name: 'Other Prep', abbr: 'OPW', colors: { ...identity.colors, jersey: 0x1000000 } } },
+      { school: 1, identity: { ...identity, name: '<script>', abbr: 'OPW' } },
+      { school: 9, identity: { ...identity, name: 'Other Prep', abbr: 'OPW' } },
+    ]) expect((await w.call({ action: 'leagueEdit', token: a, code, ...bad })).error!.code).toBe('bad_request');
+    // Strength and the coach of the school are not part of what can be sent.
+    const before = (await poll(w, a, code)).schools[1];
+    const after = (await w.call({ action: 'leagueEdit', token: a, code, school: 1, identity: { ...identity, name: 'Other Prep', abbr: 'OPW', prestige: 99, coach: 'COACH A' } })).league!.schools[1];
+    expect(after.prestige).toBe(before.prestige);
+    expect(after.coach).toBe(before.coach);
+    expect(after.name).toBe('Other Prep');
+  });
+  it('a league game is played by the renamed school with the same players', async () => {
+    const { w, a, c, code } = await league();
+    const plain = (await w.call({ action: 'leagueStart', token: a, code })).league!;
+    await w.call({ action: 'leagueEdit', token: a, code, school: 1, identity });
+    const room = (await w.call({ action: 'leaguePlay', token: c, code })).room!;
+    const teams = leagueTeams(room.league!);
+    const mine = teams[room.you];
+    expect(mine.name).toBe('Tiny Mana Prep');
+    expect(mine.abbr).toBe('TMP');
+    expect(mine.colors).toEqual(identity.colors);
+    // Same roster as the school had under its old name.
+    const old = leagueTeams({ ...room.league!, identity: undefined });
+    expect(old[room.you].name).toBe(plain.schools[1].name);
+    expect(mine.roster.map((p) => p.name)).toEqual(old[room.you].roster.map((p) => p.name));
+    const { view, log } = await playOut(w, room.pin, [c]);
+    expect(gameHash(replayGame(view.seed, leagueTeams(view.league!), log as never, { books: view.books, setup: view.setup }))).toBe(view.hash);
+  });
+});

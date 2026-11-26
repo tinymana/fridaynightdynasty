@@ -21,7 +21,7 @@ for (let i = 0; i < 6000 && seen.size < 4; i++) {
     const acts = await page.$$eval('#panel [data-act]', (els) => els.map((e) => e.dataset.act));
     if (acts.includes('k:deep') && !kickShot) { kickShot = true; await page.screenshot({ path: '/tmp/fnd-shots/kick-panel.png' }); }
     if (acts.includes('block') && !seen.has('blockshot')) { seen.add('blockshot'); await page.screenshot({ path: '/tmp/fnd-shots/block-panel.png' }); console.log('block panel'); }
-    const pick = acts.find((a) => a.startsWith('k:')) ?? (acts.includes('pat') ? 'pat' : acts.includes('fg') && i % 2 ? 'fg' : acts.filter((a) => a.startsWith('p:') || a.startsWith('d:'))[i % 5] ?? acts[0]);
+    const pick = acts.includes('snap') ? 'snap' : acts.find((a) => a.startsWith('k:')) ?? (acts.includes('pat') ? 'pat' : acts.includes('fg') && i % 2 ? 'fg' : acts.filter((a) => a.startsWith('p:') || a.startsWith('d:'))[i % 5] ?? acts[0]);
     await page.click(`#panel [data-act="${pick}"]`).catch(() => {});
   }
   await sleep(40);

@@ -90,3 +90,18 @@ export function exhibitionTeams(seed: number): [Team, Team] {
     generateTeam(seed, 'sch_0002', EXHIBITION_TEAMS[1], counter),
   ];
 }
+
+/** One player's ratings for a position at a given level, the same recipe `generateTeam` uses. */
+export function rollRatings(rng: Rng, group: Group, level: number): Ratings {
+  const profile = PROFILES[group];
+  const ratings = { stamina: clamp(Math.round(level + rng.range(-10, 10)), 20, 99) } as Ratings;
+  for (const key of KEYS) {
+    const bonus = profile[key];
+    const base = bonus === undefined ? level - 12 : level + bonus;
+    ratings[key] = clamp(Math.round(base + rng.range(-7, 7)), 15, 99);
+  }
+  return ratings;
+}
+export const rollName = (rng: Rng): string => `${rng.pick(FIRST)} ${rng.pick(LAST)}`;
+/** The jersey numbers a position usually wears. */
+export const numberRange = (group: Group): [number, number] => NUMBERS[group];

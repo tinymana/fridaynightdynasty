@@ -1,5 +1,120 @@
 # Changelog
 
+## 0.11.0 — 2026-11-26
+
+Freshmen, JV and varsity.
+
+### Added
+- `packages/league/src/program.ts`: a school's program is four classes of 22 generated from the league seed, the
+  school and the year the class enrolled. Nothing is stored: a player's ratings are his senior ratings less his
+  growth for each year still to come, lifted or dragged by the school's prestige. `programFor` sorts everyone into
+  a 39-man varsity (best at each position, upperclassmen favoured) and a 49-man junior varsity.
+- `teamFor` now returns that varsity; `jvTeamFor`, `programOf`, `incomingOf`, `setCallUp`, `simulateJv`.
+- `Dynasty.callUps` (at most `MAX_CALL_UPS`, checked on load and at each new season) and `Dynasty.jv` (JV scores,
+  played by `playWeek` through the regular season).
+- `Player.year`; `rollRatings`, `rollName`, `numberRange` in core.
+- Client: the program page in a solo dynasty (varsity, JV, call up, send down, graduating seniors, incoming
+  freshmen), class tags on the sideline depth chart.
+- `tests/program.test.ts`; the dynasty browser check covers the program page.
+
+### Changed
+- Varsity strength is calibrated to the old generated teams (starters average 63.6 before and after).
+
+## 0.10.0 — 2026-11-26
+
+Audibles and ball-carrier moves.
+
+### Added
+- `OffDecision` play calls take `audible`: the play changed to at the line. It must be in the book and share the
+  formation of the play called. The engine runs the audible, marks the event `flags.audible`, and adds
+  `RULES.audibleFalseStart` to the false-start chance. The log keeps both the call and the check, so replays match.
+- `aiAudible` and `AutoCoach.audible`: the AI checks out of a run into a 5-2 or 4-4 and into a run against the
+  nickel, at `AUDIBLE_RATE`. It draws from its own `line:` stream, so play calling is undisturbed.
+- Online: a call sent with `look: true` opens a line phase once both calls are in (`Room.line`, `LINE_MS` 8 s).
+  The offense's view carries the front id only; the defense's carries nothing and its call is locked. The offense
+  answers with `{kind:'snap'}` or `{kind:'audible', playId}` through the same `call` action. A browser that never
+  sends `look` plays exactly as before.
+- Client: the line panel (snap, or audible cards for the formation), both sides drawn as they line up, an AUDIBLE
+  tag in the calls box.
+- Ball-carrier moves: `PlaySim.moves` and `ReturnSim.moves` record a stiff arm, truck, juke or spin on each missed
+  tackle (`moveFor`, from power against agility, no random draw) and a dive on a long fall forward. The client
+  shows a callout. Results are unchanged by the moves code.
+- `tests/audible.test.ts`, `tests/moves.test.ts`, `tools/line-shot.mjs`.
+
+### Changed
+- Browser check scripts snap or audible when the line panel is up.
+
+## 0.9.0 — 2026-11-26
+
+Returns played out on the field.
+
+### Added
+- `packages/match-sim/src/returns.ts`: `ReturnSim`, a 60 Hz simulation of one ball carrier, his blockers and the
+  pursuit. Blocks hold for a time set by the two players' ratings; missed tackles slow the runner and can take out
+  the men behind. `kickoffReturnSetup` and `puntReturnSetup` place the coverage and the return team.
+- The game uses it for kickoffs, punts that are not fair-caught, interceptions and fumble recoveries.
+  `Game.lastReturn` gives a fresh copy to draw. Its random stream is keyed to the snap.
+- `PlayFlags.defensiveTouchdown`; punt-return touchdowns.
+- Client: mode `return` draws the real return after the kick or the play; a Special teams tab on the call sheet
+  that opens on fourth down, with a Fake it card.
+- `tests/returns.test.ts`; `tools/probe-returns.ts`.
+
+### Fixed
+- A return drawn after the ball had been re-spotted would have been built from the new spot. Positions are now
+  copied when the play happens, and a test checks that the return shown is the return that counted.
+
+### Changed
+- Kickoff and punt return yards now come from the simulation, not a formula. Game results differ from 0.8.0.
+
+### Known gaps
+- Kickoff returns cluster between 12 and 20 yards; real ones spread wider.
+- No fumbles on returns, no penalties on returns, no return by the kicking team after a blocked kick.
+- Instant replay does not include the return.
+
+## 0.8.0 — 2026-11-26
+
+Penalties, a run-first retune held by a realism scorecard, and school renaming.
+
+### Added
+- Penalties (`PenaltyKind`, play type `penalty`, `PlayFlags.foul`): false start and offside before the snap,
+  holding on a play the offense gained on, pass interference on an incompletion. Half the distance near a goal
+  line. The officials' random stream is keyed to the snap, separate from the play's.
+- `tests/realism.test.ts`: 16 measures over 150 AI games, each with a target range. `tools/realism.ts` prints them.
+- `PlayEvent.returnYards` for kickoffs and punts; the client plays the return out on the field. The return
+  itself is still decided by the kick formula; the players shown are an illustration of that result.
+- `editSchool` / `checkIdentity` in `@fnd/league`; `leagueEdit` API action (commissioner only); rename form in
+  the shared-league and solo dynasty screens. League game rooms carry the two schools' names and colours.
+
+### Changed
+- AI play calling is run first (about 58 percent runs); more fourth-down tries.
+- Kicking: range `22 + 0.25 x kicking`, steeper accuracy fall-off, extra points about 85 percent.
+- Pass rush: the quarterback reacts to a free rusher at 1.5 yards instead of 1.9 (sacks about 1.3 a team).
+- Fumble chance per tackle 0.03 (was 0.012). Open-field tackle base 0.535 (was 0.6). Run blocks hold longer.
+- Back Swing: the deep route is now a hook; the play was gaining 1.75 times the playbook average in games.
+- A call for a play outside the book is refused before the officials are consulted.
+- Game results differ from 0.7.x for the same seed and calls.
+
+### Known gaps
+- Scoring between two even teams is 17 points a team, at the low end of the target range.
+- The balance ceiling for one play is now 1.6 times the playbook average (was 1.5); Flood sits at 1.51.
+- Returns are animated from the result, not simulated player by player: no blocks or tackles are decided on them.
+- No penalties on kicks or after the play, no declined-penalty choice for the coach, no player discipline rating.
+- The scorecard's ranges come from general knowledge of the high school game, not from a data set.
+
+## 0.7.1 — 2026-11-26
+
+### Added
+- Overtime (`RULES.overtimeFrom`, `RULES.overtimePeriods`, `Game.overtime`). A game level after regulation gives
+  each team a series from the ten, first and goal, with no clock, kickoffs or punts by the AI. Up to four periods.
+- A call made as regulation runs out is discarded when that run-off starts overtime.
+
+### Changed
+- Games that end level in regulation now continue, so their results differ from 0.7.0. Games decided in
+  regulation are unchanged (fingerprints checked in `overtime.test.ts`).
+
+### Known gaps
+- With short quarters about one overtime game in five uses all four periods; a few still end level.
+
 ## 0.7.0 — 2026-11-26
 
 Dynasty with friends.

@@ -9,6 +9,17 @@ export const RULES = {
   twoPointFrom: 97,
   /** Seconds run off between plays while the clock is running. Tuned for 50 to 60 plays a team. */
   runoffSeconds: 32,
+  /** Chance of each foul. Before the snap: per snap. Holding: per play the offense gained on. Interference: per incomplete pass. */
+  falseStartChance: 0.03,
+  /** Changing the play at the line is noisy: this much more chance of a false start. */
+  audibleFalseStart: 0.025,
+  offsideChance: 0.02,
+  holdingChance: 0.035,
+  interferenceChance: 0.05,
+  /** Overtime: each team gets a series from the opponent's ten. First and goal. */
+  overtimeFrom: 90,
+  /** After this many overtime periods a game still level ends as a tie. */
+  overtimePeriods: 4,
 } as const;
 
 /** Quarter lengths a game can be played with, in minutes. Twelve is the high school standard. */

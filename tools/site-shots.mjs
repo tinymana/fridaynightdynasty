@@ -62,7 +62,7 @@ for (let n = 0; n < 9000; n++) {
   if (!done.kick && a.includes('k:deep')) { await shot('#game', 'shot_kickoff'); done.kick = true; }
   if (!done.off && prompt === 'Call your play') { await shot('#game', 'shot_offense'); done.off = true; }
   if (!done.def && a.some((x) => x.startsWith('d:'))) { await shot('#game', 'shot_defense'); done.def = true; }
-  let pick = a.filter((x) => x.startsWith('p:') || x.startsWith('d:') || x === 'pat' || x === 'k:deep');
+  let pick = a.filter((x) => x === 'snap' || x.startsWith('a:') || x.startsWith('p:') || x.startsWith('d:') || x === 'pat' || x === 'k:deep');
   if (prompt.startsWith('4th') && a.includes('punt')) pick = [a.includes('fg') ? 'fg' : 'punt'];
   const want = done.off && !done.live && a.includes('p:curls') ? 'p:curls' : pick[n % pick.length];
   if (!want) { await sleep(40); continue; }

@@ -14,6 +14,8 @@ export interface Player {
   number: number;
   pos: Group;
   ratings: Ratings;
+  /** Class year in a dynasty: 1 freshman to 4 senior. Absent on exhibition teams. */
+  year?: number;
 }
 
 export interface TeamColors {
@@ -124,7 +126,8 @@ export interface DefScheme {
 }
 
 export type OffDecision =
-  | { kind: 'play'; playId: string; timeout?: boolean }
+  /** `audible`: the play changed to at the line, after seeing the defensive front. Same formation as the play called. */
+  | { kind: 'play'; playId: string; timeout?: boolean; audible?: string }
   | { kind: 'punt'; timeout?: boolean }
   | { kind: 'fieldGoal'; timeout?: boolean }
   | { kind: 'kneel' }
@@ -157,7 +160,10 @@ export type ManageAction =
   | { kind: 'depth'; team: 0 | 1; group: Group; order: string[] }
   | { kind: 'threshold'; team: 0 | 1; value: number };
 
-export type PlayType = 'run' | 'pass' | 'punt' | 'fieldGoal' | 'kickoff' | 'pat' | 'twoPoint' | 'kneel';
+export type PlayType = 'run' | 'pass' | 'punt' | 'fieldGoal' | 'kickoff' | 'pat' | 'twoPoint' | 'kneel' | 'penalty';
+
+/** The fouls the officials call. */
+export type PenaltyKind = 'falseStart' | 'offside' | 'holding' | 'interference';
 
 export interface PlayFlags {
   touchdown?: boolean;
@@ -177,6 +183,12 @@ export interface PlayFlags {
   recovered?: boolean;
   blocked?: boolean;
   roughing?: boolean;
+  /** An interception or fumble run back for a score. The points go to the defense. */
+  defensiveTouchdown?: boolean;
+  /** The offense changed the play at the line. */
+  audible?: boolean;
+  /** Set on a penalty event: which foul it was. */
+  foul?: PenaltyKind;
 }
 
 /** One record per snap or kick. Every statistic is derived from these. */
@@ -201,6 +213,8 @@ export interface PlayEvent {
   receiver?: string;
   tackler?: string;
   kicker?: string;
+  /** Kickoffs and punts: how far the ball was run back. Absent or 0 for a touchback, fair catch or no return. */
+  returnYards?: number;
   points: [number, number];
   scoreAfter: [number, number];
   seconds: number;

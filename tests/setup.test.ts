@@ -40,7 +40,7 @@ describe('game setup', () => {
       for (let seed = 1; seed <= 12; seed++) {
         const g = simulateGame(seed, exhibitionTeams(seed), { setup: { quarterMinutes: m } });
         expect(g.state.phase).toBe('final');
-        expect(g.state.quarter).toBe(4);
+        expect(g.state.quarter).toBe(4 + g.overtime);
         expect(Math.max(...g.events.map((e) => e.clock))).toBeLessThanOrEqual(m * 60);
         plays += g.events.length;
       }

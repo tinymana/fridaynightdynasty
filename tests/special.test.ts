@@ -200,3 +200,26 @@ describe('going for the block', () => {
     expect(a.log.some((d) => !('manage' in d) && d.off?.kind === 'kickoff')).toBe(true);
   });
 });
+
+describe('returns are recorded for the field to show', () => {
+  it('kickoffs and punts carry their return yards; touchbacks and fair catches carry none', () => {
+    let kickReturns = 0, puntReturns = 0;
+    for (let seed = 1; seed <= 25; seed++) {
+      const g = simulateGame(seed, exhibitionTeams(seed));
+      for (const e of g.events) {
+        if (e.type !== 'kickoff' && e.type !== 'punt') continue;
+        if (e.flags.onside || e.flags.blocked || e.flags.roughing) continue;
+        expect(e.returnYards).toBeGreaterThanOrEqual(0);
+        if (e.flags.touchback) expect(e.returnYards).toBe(0);
+        if (/returns it|returned/.test(e.text)) {
+          expect(e.returnYards).toBeGreaterThan(0);
+          expect(e.text).toContain(`${e.returnYards} yard`);
+          if (e.type === 'kickoff') kickReturns++;
+          else puntReturns++;
+        } else if (!e.flags.touchdown) expect(e.returnYards).toBe(0);
+      }
+    }
+    expect(kickReturns).toBeGreaterThan(40);
+    expect(puntReturns).toBeGreaterThan(20);
+  });
+});

@@ -1,5 +1,6 @@
-import { DEFAULT_SETUP, Rng, clamp, cleanSetup, generateTeam, hashString, type GameSetup, type Team, type TeamColors, type Weather } from '@fnd/core';
+import { DEFAULT_SETUP, Rng, clamp, cleanSetup, hashString, type GameSetup, type Team, type TeamColors, type Weather } from '@fnd/core';
 import { simulateGame } from '@fnd/match-sim';
+import { MAX_CALL_UPS, cleanCallUps, incomingClass, jvTeam, programFor, varsityTeam, type ProgramPlayer } from './program';
 
 /**
  * A high school league and its seasons. Pure data and pure functions: the same league seed always gives the
@@ -112,6 +113,45 @@ export function createLeague(stateCode: string, seed: number): League {
   return { seed: seed >>> 0, state: state.code, schools };
 }
 
+/** What a commissioner may change about a school: what it is called and what it wears. Not how good it is. */
+export interface SchoolIdentity {
+  name: string;
+  mascot: string;
+  abbr: string;
+  colors: TeamColors;
+}
+
+const NAME_OK = /^[A-Za-z][A-Za-z '.-]{1,21}[A-Za-z.]$/;
+const MASCOT_OK = /^[A-Za-z][A-Za-z '-]{1,15}[A-Za-z]$/;
+const ABBR_OK = /^[A-Z]{2,4}$/;
+const tidy = (x: unknown): string => (typeof x === 'string' ? x.replace(/\s+/g, ' ').trim() : '');
+
+/** Checks a renamed or recoloured school. Returns the cleaned identity, or the reason it was refused. */
+export function checkIdentity(raw: unknown, taken: readonly SchoolIdentity[] = []): { ok: true; value: SchoolIdentity } | { ok: false; problem: string } {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const name = tidy(r['name']);
+  const mascot = tidy(r['mascot']);
+  const abbr = tidy(r['abbr']).toUpperCase();
+  if (!NAME_OK.test(name)) return { ok: false, problem: 'A school name is 3 to 23 letters and spaces.' };
+  if (!MASCOT_OK.test(mascot)) return { ok: false, problem: 'A mascot is 3 to 17 letters.' };
+  if (!ABBR_OK.test(abbr)) return { ok: false, problem: 'The short name is 2 to 4 capital letters.' };
+  const c = (r['colors'] ?? {}) as Record<string, unknown>;
+  const colour = (k: string): number | null => (typeof c[k] === 'number' && Number.isInteger(c[k]) && (c[k] as number) >= 0 && (c[k] as number) <= 0xffffff ? (c[k] as number) : null);
+  const [jersey, helmet, pants, trim] = [colour('jersey'), colour('helmet'), colour('pants'), colour('trim')];
+  if (jersey === null || helmet === null || pants === null || trim === null) return { ok: false, problem: 'Choose all four colours.' };
+  if (taken.some((t) => t.name.toLowerCase() === name.toLowerCase())) return { ok: false, problem: 'Another school in the league has that name.' };
+  if (taken.some((t) => t.abbr === abbr)) return { ok: false, problem: 'Another school in the league has that short name.' };
+  return { ok: true, value: { name, mascot, abbr, colors: { jersey, helmet, pants, trim } } };
+}
+
+/** Renames or recolours one school. Its players, strength and results are untouched. Throws with the reason if refused. */
+export function editSchool(league: League, school: number, raw: unknown): League {
+  if (!Number.isInteger(school) || school < 0 || school >= league.schools.length) throw new Error('Choose a school.');
+  const r = checkIdentity(raw, league.schools.filter((_, i) => i !== school));
+  if (!r.ok) throw new Error(r.problem);
+  return { ...league, schools: league.schools.map((s, i) => (i === school ? { ...s, ...r.value } : s)) };
+}
+
 /** Round robin by the circle method: seven weeks, four games a week, everyone plays everyone once. Pairs are [home, away]. */
 export function schedule(): [number, number][][] {
   const ring = Array.from({ length: LEAGUE_SIZE }, (_, i) => i);
@@ -153,6 +193,10 @@ export interface Dynasty {
   results: GameResult[];
   setup: GameSetup;
   history: SeasonRecord[];
+  /** Junior varsity players the coach has called up to the varsity. */
+  callUps?: string[];
+  /** This season's junior varsity scores, regular season only. */
+  jv?: GameResult[];
 }
 
 export interface SeasonRecord {
@@ -166,14 +210,43 @@ export interface SeasonRecord {
 }
 
 export function createDynasty(stateCode: string, seed: number, user: number, setup: Partial<GameSetup> = {}): Dynasty {
-  return { v: 1, league: createLeague(stateCode, seed), user: clamp(Math.trunc(user), 0, LEAGUE_SIZE - 1), year: 1, week: 0, results: [], setup: cleanSetup({ ...DEFAULT_SETUP, ...setup }), history: [] };
+  return { v: 1, league: createLeague(stateCode, seed), user: clamp(Math.trunc(user), 0, LEAGUE_SIZE - 1), year: 1, week: 0, results: [], setup: cleanSetup({ ...DEFAULT_SETUP, ...setup }), history: [], callUps: [], jv: [] };
 }
 
-/** This year's rosters. A school's players change every year; its strength follows its prestige. */
-export function teamFor(d: Pick<Dynasty, 'league' | 'year'>, school: number): Team {
-  const s = d.league.schools[school];
-  const counter = { next: school * 1000 + 1 };
-  return generateTeam(hashString(`${d.league.seed}:${d.year}:${s.id}`), s.id, { name: s.name, mascot: s.mascot, abbr: s.abbr, colors: s.colors, strength: s.prestige }, counter);
+type Rosters = Pick<Dynasty, 'league' | 'year'> & { user?: number; callUps?: string[] };
+const callUpsOf = (d: Rosters, school: number): readonly string[] => (d.user === school ? d.callUps ?? [] : []);
+
+/** This year's varsity. Players age a class every season and graduate; a school's prestige lifts or drags the whole program. */
+export function teamFor(d: Rosters, school: number): Team {
+  return varsityTeam(d.league.seed, d.league.schools[school], d.year, callUpsOf(d, school));
+}
+/** This year's junior varsity: everyone in the program who is not on the varsity. */
+export function jvTeamFor(d: Rosters, school: number): Team {
+  return jvTeam(d.league.seed, d.league.schools[school], d.year, callUpsOf(d, school));
+}
+/** Everyone in a school's program this season, marked varsity or junior varsity. */
+export function programOf(d: Rosters, school: number): ProgramPlayer[] {
+  return programFor(d.league.seed, d.league.schools[school], d.year, callUpsOf(d, school));
+}
+/** Next season's freshman class at a school. */
+export function incomingOf(d: Rosters, school: number): ProgramPlayer[] {
+  return incomingClass(d.league.seed, d.league.schools[school], d.year);
+}
+
+/** Calls a junior varsity player up to the varsity, or sends a called-up player back down. */
+export function setCallUp(d: Dynasty, playerId: string, up: boolean): Dynasty {
+  const now = (d.callUps ?? []).filter((id) => id !== playerId);
+  if (up) {
+    if (now.length >= MAX_CALL_UPS) throw new Error(`no more than ${MAX_CALL_UPS} call-ups at a time`);
+    now.push(playerId);
+  }
+  return { ...d, callUps: cleanCallUps(d.league.seed, d.league.schools[d.user], d.year, now) };
+}
+
+/** The junior varsity game between two schools in a week. They play the same opponent the varsity does. */
+export function simulateJv(d: Dynasty, week: number, home: number, away: number): GameResult {
+  const g = simulateGame(hashString(`${gameSeed(d, week, home, away)}:jv`), [jvTeamFor(d, home), jvTeamFor(d, away)], { setup: gameSetup(d, week, home, away) });
+  return { week, home, away, score: [g.state.score[0], g.state.score[1]] };
 }
 
 export const gameSeed = (d: Pick<Dynasty, 'league' | 'year'>, week: number, home: number, away: number): number => hashString(`${d.league.seed}:${d.year}:${week}:${home}:${away}`);
@@ -294,6 +367,8 @@ export function playWeek(d: Dynasty, mine?: GameResult): Dynasty {
   if (mine && (!own || mine.home !== own[0] || mine.away !== own[1] || mine.week !== d.week)) throw new Error('that result is not for this week\'s game');
   let next = d;
   for (const [h, a] of weekGames(d)) next = addResult(next, mine && own && h === own[0] && a === own[1] ? mine : simulate(d, d.week, h, a));
+  // The junior varsity plays the same schedule through the regular season.
+  if (d.week < REGULAR_WEEKS) next = { ...next, jv: [...(d.jv ?? []), ...weekGames(d).map(([h, a]) => simulateJv(d, d.week, h, a))] };
   return closeWeek(next);
 }
 
@@ -309,7 +384,9 @@ export function nextSeason(d: Dynasty): Dynasty {
     const drift = (PRESTIGE_MID - s.prestige) * 0.4;
     return { ...s, prestige: clamp(Math.round((s.prestige + earned + drift + rng.range(-2, 2)) * 10) / 10, PRESTIGE_MIN, PRESTIGE_MAX) };
   });
-  return { ...d, league: { ...d.league, schools }, year: d.year + 1, week: 0, results: [] };
+  // Seniors graduate, everyone moves up a class and a new freshman class arrives. Call-ups who earned a place no longer need the call.
+  const moved: Dynasty = { ...d, league: { ...d.league, schools }, year: d.year + 1, week: 0, results: [], jv: [] };
+  return { ...moved, callUps: cleanCallUps(moved.league.seed, schools[d.user], moved.year, d.callUps ?? []) };
 }
 
 /** Career totals across every finished season. */
@@ -330,8 +407,12 @@ export function loadDynasty(raw: unknown): Dynasty | null {
     if (!Number.isInteger(d.user) || d.user < 0 || d.user >= LEAGUE_SIZE || !Number.isInteger(d.year) || d.year < 1 || !Number.isInteger(d.week) || d.week < 0 || d.week > REGULAR_WEEKS + 1) return null;
     if (!Array.isArray(d.results) || !Array.isArray(d.history)) return null;
     const base = createLeague(d.league.state, d.league.seed);
-    // Names and colours always come from the seed; only prestige is taken from the save, and only within its range.
-    const schools = base.schools.map((s, i) => ({ ...s, prestige: clamp(Number(d.league.schools[i]?.prestige) || s.prestige, PRESTIGE_MIN, PRESTIGE_MAX) }));
+    // Strength is kept within its range. A name or colours the coach changed are kept only if they still pass the checks.
+    let schools = base.schools.map((s, i) => ({ ...s, prestige: clamp(Number(d.league.schools[i]?.prestige) || s.prestige, PRESTIGE_MIN, PRESTIGE_MAX) }));
+    for (let i = 0; i < LEAGUE_SIZE; i++) {
+      const r = checkIdentity(d.league.schools[i], schools.filter((_, k) => k !== i));
+      if (r.ok) schools = schools.map((s, k) => (k === i ? { ...s, ...r.value } : s));
+    }
     const results: GameResult[] = [];
     for (const g of d.results) {
       const ok = Number.isInteger(g.week) && g.week >= 0 && g.week <= REGULAR_WEEKS && Number.isInteger(g.home) && Number.isInteger(g.away) && g.home !== g.away
@@ -341,8 +422,19 @@ export function loadDynasty(raw: unknown): Dynasty | null {
     }
     const expected = Math.min(d.week, REGULAR_WEEKS) * (LEAGUE_SIZE / 2) + (d.week > REGULAR_WEEKS ? 1 : 0);
     if (results.length !== expected) return null;
-    return { v: 1, league: { seed: base.seed, state: base.state, schools }, user: d.user, year: d.year, week: d.week, results, setup: cleanSetup(d.setup), history: d.history.filter((h) => h && Number.isInteger(h.year) && Array.isArray(h.record)) };
+    const jv: GameResult[] = [];
+    for (const g of Array.isArray(d.jv) ? d.jv : []) {
+      const ok = g && Number.isInteger(g.week) && g.week >= 0 && g.week < REGULAR_WEEKS && Number.isInteger(g.home) && Number.isInteger(g.away) && g.home !== g.away
+        && g.home >= 0 && g.home < LEAGUE_SIZE && g.away >= 0 && g.away < LEAGUE_SIZE && Array.isArray(g.score) && g.score.every((x) => Number.isInteger(x) && x >= 0 && x < 200);
+      if (ok && jv.length < REGULAR_WEEKS * (LEAGUE_SIZE / 2)) jv.push({ week: g.week, home: g.home, away: g.away, score: [g.score[0], g.score[1]] });
+    }
+    return {
+      v: 1, league: { seed: base.seed, state: base.state, schools }, user: d.user, year: d.year, week: d.week, results, setup: cleanSetup(d.setup), history: d.history.filter((h) => h && Number.isInteger(h.year) && Array.isArray(h.record)),
+      callUps: cleanCallUps(base.seed, schools[d.user], d.year, d.callUps), jv,
+    };
   } catch {
     return null;
   }
 }
+
+export { CLASS_NAMES, CLASS_SHORT, MAX_CALL_UPS, enrolledIn, type ProgramPlayer } from './program';

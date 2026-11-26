@@ -57,6 +57,7 @@ export const online = {
   leagueCreate: (token: string, state: string, setup: GameSetup) => post<{ league: LeagueView }>({ action: 'leagueCreate', token, state, setup }),
   league: (token: string, code: string) => post<{ league: LeagueView }>({ action: 'league', token, code }),
   leagueClaim: (token: string, code: string, school: number) => post<{ league: LeagueView }>({ action: 'leagueClaim', token, code, school }),
+  leagueEdit: (token: string, code: string, school: number, identity: unknown) => post<{ league: LeagueView }>({ action: 'leagueEdit', token, code, school, identity }),
   leagueStart: (token: string, code: string) => post<{ league: LeagueView }>({ action: 'leagueStart', token, code }),
   leagueForce: (token: string, code: string) => post<{ league: LeagueView }>({ action: 'leagueForce', token, code }),
   leagueNext: (token: string, code: string) => post<{ league: LeagueView }>({ action: 'leagueNext', token, code }),

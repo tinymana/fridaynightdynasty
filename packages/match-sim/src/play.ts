@@ -81,6 +81,27 @@ export interface PlayResult {
   ticks: number;
 }
 
+/** How a ball carrier beat a tackle, or how he finished the run. */
+export type MoveKind = 'stiffArm' | 'truck' | 'juke' | 'spin' | 'dive';
+export interface CarrierMove {
+  tick: number;
+  kind: MoveKind;
+  /** The ball carrier and the defender he beat. */
+  carrier: Player;
+  defender?: Player;
+}
+
+/**
+ * Which move breaks a tackle. Chosen from the two players and the moment, with no dice of its own, so naming
+ * the move changes nothing about how the play comes out: strong runners run through people, quick ones go round.
+ */
+export function moveFor(carrier: Player, headOn: boolean, tick: number): MoveKind {
+  const r = carrier.ratings;
+  if (r.power >= r.agility + 4) return headOn ? 'truck' : 'stiffArm';
+  if (r.agility >= r.power + 4) return tick % 2 === 0 ? 'juke' : 'spin';
+  return headOn ? (tick % 2 === 0 ? 'truck' : 'spin') : tick % 2 === 0 ? 'stiffArm' : 'juke';
+}
+
 export interface PlayContext {
   play: OffPlay;
   formation: OffFormation;
@@ -131,6 +152,8 @@ export class PlaySim {
   private thrown = false;
   private throwTick = 0;
   private hurried = false;
+  /** Broken tackles and dives on this play, in order, for the broadcast. They do not affect the result. */
+  readonly moves: CarrierMove[] = [];
   private target = -1;
   private targetSettled = false;
   private caught = false;
@@ -440,7 +463,7 @@ export class PlaySim {
     let pressure = false;
     for (let i = 11; i < 22; i++) {
       const d = P[i];
-      if (d.engaged < 0 && this.tick >= d.stunUntil && dist(d.x, d.y, this.qb.x, this.qb.y) < yd(1.9)) pressure = true;
+      if (d.engaged < 0 && this.tick >= d.stunUntil && dist(d.x, d.y, this.qb.x, this.qb.y) < yd(1.5)) pressure = true;
     }
     const forced = this.hurried || pressure || elapsed >= 150;
     if (elapsed < 0 && !this.hurried && !(pressure && this.tick > 24)) return;
@@ -691,9 +714,9 @@ export class PlaySim {
       const br = bl.player.ratings;
       let p: number;
       if (passPro) {
-        p = 0.074 + (((dr.power + dr.agility) / 2 - br.passBlock) / 100) * 0.12 + (this.scheme.kind === 'blitz' ? 0.02 : 0);
+        p = 0.1 + (((dr.power + dr.agility) / 2 - br.passBlock) / 100) * 0.12 + (this.scheme.kind === 'blitz' ? 0.02 : 0);
       } else {
-        p = 0.022 + (((dr.tackling + dr.power) / 2 - br.runBlock) / 100) * 0.1;
+        p = 0.011 + (((dr.tackling + dr.power) / 2 - br.runBlock) / 100) * 0.1;
         if (carrier && dist(carrier.x, carrier.y, d.x, d.y) < yd(3)) p *= 1.5;
       }
       p = clamp(p + 0.03 * this.edge, 0.02, 0.5);
@@ -722,7 +745,7 @@ export class PlaySim {
       const cr = c.player.ratings;
       let p = inPocket
         ? 0.72 + ((dr.tackling - cr.agility) / 100) * 0.3
-        : 0.6 + ((dr.tackling - (cr.power + cr.agility) / 2) / 100) * 0.55;
+        : 0.535 + ((dr.tackling - (cr.power + cr.agility) / 2) / 100) * 0.55;
       if (d.engaged >= 0) p *= 0.3;
       p = clamp(p + 0.06 * this.edge, 0.15, 0.95);
       const made = this.rng.chance(p);
@@ -731,15 +754,19 @@ export class PlaySim {
       if (made) {
         const forward = !inPocket && c.x > c.px ? fall : 0;
         const touchdown = c.x + forward >= yd(100);
-        const fumble = !touchdown && !inPocket && this.rng.chance(0.012 * this.wx.fumble) && this.rng.chance(0.5);
+        const fumble = !touchdown && !inPocket && this.rng.chance(0.03 * this.wx.fumble) && this.rng.chance(0.5);
         // The result is decided here. The carrier then falls forward over a few ticks instead of jumping to the spot.
         this.goingDown = { c, d, toX: c.x + forward, touchdown, sack: inPocket, fumble, at: this.tick };
+        // Stretching out for the last few yards.
+        if (forward >= yd(3)) this.moves.push({ tick: this.tick, kind: 'dive', carrier: c.player, defender: d.player });
         if (forward < yd(0.5)) this.land();
         return;
       }
       d.stunUntil = this.tick + 36;
       c.stumbleUntil = this.tick + 16;
       if (inPocket) this.hurried = true;
+      // A quarterback slipping a sack in the pocket is not a highlight; a runner or receiver beating a tackle is.
+      else this.moves.push({ tick: this.tick, kind: moveFor(c.player, d.x >= c.x, this.tick), carrier: c.player, defender: d.player });
     }
   }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  LEAGUE_SIZE, PRESTIGE_MAX, PRESTIGE_MIN, REGULAR_WEEKS, STATES, career, createDynasty, createLeague, loadDynasty, nextSeason, playWeek, schedule, standings, teamFor, userGame, weekGames, winnerOf,
+  LEAGUE_SIZE, PRESTIGE_MAX, PRESTIGE_MIN, REGULAR_WEEKS, STATES, career, createDynasty, createLeague, editSchool, loadDynasty, nextSeason, playWeek, schedule, standings, teamFor, userGame, weekGames, winnerOf,
   type Dynasty,
 } from '@fnd/league';
 
@@ -105,7 +105,8 @@ describe('a season', () => {
     boosted.league.schools[1].name = 'Cheaters';
     const fixed = loadDynasty(boosted)!;
     expect(fixed.league.schools[1].prestige).toBe(PRESTIGE_MAX);
-    expect(fixed.league.schools[1].name).toBe(d.league.schools[1].name);
+    // A school may be renamed, so the name stays; its strength may not be raised.
+    expect(fixed.league.schools[1].name).toBe('Cheaters');
   });
 });
 
@@ -145,5 +146,22 @@ describe('30 seasons of one league', () => {
       expect(w).toBeGreaterThan(30 * REGULAR_WEEKS * 0.25);
       expect(w).toBeLessThan(30 * REGULAR_WEEKS * 0.75);
     }
+  });
+});
+
+describe('renaming a school in a solo dynasty', () => {
+  it('keeps a valid new name and colours through a save, and drops an invalid one', () => {
+    const d = createDynasty('OR', 9, 3, { quarterMinutes: 4 });
+    const identity = { name: 'Tiny Mana Prep', mascot: 'Wizards', abbr: 'TMP', colors: { jersey: 0x112233, helmet: 0xffffff, pants: 0, trim: 0xff8800 } };
+    const edited = { ...d, league: editSchool(d.league, 3, identity) };
+    expect(edited.league.schools[3].name).toBe('Tiny Mana Prep');
+    expect(edited.league.schools[3].prestige).toBe(d.league.schools[3].prestige);
+    expect(teamFor(edited, 3).roster.map((p) => p.name)).toEqual(teamFor(d, 3).roster.map((p) => p.name));
+    expect(loadDynasty(JSON.parse(JSON.stringify(edited)))).toEqual(edited);
+    expect(() => editSchool(d.league, 3, { ...identity, name: d.league.schools[0].name })).toThrow(/Another school/);
+    expect(() => editSchool(d.league, 3, { ...identity, abbr: 'toolong' })).toThrow();
+    const bad = JSON.parse(JSON.stringify(edited)) as Dynasty;
+    bad.league.schools[3].name = '<b>x</b>';
+    expect(loadDynasty(bad)!.league.schools[3].name).toBe(d.league.schools[3].name);
   });
 });

@@ -8,14 +8,16 @@ const RUNOFF = 32;
 const KNEEL_SECONDS = 3;
 
 export const fieldGoalDistance = (yardLine: number): number => 100 - yardLine + 17;
-export const fieldGoalRange = (kicking: number): number => 28 + kicking * 0.27;
+/** High school kickers: a good one is reliable to about 40 yards. */
+export const fieldGoalRange = (kicking: number): number => 22 + kicking * 0.25;
 
 export function passChance(s: Situation, plan: GamePlan = DEFAULT_PLAN): number {
   let p: number;
-  if (s.down === 1) p = 0.42;
-  else if (s.down === 2) p = s.distance >= 7 ? 0.56 : s.distance <= 3 ? 0.3 : 0.45;
-  else p = s.distance >= 6 ? 0.84 : s.distance >= 3 ? 0.6 : 0.22;
-  if (s.quarter === 4 && s.clock < 300) p += s.scoreDiff < 0 ? 0.25 : s.scoreDiff > 0 ? -0.3 : 0;
+  // High school football is run first: about six snaps in ten on the ground.
+  if (s.down === 1) p = 0.29;
+  else if (s.down === 2) p = s.distance >= 7 ? 0.5 : s.distance <= 3 ? 0.2 : 0.34;
+  else p = s.distance >= 6 ? 0.8 : s.distance >= 3 ? 0.5 : 0.16;
+  if (s.quarter === 4 && s.clock < 300) p += s.scoreDiff < 0 ? 0.36 : s.scoreDiff > 0 ? -0.3 : 0;
   if (s.quarter === 2 && s.clock < 45) p += 0.3;
   if (s.yardLine >= 97) p -= 0.15;
   p += plan.passBias * 0.08;
@@ -24,6 +26,8 @@ export function passChance(s: Situation, plan: GamePlan = DEFAULT_PLAN): number 
 
 /** True when the offense can end the game (or half) by kneeling on every remaining down. */
 export function canKneelOut(s: Situation): boolean {
+  // Overtime has no clock to run out.
+  if (s.quarter > 4) return false;
   const kneels = 4 - s.down;
   if (kneels <= 0) return false;
   const burn = kneels * KNEEL_SECONDS + Math.max(0, kneels - s.oppTimeouts) * RUNOFF;
@@ -76,7 +80,7 @@ export function choosePlay(s: Situation, book: readonly OffPlay[], rng: Rng, pla
 function goForIt(s: Situation, plan: GamePlan): boolean {
   const a = plan.aggression;
   if (a <= 0) return s.distance <= 1 && s.yardLine >= 60;
-  if (a === 1) return (s.distance <= 2 && s.yardLine >= 55) || (s.distance <= 1 && s.yardLine >= 45);
+  if (a === 1) return (s.distance <= 3 && s.yardLine >= 55) || (s.distance <= 1 && s.yardLine >= 40);
   return (s.distance <= 3 && s.yardLine >= 45) || (s.distance <= 1 && s.yardLine >= 30);
 }
 
@@ -97,6 +101,8 @@ export function aiOffense(s: Situation, book: readonly OffPlay[], rng: Rng, plan
   if (s.quarter === 2 && s.clock <= 15 && !inRange && s.yardLine < 50 && s.down < 4) return { kind: 'kneel' };
 
   const timeout = wantsTimeout(s, true);
+  // Overtime from the ten: on fourth down take the field goal unless only a touchdown keeps the game alive. Never punt.
+  if (s.quarter > 4 && s.down === 4) return s.scoreDiff < -3 ? { kind: 'play', playId: play.id } : { kind: 'fieldGoal' };
   if (s.down === 4) {
     const desperate = s.quarter === 4 && s.clock < 300 && s.scoreDiff < 0;
     if (desperate && (s.scoreDiff < -3 || !inRange)) return { kind: 'play', playId: play.id, timeout };
@@ -113,6 +119,28 @@ export function aiOffense(s: Situation, book: readonly OffPlay[], rng: Rng, plan
     return { kind: 'punt', timeout };
   }
   return { kind: 'play', playId: play.id, timeout };
+}
+
+/** Fronts that load the box, and the one that empties it. */
+const HEAVY_FRONTS: readonly string[] = ['52', '44'];
+const LIGHT_FRONTS: readonly string[] = ['nickel'];
+/** How often a quarterback who sees the wrong look gets out of the play. */
+export const AUDIBLE_RATE = 0.18;
+
+/**
+ * The check at the line. A run called into a loaded box becomes a quick or short pass; a pass called against
+ * a light box on a makeable down becomes a run. Only plays from the formation already lined up. Null: run the call.
+ */
+export function aiAudible(s: Situation, called: OffPlay, frontId: string, book: readonly OffPlay[], rng: Rng): string | null {
+  const same = book.filter((p) => p.formation === called.formation && p.id !== called.id);
+  let pool: OffPlay[] = [];
+  if (called.kind === 'run' && HEAVY_FRONTS.includes(frontId) && s.distance >= 5 && s.yardLine < 95) {
+    pool = same.filter((p) => p.kind === 'pass' && (p.tags.includes('quick') || p.tags.includes('short')));
+  } else if (called.kind === 'pass' && LIGHT_FRONTS.includes(frontId) && s.distance <= 6 && !(s.quarter === 4 && s.clock < 300 && s.scoreDiff < 0)) {
+    pool = same.filter((p) => p.kind === 'run');
+  }
+  if (!pool.length || !rng.chance(AUDIBLE_RATE)) return null;
+  return pool[rng.int(0, pool.length - 1)].id;
 }
 
 /** Kickoff call: onside when behind late, a squib to kill the last seconds of a half, deep otherwise. */

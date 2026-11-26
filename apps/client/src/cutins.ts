@@ -25,7 +25,7 @@ const TOUCHDOWNS = [tdDive, tdBurst, tdBanner, scoreboardTd, crowd];
 /** The panel for what just happened, or null for an ordinary play. `n` varies the touchdown art from score to score. */
 export function cutinFor(e: PlayEvent | null, period: 'half' | 'final' | null, n: number): Cutin | null {
   if (e) {
-    if (e.flags.touchdown) return { url: TOUCHDOWNS[n % TOUCHDOWNS.length], alt: 'Touchdown' };
+    if (e.flags.touchdown || e.flags.defensiveTouchdown) return { url: TOUCHDOWNS[n % TOUCHDOWNS.length], alt: 'Touchdown' };
     if (e.flags.safety) return { url: safety, alt: 'Safety' };
     if (e.flags.interception) return { url: intercepted, alt: 'Intercepted' };
     if (e.type === 'fieldGoal' && !e.flags.roughing) return e.flags.good ? { url: fgGood, alt: 'The field goal is good' } : { url: fgMiss, alt: 'The field goal is no good' };

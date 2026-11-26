@@ -79,7 +79,7 @@ export function resolvePunt(rng: Rng, punter: Player, los: number, distance = 1)
 export function fieldGoalChance(kicker: Player, los: number): number {
   const d = fieldGoalDistance(los);
   if (d > fieldGoalRange(kicker.ratings.kicking)) return 0.02;
-  return clamp(0.97 - (d - 20) * 0.022 - (70 - kicker.ratings.kicking) * 0.004, 0.05, 0.97);
+  return clamp(0.95 - (d - 18) * 0.03 - (70 - kicker.ratings.kicking) * 0.004, 0.05, 0.95);
 }
 
-export const patChance = (kicker: Player): number => clamp(0.74 + kicker.ratings.kicking * 0.0025, 0.5, 0.98);
+export const patChance = (kicker: Player): number => clamp(0.68 + kicker.ratings.kicking * 0.0025, 0.5, 0.98);

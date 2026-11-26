@@ -2,11 +2,12 @@ import {
   CUSTOM_FRONT, DEFAULT_BOOK, DEFAULT_SETUP, DEFENSE_FRONTS, DEFENSE_SCHEMES, GROUPS, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, OFFENSE_PLAYS, RULES, Rng, U, WEATHER, clamp, cleanSetup, formationOf, frontById, hashString,
   schemeById, toFront, toScheme, validateBook, validateDefPlay, validateOffPlay,
   type DefFront, type DefPlay, type DefScheme, type OffPlay,
-  type DefDecision, type GamePlan, type GameSetup, type Group, type KickStyle, type ManageAction, type OffDecision, type PlayEvent, type PlayFlags, type PlayType,
+  type DefDecision, type GamePlan, type GameSetup, type Group, type KickStyle, type PenaltyKind, type ManageAction, type OffDecision, type PlayEvent, type PlayFlags, type PlayType,
   type Player, type Situation, type Slot, type Team,
 } from '@fnd/core';
-import { DEFAULT_PLAN, aiDefense, aiKickoff, aiOffense, fieldGoalDistance } from '@fnd/football-ai';
+import { DEFAULT_PLAN, aiAudible, aiDefense, aiKickoff, aiOffense, fieldGoalDistance } from '@fnd/football-ai';
 import { PlaySim, type PlayContext, type PlayResult } from './play';
+import { ReturnSim, kickoffReturnSetup, puntReturnSetup, type ReturnResult, type ReturnSetup } from './returns';
 import { blockOutcome, fieldGoalChance, patChance, resolvePunt, resolveStyledKickoff } from './special';
 
 /** Game rules: downs, clock, scoring, possession, fatigue and substitutions. Turns coaching decisions into play events. */
@@ -88,9 +89,20 @@ export class Game {
   private readonly resting = new Set<string>();
   private instant = false;
   private twoPoint = false;
+  /** The log position of the snap being played: the officials' random stream is keyed to it. */
+  private snapN = 0;
+  /** Overtime: which period, who had the ball first in it, and whether the first (0) or second (1) series is being played. */
+  private ot: { period: number; first: 0 | 1; turn: 0 | 1 } | null = null;
+  /**
+   * The return on the last play, if there was one: a fresh copy to draw, the team that was attacking toward
+   * larger x on that play (the kicking team or the offense), and so the frame its positions are in.
+   */
+  lastReturn: { make: () => ReturnSim; frame: 0 | 1 } | null = null;
   /** The defense went for the block on the last snap and the offense ran a real play. */
   caughtBlocking = false;
   private calls: { off?: string; front?: string; def?: string } = {};
+  /** The offense changed the play at the line on this snap. */
+  private audibled = false;
   private lastSnap: { offense: 0 | 1; n: number; ctx: Omit<PlayContext, 'rng'> } | null = null;
 
   readonly setup: GameSetup;
@@ -233,6 +245,8 @@ export class Game {
     this.instant = false;
     this.twoPoint = false;
     this.caughtBlocking = false;
+    this.lastReturn = null;
+    this.snapN = n;
     this.calls = {};
 
     if (s.phase === 'kickoff') {
@@ -242,6 +256,26 @@ export class Game {
     }
     if (!off) throw new Error('offense decision required');
     const offTeam = s.possession;
+
+    // (snapN is set at the top of begin.)
+    // A call that is not allowed is refused whatever the officials do.
+    if (off.kind === 'play' && !this.books[offTeam].includes(off.playId)) throw new Error(`play ${off.playId} is not in this team's playbook`);
+    const audible = off.kind === 'play' && off.audible !== undefined && off.audible !== off.playId ? off.audible : null;
+    if (off.kind === 'play' && audible !== null) {
+      if (!this.books[offTeam].includes(audible)) throw new Error(`play ${audible} is not in this team's playbook`);
+      if (this.playOf(offTeam, audible).formation !== this.playOf(offTeam, off.playId).formation) throw new Error('an audible keeps the formation that lined up');
+    }
+    this.audibled = audible !== null;
+    // A flag before the snap: the call is thrown away and the down is replayed.
+    if (s.phase === 'scrimmage' && off.kind !== 'kneel') {
+      const roll = Rng.stream(this.seed, `flag:${n}`).range(0, 1);
+      const jump = RULES.falseStartChance + (audible !== null ? RULES.audibleFalseStart : 0);
+      if (roll < jump + RULES.offsideChance) {
+        this.deadBallFoul(roll < jump ? 'falseStart' : 'offside');
+        this.instant = true;
+        return;
+      }
+    }
 
     if (s.phase === 'scrimmage' && s.clockRunning) {
       if ((off.kind === 'play' || off.kind === 'punt' || off.kind === 'fieldGoal') && off.timeout && s.timeouts[offTeam] > 0) {
@@ -254,7 +288,8 @@ export class Game {
         s.clock -= RULES.runoffSeconds;
         if (s.clock <= 0) {
           this.endQuarter();
-          if (s.phase !== 'scrimmage') {
+          // The quarter ended before the snap. If that started overtime, the call just made belongs to no one.
+          if (s.phase !== 'scrimmage' || this.ot) {
             this.instant = true;
             return;
           }
@@ -287,7 +322,7 @@ export class Game {
     if (!def) throw new Error('defense decision required');
     if (!this.books[offTeam].includes(off.playId)) throw new Error(`play ${off.playId} is not in this team's playbook`);
 
-    const play = this.playOf(offTeam, off.playId);
+    const play = this.playOf(offTeam, audible ?? off.playId);
     const formation = formationOf(play);
     const called = this.defenseOf(other(offTeam), def);
     const front = called.front;
@@ -357,7 +392,7 @@ export class Game {
     const e: PlayEvent = {
       seq: this.events.length + 1, quarter: before.quarter, clock: before.clock, offense,
       down: before.down, distance: before.distance, yardLine: before.yardLine, type,
-      offCall: this.calls.off, defFront: this.calls.front, defCall: this.calls.def, yards, flags, points,
+      offCall: this.calls.off, defFront: this.calls.front, defCall: this.calls.def, yards, flags: this.audibled && (type === 'run' || type === 'pass') ? { ...flags, audible: true } : flags, points,
       scoreAfter: [this.state.score[0], this.state.score[1]], seconds, text, ...who,
     };
     this.events.push(e);
@@ -401,7 +436,8 @@ export class Game {
       this.rest(40);
     } else if (s.quarter >= RULES.quarters) {
       s.clock = 0;
-      s.phase = 'final';
+      if (s.score[0] === s.score[1]) this.startOvertime();
+      else s.phase = 'final';
     } else {
       s.quarter++;
       s.clock = this.quarterSeconds;
@@ -409,8 +445,143 @@ export class Game {
     }
   }
 
+  /**
+   * The defender who came up with the ball runs it back from where the play ended, with his teammates blocking and
+   * the offense chasing. Sets the new spot (or the score) and returns the words to add to the play-by-play.
+   */
+  private turnoverReturn(def: 0 | 1, r: PlayResult, delay: number, flags: PlayFlags, points: [number, number], who: Partial<PlayEvent>): string {
+    const s = this.state;
+    const sim = this.live;
+    const man = sim?.players.find((p) => p.side === 1 && p.player.id === r.tackler?.id);
+    if (!sim || !man) {
+      this.firstDownAt(def, 100 - clamp(r.endYard, 1, 99));
+      return '';
+    }
+    const P = sim.players;
+    // A fumble is picked up where the runner went down.
+    const at = delay ? { x: Math.trunc(sim.ball.x), y: Math.trunc(sim.ball.y) } : { x: man.x, y: man.y };
+    // Positions are copied now, so the return can be drawn again later exactly as it was played.
+    const blockers = P.filter((p) => p.side === 1 && p !== man).map((p) => ({ player: p.player, x: p.x, y: p.y }));
+    const chasers = P.filter((p) => p.side === 0).map((p) => ({ player: p.player, x: p.x, y: p.y }));
+    const ret = this.runBack((rng) => ({
+      carrier: { player: man.player, x: at.x, y: at.y },
+      blockers, chasers,
+      rng, delay: delay || 8, tackleBonus: 0.2,
+    }), other(def));
+    const yards = Math.max(0, ret.yards);
+    who.returnYards = yards;
+    if (ret.touchdown) {
+      flags.defensiveTouchdown = true;
+      s.score[def] += 6;
+      points[def] = 6;
+      s.possession = def;
+      s.phase = 'conversion';
+      s.yardLine = RULES.twoPointFrom;
+      return ` Returned ${yds(yards)} for a TOUCHDOWN, ${this.teams[def].name}!`;
+    }
+    this.firstDownAt(def, clamp(100 - ret.endYard, 1, 99));
+    return yards >= 3 ? ` Returned ${yds(yards)}.` : '';
+  }
+
+  /** Plays out a return and keeps a way to draw it. Its random stream is keyed to the snap, apart from the play's own. */
+  private runBack(setupOf: (rng: Rng) => ReturnSetup, frame: 0 | 1): ReturnResult {
+    const n = this.snapN;
+    const make = (): ReturnSim => new ReturnSim(setupOf(Rng.stream(this.seed, `return:${n}`)));
+    const sim = make();
+    while (!sim.done) sim.step();
+    this.lastReturn = { make, frame };
+    return sim.result!;
+  }
+
+  /** A foul before the snap: five yards, replay the down. */
+  private deadBallFoul(kind: 'falseStart' | 'offside'): void {
+    const s = this.state;
+    const off = s.possession;
+    const text = kind === 'falseStart' ? `Flag: false start, ${this.teams[off].name}. Five yards, replay the down.` : `Flag: offside, ${this.teams[other(off)].name}. Five yards.`;
+    this.foul(kind, off, kind === 'falseStart' ? -5 : 5, this.snapshot(), 0, text, {});
+  }
+
+  /**
+   * Marks off a penalty from the line of scrimmage. `yards` is from the offense's point of view. Half the distance
+   * to the goal when the full penalty would be more than that. The down is replayed unless it gives a first down.
+   */
+  private foul(kind: PenaltyKind, off: 0 | 1, yards: number, before: ReturnType<Game['snapshot']>, seconds: number, text: string, who: Partial<PlayEvent>, automaticFirst = false): void {
+    const s = this.state;
+    const flags: PlayFlags = { foul: kind };
+    let moved: number;
+    if (yards < 0) {
+      moved = -Math.min(-yards, Math.max(1, Math.trunc(s.yardLine / 2)));
+      if (s.yardLine + moved < 1) moved = 1 - s.yardLine;
+      s.yardLine += moved;
+      s.distance -= moved;
+    } else {
+      moved = Math.min(yards, Math.max(1, Math.trunc((100 - s.yardLine) / 2)));
+      if (s.yardLine + moved > 99) moved = 99 - s.yardLine;
+      if (automaticFirst || moved >= s.distance) {
+        flags.firstDown = true;
+        this.firstDownAt(off, s.yardLine + moved);
+        text += automaticFirst ? '' : ' First down.';
+      } else {
+        s.yardLine += moved;
+        s.distance -= moved;
+      }
+    }
+    s.clockRunning = false;
+    this.emit('penalty', off, before, moved, flags, [0, 0], seconds, text, who);
+    this.afterPlayClock();
+  }
+
+  /** 0 in regulation, otherwise the overtime period being played. */
+  get overtime(): number {
+    return this.ot?.period ?? 0;
+  }
+
+  private startOvertime(): void {
+    const s = this.state;
+    this.ot = { period: 1, first: Rng.stream(this.seed, 'overtime').int(0, 1) as 0 | 1, turn: 0 };
+    s.quarter = RULES.quarters + 1;
+    s.timeouts = [1, 1];
+    this.rest(20);
+    this.overtimeSeries(this.ot.first);
+  }
+
+  private overtimeSeries(team: 0 | 1): void {
+    const s = this.state;
+    this.firstDownAt(team, RULES.overtimeFrom);
+    s.clock = 0;
+    s.clockRunning = false;
+  }
+
+  /** After every overtime play: carry on the series, hand the ball to the other team, or end the period. */
+  private overtimeAfterPlay(): void {
+    const s = this.state;
+    const ot = this.ot!;
+    s.clock = 0;
+    s.clockRunning = false;
+    if (s.phase === 'conversion') return;
+    const team = ot.turn === 0 ? ot.first : other(ot.first);
+    // A series ends with a score (the next thing would be a kickoff) or when the ball changes hands.
+    if (s.phase === 'scrimmage' && s.possession === team) return;
+    if (ot.turn === 0) {
+      ot.turn = 1;
+      this.overtimeSeries(other(ot.first));
+      return;
+    }
+    if (s.score[0] !== s.score[1] || ot.period >= RULES.overtimePeriods) {
+      s.phase = 'final';
+      return;
+    }
+    // Still level: another period, and the team that went second now goes first.
+    this.ot = { period: ot.period + 1, first: other(ot.first), turn: 0 };
+    s.quarter++;
+    s.timeouts = [1, 1];
+    this.rest(10);
+    this.overtimeSeries(this.ot.first);
+  }
+
   private afterPlayClock(): void {
     const s = this.state;
+    if (this.ot) return this.overtimeAfterPlay();
     if (s.clock <= 0 && s.phase !== 'conversion' && s.phase !== 'final') this.endQuarter();
   }
 
@@ -427,7 +598,15 @@ export class Game {
     const recv = other(kick);
     const kicker = this.starter(kick, 'K');
     const returner = this.starter(recv, 'WR', 3);
-    const r = resolveStyledKickoff(rng, kicker, returner, s.kickFrom, style, this.onsideExpected());
+    const kicked = resolveStyledKickoff(rng, kicker, returner, s.kickFrom, style, this.onsideExpected());
+    let r = kicked;
+    if (style !== 'onside' && !kicked.touchback) {
+      // The return is played out on the field: the returner, his blockers and the coverage.
+      const from = s.kickFrom;
+      const land = clamp(from + kicked.kickYards, 40, 99);
+      const ret = this.runBack((rr) => kickoffReturnSetup(this.teams[kick], this.teams[recv], returner, from, land, style === 'squib' ? 0.8 : 0.6, rr, style === 'squib'), kick);
+      r = { ...kicked, returnYards: Math.max(0, ret.yards), touchdown: ret.touchdown, startYard: clamp(100 - ret.endYard, 1, 99) };
+    }
     this.runClock(r.touchback ? 0 : style === 'onside' ? 3 : 6);
     const points: [number, number] = [0, 0];
     let text: string;
@@ -453,7 +632,7 @@ export class Game {
     }
     s.clockRunning = false;
     this.emit('kickoff', kick, before, r.kickYards, { touchback: r.touchback, touchdown: r.touchdown }, points, r.touchback ? 0 : 6, text,
-      { kicker: kicker.id, receiver: returner.id });
+      { kicker: kicker.id, receiver: returner.id, returnYards: r.touchback ? 0 : r.returnYards });
     this.afterPlayClock();
   }
 
@@ -481,13 +660,34 @@ export class Game {
       this.emit('punt', off, before, 15, { roughing: true, firstDown: true }, [0, 0], 8, `Flag: running into the kicker. First down, ${this.teams[off].name}.`, { kicker: punter.id });
     } else {
       // A defense that came after the punt has nobody back to return it.
-      const startYard = rushed && !r.touchback ? clamp(r.startYard - r.returnYards, 1, 99) : r.startYard;
-      const returned = rushed ? 0 : r.returnYards;
-      this.firstDownAt(other(off), startYard);
+      let startYard = rushed && !r.touchback ? clamp(r.startYard - r.returnYards, 1, 99) : r.startYard;
+      let returned = rushed ? 0 : r.returnYards;
+      let scored = false;
+      const recv = other(off);
+      if (!r.touchback && returned > 0) {
+        // Not a fair catch: the return is played out on the field.
+        const returner = this.starter(recv, 'WR', 3);
+        // The spot is read now: the return may be drawn later, after the ball has moved.
+        const los = s.yardLine;
+        const land = clamp(los + r.grossYards, 1, 99);
+        const ret = this.runBack((rr) => puntReturnSetup(this.teams[off], this.teams[recv], returner, los, land, rr), off);
+        returned = Math.max(0, ret.yards);
+        startYard = clamp(100 - ret.endYard, 1, 99);
+        scored = ret.touchdown;
+      }
+      const points: [number, number] = [0, 0];
+      if (scored) {
+        s.score[recv] += 6;
+        points[recv] = 6;
+        s.possession = recv;
+        s.phase = 'conversion';
+        s.yardLine = RULES.twoPointFrom;
+      } else this.firstDownAt(recv, startYard);
       s.clockRunning = false;
       const text = r.touchback ? `${short(punter)} punts into the end zone. Touchback.`
-        : `${short(punter)} punts ${yds(r.grossYards)}${returned ? `, returned ${yds(returned)}` : rushed ? ', no return' : ', fair catch'}.`;
-      this.emit('punt', off, before, r.grossYards, { touchback: r.touchback }, [0, 0], 8, text, { kicker: punter.id });
+        : scored ? `${short(punter)} punts ${yds(r.grossYards)}. Returned ${yds(returned)} for a TOUCHDOWN, ${this.teams[recv].name}!`
+          : `${short(punter)} punts ${yds(r.grossYards)}${returned ? `, returned ${yds(returned)}` : rushed ? ', no return' : ', fair catch'}.`;
+      this.emit('punt', off, before, r.grossYards, scored ? { touchdown: true } : { touchback: r.touchback }, points, 8, text, { kicker: punter.id, returnYards: r.touchback ? 0 : returned });
     }
     this.afterPlayClock();
   }
@@ -581,6 +781,16 @@ export class Game {
 
     const seconds = Math.ceil(r.ticks / 60);
     this.runClock(seconds);
+    // A flag on the play. The team it helps takes it whenever the penalty beats what the play gave them.
+    const flagRoll = Rng.stream(this.seed, `flag:${this.snapN}`).range(0, 1);
+    if (!r.turnover && !r.safety && !r.sack && (r.touchdown || r.yards > 0) && flagRoll > 1 - RULES.holdingChance) {
+      this.foul('holding', off, -10, before, seconds, `Flag on the play: holding, ${this.teams[off].name}. ${r.touchdown ? 'The touchdown comes back.' : `The ${yds(r.yards)} gain comes back.`} Ten yards, replay the down.`, who);
+      return;
+    }
+    if (r.incomplete && r.thrown && flagRoll > 1 - RULES.interferenceChance) {
+      this.foul('interference', off, 15, before, seconds, `Flag on the play: pass interference, ${this.teams[def].name}. Fifteen yards and a first down.`, who, true);
+      return;
+    }
     const flags: PlayFlags = {};
     let yards = r.yards;
     let text: string;
@@ -598,8 +808,9 @@ export class Game {
       flags.interception = true;
       yards = 0;
       const touchback = r.endYard >= 100;
-      this.firstDownAt(def, touchback ? RULES.touchbackAt : 100 - Math.max(r.endYard, 1));
       text = `${short(r.passer)} pass is INTERCEPTED by ${short(r.tackler)}!`;
+      if (touchback) this.firstDownAt(def, RULES.touchbackAt);
+      else text += this.turnoverReturn(def, r, 0, flags, points, who);
       stop = true;
     } else if (r.touchdown) {
       flags.touchdown = true;
@@ -619,8 +830,8 @@ export class Game {
       stop = true;
     } else if (r.turnover === 'fumble') {
       flags.fumbleLost = true;
-      this.firstDownAt(def, 100 - clamp(r.endYard, 1, 99));
       text = `${base}. FUMBLE, recovered by ${this.teams[def].name}!`;
+      text += this.turnoverReturn(def, r, 24, flags, points, who);
       stop = true;
     } else if (r.incomplete) {
       flags.incomplete = true;
@@ -669,8 +880,11 @@ export function gameHash(game: Game): string {
 export class AutoCoach {
   private readonly rng: [Rng, Rng];
   readonly plans: [GamePlan, GamePlan];
+  /** Checks at the line draw from their own stream, so they never disturb the calls. */
+  private readonly lineRng: [Rng, Rng];
   constructor(seed: number, plans?: readonly [GamePlan, GamePlan]) {
     this.rng = [Rng.stream(seed, 'coach:0'), Rng.stream(seed, 'coach:1')];
+    this.lineRng = [Rng.stream(seed, 'line:0'), Rng.stream(seed, 'line:1')];
     this.plans = plans ? [{ ...plans[0] }, { ...plans[1] }] : [{ ...DEFAULT_PLAN }, { ...DEFAULT_PLAN }];
   }
   offense(game: Game): OffDecision | null {
@@ -678,6 +892,14 @@ export class AutoCoach {
     if (s.phase === 'kickoff') return { kind: 'kickoff', style: aiKickoff(s.quarter, s.clock, s.score[s.kicking] - s.score[other(s.kicking)]) };
     const t = s.possession;
     return aiOffense(game.situation(t), game.bookPlays(t), this.rng[t], this.plans[t]);
+  }
+  /** The quarterback's look at the line: the call, or the call with a check to a better play against the front shown. */
+  audible(game: Game, off: OffDecision | null, def: DefDecision | null): OffDecision | null {
+    if (!off || !def || off.kind !== 'play' || game.state.phase === 'kickoff') return off;
+    const t = game.state.possession;
+    if (!game.bookPlays(t).some((p) => p.id === off.playId)) return off;
+    const to = aiAudible(game.situation(t), game.playOf(t, off.playId), def.frontId, game.bookPlays(t), this.lineRng[t]);
+    return to ? { ...off, audible: to } : off;
   }
   defense(game: Game): DefDecision | null {
     if (game.state.phase === 'kickoff') return null;
@@ -691,7 +913,8 @@ export function simulateGame(seed: number, teams: readonly [Team, Team], opts: G
   const game = new Game(seed, teams, opts);
   const coach = new AutoCoach(seed, opts.plans);
   while (game.state.phase !== 'final') {
-    game.begin(coach.offense(game), coach.defense(game));
+    const def = coach.defense(game);
+    game.begin(coach.audible(game, coach.offense(game), def), def);
     while (!game.tick()) { /* step */ }
   }
   return game;

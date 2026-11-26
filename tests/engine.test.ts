@@ -113,7 +113,7 @@ describe('full game', () => {
 
   it('reaches a final score through four quarters', () => {
     expect(game.state.phase).toBe('final');
-    expect(game.state.quarter).toBe(4);
+    expect(game.state.quarter).toBe(4 + game.overtime);
     const types = new Set(game.events.map((e) => e.type));
     for (const t of ['kickoff', 'run', 'pass']) expect(types.has(t as never)).toBe(true);
   });
