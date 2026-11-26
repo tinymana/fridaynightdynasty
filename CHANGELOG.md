@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.1 — 2026-11-26
+
+### Added
+- Overtime (`RULES.overtimeFrom`, `RULES.overtimePeriods`, `Game.overtime`). A game level after regulation gives
+  each team a series from the ten, first and goal, with no clock, kickoffs or punts by the AI. Up to four periods.
+- A call made as regulation runs out is discarded when that run-off starts overtime.
+
+### Changed
+- Games that end level in regulation now continue, so their results differ from 0.7.0. Games decided in
+  regulation are unchanged (fingerprints checked in `overtime.test.ts`).
+
+### Known gaps
+- With short quarters about one overtime game in five uses all four periods; a few still end level.
+
 ## 0.7.0 — 2026-11-26
 
 Dynasty with friends.

@@ -24,6 +24,8 @@ export function passChance(s: Situation, plan: GamePlan = DEFAULT_PLAN): number 
 
 /** True when the offense can end the game (or half) by kneeling on every remaining down. */
 export function canKneelOut(s: Situation): boolean {
+  // Overtime has no clock to run out.
+  if (s.quarter > 4) return false;
   const kneels = 4 - s.down;
   if (kneels <= 0) return false;
   const burn = kneels * KNEEL_SECONDS + Math.max(0, kneels - s.oppTimeouts) * RUNOFF;
@@ -97,6 +99,8 @@ export function aiOffense(s: Situation, book: readonly OffPlay[], rng: Rng, plan
   if (s.quarter === 2 && s.clock <= 15 && !inRange && s.yardLine < 50 && s.down < 4) return { kind: 'kneel' };
 
   const timeout = wantsTimeout(s, true);
+  // Overtime from the ten: on fourth down take the field goal unless only a touchdown keeps the game alive. Never punt.
+  if (s.quarter > 4 && s.down === 4) return s.scoreDiff < -3 ? { kind: 'play', playId: play.id } : { kind: 'fieldGoal' };
   if (s.down === 4) {
     const desperate = s.quarter === 4 && s.clock < 300 && s.scoreDiff < 0;
     if (desperate && (s.scoreDiff < -3 || !inRange)) return { kind: 'play', playId: play.id, timeout };

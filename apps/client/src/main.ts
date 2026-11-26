@@ -513,7 +513,7 @@ function showResult(e: PlayEvent | null): void {
   const banner = $('banner');
   let period = '';
   if (s.phase === 'final') period = 'End of game. ';
-  else if (s.quarter !== lastQuarter) period = lastQuarter === 2 ? 'Halftime. ' : `End of quarter ${lastQuarter}. `;
+  else if (s.quarter !== lastQuarter) period = lastQuarter === 2 ? 'Halftime. ' : lastQuarter === 4 ? 'End of regulation: overtime! Each team gets the ball at the ten. ' : lastQuarter > 4 ? 'Still level: another overtime. ' : `End of quarter ${lastQuarter}. `;
   const cut = showCutins && speed !== 0 ? cutinFor(e, s.phase === 'final' ? 'final' : s.quarter !== lastQuarter && lastQuarter === 2 ? 'half' : null, s.score[0] + s.score[1] + s.quarter) : null;
   const cutEl = $('cutin') as HTMLImageElement;
   cutEl.classList.toggle('hidden', !cut);
@@ -561,7 +561,8 @@ function updateBug(): void {
   });
   const m = Math.floor(s.clock / 60);
   const sec = String(s.clock % 60).padStart(2, '0');
-  $('mid').querySelector('.clk')!.textContent = s.phase === 'final' ? 'FINAL' : `Q${s.quarter}  ${m}:${sec}`;
+  const otName = game.overtime > 1 ? `${game.overtime}OT` : 'OT';
+  $('mid').querySelector('.clk')!.textContent = s.phase === 'final' ? (game.overtime ? `FINAL ${otName}` : 'FINAL') : game.overtime ? `OVERTIME${game.overtime > 1 ? ` ${game.overtime}` : ''}` : `Q${s.quarter}  ${m}:${sec}`;
   let dd = '';
   if (s.phase === 'scrimmage') dd = `${ord(s.down)} & ${s.yardLine + s.distance >= 100 ? 'GOAL' : s.distance} · ${ballOn().replace('the ', '')}`;
   else if (s.phase === 'conversion') dd = 'TRY';
@@ -1073,7 +1074,7 @@ function showFinal(): void {
       ($('again') as HTMLButtonElement).disabled = false;
     }, 60);
   }
-  $('log').innerHTML = game.events.filter((e) => e.points[0] + e.points[1] > 0).map((e) => `<div><b>Q${e.quarter} ${Math.floor(e.clock / 60)}:${String(e.clock % 60).padStart(2, '0')}</b> ${e.text} <b>${e.scoreAfter[0]}–${e.scoreAfter[1]}</b></div>`).join('') || '<div>No scoring.</div>';
+  $('log').innerHTML = game.events.filter((e) => e.points[0] + e.points[1] > 0).map((e) => `<div><b>${e.quarter > 4 ? (e.quarter > 5 ? `${e.quarter - 4}OT` : 'OT') : `Q${e.quarter} ${Math.floor(e.clock / 60)}:${String(e.clock % 60).padStart(2, '0')}`}</b> ${e.text} <b>${e.scoreAfter[0]}–${e.scoreAfter[1]}</b></div>`).join('') || '<div>No scoring.</div>';
   show('final');
 }
 

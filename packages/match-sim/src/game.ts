@@ -88,6 +88,8 @@ export class Game {
   private readonly resting = new Set<string>();
   private instant = false;
   private twoPoint = false;
+  /** Overtime: which period, who had the ball first in it, and whether the first (0) or second (1) series is being played. */
+  private ot: { period: number; first: 0 | 1; turn: 0 | 1 } | null = null;
   /** The defense went for the block on the last snap and the offense ran a real play. */
   caughtBlocking = false;
   private calls: { off?: string; front?: string; def?: string } = {};
@@ -254,7 +256,8 @@ export class Game {
         s.clock -= RULES.runoffSeconds;
         if (s.clock <= 0) {
           this.endQuarter();
-          if (s.phase !== 'scrimmage') {
+          // The quarter ended before the snap. If that started overtime, the call just made belongs to no one.
+          if (s.phase !== 'scrimmage' || this.ot) {
             this.instant = true;
             return;
           }
@@ -401,7 +404,8 @@ export class Game {
       this.rest(40);
     } else if (s.quarter >= RULES.quarters) {
       s.clock = 0;
-      s.phase = 'final';
+      if (s.score[0] === s.score[1]) this.startOvertime();
+      else s.phase = 'final';
     } else {
       s.quarter++;
       s.clock = this.quarterSeconds;
@@ -409,8 +413,57 @@ export class Game {
     }
   }
 
+  /** 0 in regulation, otherwise the overtime period being played. */
+  get overtime(): number {
+    return this.ot?.period ?? 0;
+  }
+
+  private startOvertime(): void {
+    const s = this.state;
+    this.ot = { period: 1, first: Rng.stream(this.seed, 'overtime').int(0, 1) as 0 | 1, turn: 0 };
+    s.quarter = RULES.quarters + 1;
+    s.timeouts = [1, 1];
+    this.rest(20);
+    this.overtimeSeries(this.ot.first);
+  }
+
+  private overtimeSeries(team: 0 | 1): void {
+    const s = this.state;
+    this.firstDownAt(team, RULES.overtimeFrom);
+    s.clock = 0;
+    s.clockRunning = false;
+  }
+
+  /** After every overtime play: carry on the series, hand the ball to the other team, or end the period. */
+  private overtimeAfterPlay(): void {
+    const s = this.state;
+    const ot = this.ot!;
+    s.clock = 0;
+    s.clockRunning = false;
+    if (s.phase === 'conversion') return;
+    const team = ot.turn === 0 ? ot.first : other(ot.first);
+    // A series ends with a score (the next thing would be a kickoff) or when the ball changes hands.
+    if (s.phase === 'scrimmage' && s.possession === team) return;
+    if (ot.turn === 0) {
+      ot.turn = 1;
+      this.overtimeSeries(other(ot.first));
+      return;
+    }
+    if (s.score[0] !== s.score[1] || ot.period >= RULES.overtimePeriods) {
+      s.phase = 'final';
+      return;
+    }
+    // Still level: another period, and the team that went second now goes first.
+    this.ot = { period: ot.period + 1, first: other(ot.first), turn: 0 };
+    s.quarter++;
+    s.timeouts = [1, 1];
+    this.rest(10);
+    this.overtimeSeries(this.ot.first);
+  }
+
   private afterPlayClock(): void {
     const s = this.state;
+    if (this.ot) return this.overtimeAfterPlay();
     if (s.clock <= 0 && s.phase !== 'conversion' && s.phase !== 'final') this.endQuarter();
   }
 

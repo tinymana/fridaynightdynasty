@@ -9,6 +9,10 @@ export const RULES = {
   twoPointFrom: 97,
   /** Seconds run off between plays while the clock is running. Tuned for 50 to 60 plays a team. */
   runoffSeconds: 32,
+  /** Overtime: each team gets a series from the opponent's ten. First and goal. */
+  overtimeFrom: 90,
+  /** After this many overtime periods a game still level ends as a tie. */
+  overtimePeriods: 4,
 } as const;
 
 /** Quarter lengths a game can be played with, in minutes. Twelve is the high school standard. */

@@ -2,6 +2,25 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.7.1",
+      "date": "2026-11-26",
+      "title": "Overtime",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Overtime. A game level after four quarters goes to high school overtime: each team gets the ball first and goal at the ten. Still level, they go again, and the team that went second goes first."
+        },
+        {
+          "tag": "improved",
+          "text": "The AI coach takes the field goal on fourth down in overtime unless only a touchdown keeps the game alive, and never punts."
+        },
+        {
+          "tag": "note",
+          "text": "After four overtime periods a game still level ends as a tie. In a dynasty title game that tie goes to the home team."
+        }
+      ]
+    },
+    {
       "version": "0.7.0",
       "date": "2026-11-26",
       "title": "Dynasty with friends",
@@ -401,9 +420,9 @@
       "text": "Friends coach rival schools in the same league. When two coaches meet, both have to be online to play; the week moves on when every game is in. Playable now."
     },
     {
-      "status": "next",
+      "status": "testing",
       "title": "Overtime",
-      "text": "No more ties: high school overtime from the ten-yard line."
+      "text": "High school overtime from the ten-yard line. Playable now."
     },
     {
       "status": "planned",
