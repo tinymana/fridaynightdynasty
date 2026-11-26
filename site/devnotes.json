@@ -2,6 +2,53 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.6.0",
+      "date": "2026-11-26",
+      "title": "Dynasty, special teams, weather and cut-ins",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Dynasty. Pick any of the fifty states and one of eight invented schools. Play seven league games, then first plays second for the state title. Coach each game yourself or let your assistant handle it."
+        },
+        {
+          "tag": "new",
+          "text": "Seasons roll on: winners get a little stronger, everyone drifts back toward the pack, rosters turn over, and your trophy case and career record are kept."
+        },
+        {
+          "tag": "new",
+          "text": "Kickoff calls: kick deep, squib it, or try an onside kick. A surprise onside is recovered about one time in four; when they expect it, about one in nine."
+        },
+        {
+          "tag": "new",
+          "text": "Go for the block. On fourth down the defense can sell out against a punt or field goal: a chance to block it, a risk of a flag. If the offense fakes it and runs a real play, the defense is caught out of position."
+        },
+        {
+          "tag": "new",
+          "text": "Game length. Choose 4, 6, 8, 10 or 12 minute quarters before kickoff. The host chooses for online games."
+        },
+        {
+          "tag": "new",
+          "text": "Weather. Rain, wind, snow and heat change catching, deep throws, fumbles, kicking and how fast players tire. In a dynasty the forecast depends on the state and the week."
+        },
+        {
+          "tag": "new",
+          "text": "Cut-ins. Touchdowns, interceptions, sacks, safeties, kicks, half time and the final whistle get their own artwork."
+        },
+        {
+          "tag": "improved",
+          "text": "New screenshots on this site."
+        },
+        {
+          "tag": "note",
+          "text": "Dynasty is solo for now: your league is saved in this browser. Dynasties with friends coaching rival schools are next, and games between two coaches will need both online."
+        },
+        {
+          "tag": "note",
+          "text": "There is no overtime yet. A tied league game stays a tie; a tied championship goes to the home team."
+        }
+      ]
+    },
+    {
       "version": "0.5.0",
       "date": "2026-11-25",
       "title": "The big playbook: 40 on offense, 40 on defense",
@@ -279,19 +326,24 @@
       "text": "A 40-play starter book and 40 defensive calls. Playable now."
     },
     {
-      "status": "next",
+      "status": "testing",
       "title": "Special teams",
-      "text": "Kickoff, punt and field-goal calls: deep, squib and onside kicks, fake punts and field goals, return or go for the block."
+      "text": "Kickoff calls and going for the block. Playable now."
     },
     {
-      "status": "next",
-      "title": "Cut-ins and new artwork",
-      "text": "Touchdown, field goal, interception and half-time cut-ins, new player sprites and on-field effects."
+      "status": "testing",
+      "title": "Cut-ins",
+      "text": "Artwork for touchdowns, turnovers, kicks, half time and the final whistle. In the game now."
     },
     {
-      "status": "next",
+      "status": "testing",
       "title": "Game length options",
-      "text": "Choose how long the four quarters are before kickoff."
+      "text": "Choose 4 to 12 minute quarters. Playable now."
+    },
+    {
+      "status": "testing",
+      "title": "Weather",
+      "text": "Rain, wind, snow and heat. Playable now."
     },
     {
       "status": "planned",
@@ -299,14 +351,24 @@
       "text": "Full box scores for teams and players, checked so every number adds up."
     },
     {
-      "status": "planned",
-      "title": "Eight-school league",
-      "text": "Pick a real state and get a generated league of eight fictional schools with rosters, rivals, schedules and standings. Any school can be run by a person or the AI."
+      "status": "testing",
+      "title": "State leagues",
+      "text": "Pick any of the fifty states and get a league of eight invented schools with a seven-week schedule and standings. Playable now."
     },
     {
-      "status": "planned",
-      "title": "Dynasty: solo or with friends",
-      "text": "Persistent rosters and week-by-week seasons, played alone against the AI or with friends running rival schools. When two coaches meet, both have to be online to play; the week advances when everyone is ready."
+      "status": "testing",
+      "title": "Solo dynasty",
+      "text": "Season after season with one school: a state title game, rosters that turn over, a trophy case. Playable now."
+    },
+    {
+      "status": "next",
+      "title": "Dynasty with friends",
+      "text": "Friends coach rival schools in the same league. When two coaches meet, both have to be online to play; the week moves on when everyone is ready."
+    },
+    {
+      "status": "next",
+      "title": "Overtime",
+      "text": "No more ties: high school overtime from the ten-yard line."
     },
     {
       "status": "planned",
@@ -337,11 +399,6 @@
       "status": "planned",
       "title": "Regional and national",
       "text": "More states, showcase games, rankings and a fictional national championship."
-    },
-    {
-      "status": "planned",
-      "title": "Weather",
-      "text": "Rain, wind, cold and heat that change how the ball is thrown, kicked and held on to."
     },
     {
       "status": "planned",

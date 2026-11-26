@@ -1166,7 +1166,7 @@ function renderLobby(): void {
   const v = net.view;
   const lobbyTeams = exhibitionTeams(v.seed);
   $('lobbyPin').textContent = v.pin;
-  $('lobbySetup').textContent = setupLine(v.setup);
+  $('lobbySetup').textContent = setupLine(cleanSetup(v.setup));
   $('lobbySeats').innerHTML = lobbyTeams.map((t, i) => `<div class="team-card seat${i === v.you ? ' me' : ''}"><div class="swatch" style="background:linear-gradient(90deg, ${css(t.colors.jersey)} 0 60%, ${css(t.colors.trim)} 60% 80%, ${css(t.colors.helmet)} 80%)"></div><div class="nm">${t.name} ${t.mascot}</div><div class="coach${v.coaches[i] ? '' : ' empty'}">${v.coaches[i] ? `${v.coaches[i]}${i === v.you ? ' (you)' : ''}` : 'Waiting for a coach…'}</div></div>`).join('');
   const ready = !!v.coaches[0] && !!v.coaches[1];
   const start = $('lobbyStart') as HTMLButtonElement;
@@ -1236,7 +1236,7 @@ function enterOnlineGame(): void {
   user = v.you;
   coach = new AutoCoach(seed, [v.plan, v.plan]);
   const catchUp = net.queue.length > 1 ? net.queue.splice(0, net.queue.length) : [];
-  game = replayGame(seed, teams, catchUp, { books: v.books, plays: v.designs.plays, defenses: v.designs.defenses, setup: v.setup });
+  game = replayGame(seed, teams, catchUp, { books: v.books, plays: v.designs.plays, defenses: v.designs.defenses, setup: cleanSetup(v.setup) });
   showWeather();
   lastQuarter = game.state.quarter;
   kick = null;
@@ -1334,7 +1334,7 @@ function pump(): void {
 function checkSync(): void {
   if (!net || net.queue.length || game.log.length !== net.view.logSize) return;
   // The play just begun is still being drawn here, so compare a finished copy built from the same log.
-  const probe = replayGame(seed, teams, game.log, { books: net.view.books, plays: net.view.designs.plays, defenses: net.view.designs.defenses, setup: net.view.setup });
+  const probe = replayGame(seed, teams, game.log, { books: net.view.books, plays: net.view.designs.plays, defenses: net.view.designs.defenses, setup: cleanSetup(net.view.setup) });
   if (gameHash(probe) !== net.view.hash) {
     net.sync = 'bad';
     console.error('out of sync with the server', gameHash(probe), net.view.hash);

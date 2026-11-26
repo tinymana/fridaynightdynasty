@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.6.0 — 2026-11-26
+
+Dynasty, special teams, game setup and cut-ins.
+
+### Added
+- `packages/league`: state league generator (50 states, eight invented schools each), round-robin schedule,
+  standings, a championship between first and second, prestige that moves with results, per-game weather by
+  region and week, and a validated save format. Pure and deterministic.
+- Solo dynasty screen (`apps/client/src/dynasty.ts`), saved in the browser under `fnd.dynasty.v1`.
+- Kickoff decision `{ kind: 'kickoff', style }` with deep, squib and onside kicks. A `null` kickoff decision still
+  means deep, so older game logs replay unchanged.
+- `DefDecision.block`: on fourth down, a chance to block a punt or field goal, a risk of a flag, and a defense
+  caught out of position by a real play.
+- Online: the kickoff is a turn for the kicking coach (`need.phase` "kickoff", 20 seconds).
+- `GameSetup`: quarter length (4 to 12 minutes) and weather (clear, rain, wind, snow, heat). Chosen by the host
+  online and carried in the room.
+- Cut-in panels cut from the creative director's sheets by `tools/cut-art.py`; weather overlay on the field.
+- Tests: `special.test.ts`, `setup.test.ts`, `league.test.ts` (including 30 simulated seasons). `check:dynasty`.
+
+### Known gaps
+- Dynasty is solo only. Dynasty with friends is not built.
+- No overtime: league games can end tied; a tied championship goes to the home team.
+- Dynasty rosters are regenerated each year from the school's prestige; individual players do not carry over.
+- Weather does not change player speed or footing, only catching, throwing, fumbles, kicking and fatigue.
+- Cut-in art shows generic red and blue teams, not the two schools playing. Player sprites, the scoreboard
+  restyle and the broadcast overlays from the sheets are not used yet.
+- The field-tile sheet is not used: it carries a real league's logo.
+- Everything listed under 0.4.0 and 0.5.0 still stands.
+
 ## 0.5.0 — 2026-11-25
 
 The big playbook.
