@@ -2,6 +2,65 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.21.0",
+      "date": "2026-11-27",
+      "title": "Closer to real Friday nights, and more of the art on the field",
+      "items": [
+        {
+          "tag": "tune",
+          "text": "Scoring is up. The clock runs a little less between plays, so each team gets about five more snaps a game and even games average about 20 points a team instead of 19."
+        },
+        {
+          "tag": "tune",
+          "text": "Strong schools and weak schools are further apart. In a league, about four games in ten are now decided by three scores or more (it was fewer than two in ten; real high school football is over five), and the average is about 21 points a team."
+        },
+        {
+          "tag": "new",
+          "text": "Home field counts. The home side now wins about 55 percent of league games, the same as real results."
+        },
+        {
+          "tag": "tune",
+          "text": "To keep leagues from being run by one school for ever, programs drift back toward the middle a little faster between seasons."
+        },
+        {
+          "tag": "fixed",
+          "text": "Runs look like runs. On a run the quarterback turns and hands the ball to the back; he no longer sets up as if to throw first."
+        },
+        {
+          "tag": "new",
+          "text": "A flag on the play: yellow penalty flags are thrown across the screen and land on the field."
+        },
+        {
+          "tag": "new",
+          "text": "Running back art: a lowered shoulder for a truck, a hard cut for a juke, and a full-stretch dive at the goal line."
+        },
+        {
+          "tag": "new",
+          "text": "Receiver art: a receiver lays out for a pass he cannot reach, and the scorer spikes the ball after a touchdown."
+        },
+        {
+          "tag": "new",
+          "text": "Special teams art: the returner settles under the kick with his hands up before he takes off."
+        },
+        {
+          "tag": "new",
+          "text": "Defense art: linebackers and the secondary wait in a crouch, the tackler is laid out where he made the stop, a defender has his hand up after knocking a pass away, and an interceptor goes up with the ball."
+        },
+        {
+          "tag": "new",
+          "text": "Quarterback art: the handoff uses the new handoff picture, ball held out to the back."
+        },
+        {
+          "tag": "new",
+          "text": "Eleven more arcade-style panels and signs: a runner bursting into the open and a stiff arm for runs of 20 yards or more, a leaping catch and a quarterback's throw for long passes, a pile-up for fumbles, the referee's signal and a TOUCHDOWN sign, cheerleaders after an extra point, and FUMBLE, INTERCEPTED and SACK signs."
+        },
+        {
+          "tag": "note",
+          "text": "A dynasty already under way keeps its results, records and stats; its rosters shift a little because of the wider gap between schools."
+        }
+      ]
+    },
+    {
       "version": "0.20.0",
       "date": "2026-11-27",
       "title": "Saves that follow you, linemen in their stances, and a crowd with feelings",

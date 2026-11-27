@@ -1,10 +1,11 @@
 import type { DefDecision, DefFront, DefScheme, GamePlan, KickStyle, OffDecision, OffPlay, PlayTag, Rng, SchemeKind, Situation } from '@fnd/core';
+import { RULES } from '@fnd/core';
 
 /** Coach AI: play calls, fourth-down choices, tries, kneel-downs and timeouts. Depends only on the game situation. */
 
 export const DEFAULT_PLAN: GamePlan = { passBias: 0, aggression: 1 };
 /** Seconds run off between snaps while the clock runs, and the length of a kneel-down. Mirrors the rules constants. */
-const RUNOFF = 32;
+const RUNOFF = RULES.runoffSeconds;
 const KNEEL_SECONDS = 3;
 
 export const fieldGoalDistance = (yardLine: number): number => 100 - yardLine + 17;

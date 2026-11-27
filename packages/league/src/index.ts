@@ -1,6 +1,6 @@
-import { DEFAULT_SETUP, Rng, clamp, cleanSetup, hashString, type GameSetup, type Team, type TeamColors, type Weather } from '@fnd/core';
+import { DEFAULT_SETUP, Rng, clamp, cleanSetup, hashString, type GameSetup, type Ratings, type Team, type TeamColors, type Weather } from '@fnd/core';
 import { simulateGame } from '@fnd/match-sim';
-import { MAX_CALL_UPS, cleanCallUps, enrolledIn, incomingClass, jvTeam, programFor, varsityTeam, type ProgramPlayer } from './program';
+import { LEAGUE_TUNING, MAX_CALL_UPS, cleanCallUps, enrolledIn, incomingClass, jvTeam, programFor, varsityTeam, type ProgramPlayer } from './program';
 import { cleanStatBook, closeSeason, historicBook, recordGame, type RecordNews, type StatBook } from './records';
 import { boxScore, type BoxScore } from './stats';
 import { cleanAwards, voteAwards, type Candidate, type SeasonAwards } from './awards';
@@ -283,6 +283,21 @@ const callUpsOf = (d: Rosters, school: number): readonly string[] => (d.user ===
 export function teamFor(d: Rosters, school: number): Team {
   return varsityTeam(d.league.seed, d.league.schools[school], d.year, callUpsOf(d, school));
 }
+/** The home side on the night: the crowd, the bus ride they did not take and their own field are worth a little to every player. */
+function atHome(t: Team): Team {
+  const edge = LEAGUE_TUNING.homeEdge;
+  if (!edge) return t;
+  const lift = (r: Ratings): Ratings => {
+    const out = { ...r };
+    for (const k of Object.keys(out) as (keyof Ratings)[]) if (k !== 'stamina') out[k] = Math.min(99, out[k] + edge);
+    return out;
+  };
+  return { ...t, roster: t.roster.map((p, i) => (i % LEAGUE_TUNING.homeEvery === 0 ? { ...p, ratings: lift(p.ratings) } : p)) };
+}
+/** The two varsities for a game, home side first, as they play on the night. */
+export function matchTeams(d: Rosters, home: number, away: number): [Team, Team] {
+  return [atHome(teamFor(d, home)), teamFor(d, away)];
+}
 /** This year's junior varsity: everyone in the program who is not on the varsity. */
 export function jvTeamFor(d: Rosters, school: number): Team {
   return jvTeam(d.league.seed, d.league.schools[school], d.year, callUpsOf(d, school));
@@ -413,12 +428,12 @@ export function seasonAwards(d: Dynasty, stats: StatBook): SeasonAwards {
 
 /** Plays a game between two schools and keeps its box score. */
 export function simulateWithBox(d: Dynasty, week: number, home: number, away: number): { result: GameResult; box: BoxScore } {
-  const g = simulateGame(gameSeed(d, week, home, away), [teamFor(d, home), teamFor(d, away)], { setup: gameSetup(d, week, home, away) });
+  const g = simulateGame(gameSeed(d, week, home, away), matchTeams(d, home, away), { setup: gameSetup(d, week, home, away) });
   return { result: { week, home, away, score: [g.state.score[0], g.state.score[1]] }, box: boxScore(g.events) };
 }
 
 export function simulate(d: Dynasty, week: number, home: number, away: number): GameResult {
-  const g = simulateGame(gameSeed(d, week, home, away), [teamFor(d, home), teamFor(d, away)], { setup: gameSetup(d, week, home, away) });
+  const g = simulateGame(gameSeed(d, week, home, away), matchTeams(d, home, away), { setup: gameSetup(d, week, home, away) });
   return { week, home, away, score: [g.state.score[0], g.state.score[1]] };
 }
 
@@ -504,8 +519,8 @@ export function nextSeason(d: Dynasty): Dynasty {
   const schools = d.league.schools.map((s, i) => {
     const row = table.find((r) => r.school === i)!;
     const earned = (row.wins - row.losses) * 0.15 + (i === champion ? 0.5 : 0);
-    const drift = (PRESTIGE_MID - s.prestige) * 0.4;
-    return { ...s, prestige: clamp(Math.round((s.prestige + earned + drift + rng.range(-2, 2)) * 10) / 10, PRESTIGE_MIN, PRESTIGE_MAX) };
+    const drift = (PRESTIGE_MID - s.prestige) * 0.5;
+    return { ...s, prestige: clamp(Math.round((s.prestige + earned + drift + rng.range(-2.5, 2.5)) * 10) / 10, PRESTIGE_MIN, PRESTIGE_MAX) };
   });
   // Seniors graduate, everyone moves up a class and a new freshman class arrives. Call-ups who earned a place no longer need the call.
   const moved: Dynasty = { ...d, league: { ...d.league, schools }, year: d.year + 1, week: 0, results: [], jv: [] };
@@ -564,7 +579,7 @@ export function loadDynasty(raw: unknown): Dynasty | null {
   }
 }
 
-export { CLASS_NAMES, CLASS_SHORT, MAX_CALL_UPS, enrolledIn, type ProgramPlayer } from './program';
+export { CLASS_NAMES, CLASS_SHORT, LEAGUE_TUNING, MAX_CALL_UPS, enrolledIn, type ProgramPlayer } from './program';
 export * from './stats';
 export * from './records';
 export * from './awards';

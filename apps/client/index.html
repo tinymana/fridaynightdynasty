@@ -118,6 +118,17 @@
   #moveTag.k-spin { --pop: #4fd8ff; }
   #moveTag.k-dive { --pop: #8cf05a; }
   /* Feelings: a small emoji that floats up from a player or a bench and fades. */
+  /* A penalty flag thrown across the screen: it tumbles in from the top corner, lands and lies there a moment. */
+  .flagdrop { position: absolute; left: 0; top: 0; z-index: 5; width: var(--fw, 54px); pointer-events: none; image-rendering: pixelated; filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.45)); animation: flagdrop var(--ft, 1.5s) cubic-bezier(0.3, 0.1, 0.6, 1) both; }
+  @keyframes flagdrop {
+    0% { transform: translate(var(--x0), -18%) rotate(-40deg); opacity: 1; }
+    45% { transform: translate(calc((var(--x0) + var(--x1)) / 2), calc(var(--y1) * 0.35)) rotate(200deg); }
+    72% { transform: translate(var(--x1), var(--y1)) rotate(372deg); opacity: 1; }
+    80% { transform: translate(var(--x1), calc(var(--y1) - 6px)) rotate(366deg); }
+    86%, 94% { transform: translate(var(--x1), var(--y1)) rotate(372deg); opacity: 1; }
+    100% { transform: translate(var(--x1), var(--y1)) rotate(372deg); opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) { .flagdrop { display: none; } }
   .emote { position: absolute; z-index: 4; font-size: 22px; line-height: 1; pointer-events: none; transform: translate(-50%, -50%); animation: emote 1.5s ease-out both; filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.5)); }
   @keyframes emote { 0% { opacity: 0; transform: translate(-50%, -20%) scale(0.4); } 15% { opacity: 1; transform: translate(-50%, -60%) scale(1.15); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -190%) scale(1); } }
   @media (prefers-reduced-motion: reduce) { .emote { animation-duration: 0.01s; } }

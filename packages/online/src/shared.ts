@@ -1,6 +1,6 @@
 import { cleanSetup, type GameSetup, type Team, type TeamColors } from '@fnd/core';
 import {
-  LEAGUE_SIZE, REGULAR_WEEKS, STATES, addResult, closeWeek, createDynasty, createLeague, editSchool, gameSeed, gameSetup, nextSeason, recordOf, simulate, standings, teamFor, weekComplete, weekGames,
+  LEAGUE_SIZE, REGULAR_WEEKS, STATES, addResult, closeWeek, createDynasty, createLeague, editSchool, gameSeed, gameSetup, nextSeason, recordOf, simulate, standings, matchTeams, weekComplete, weekGames,
   type Dynasty, type SchoolIdentity, type SeasonRecord, type Standing,
 } from '@fnd/league';
 import { RoomError, type Coach } from './room';
@@ -50,7 +50,7 @@ export function leagueTeams(l: RoomLeague): [Team, Team] {
   league.schools[l.home] = { ...league.schools[l.home], ...l.identity?.[0], prestige: l.prestige[0] };
   league.schools[l.away] = { ...league.schools[l.away], ...l.identity?.[1], prestige: l.prestige[1] };
   const d = { league, year: l.year };
-  return [teamFor(d, l.home), teamFor(d, l.away)];
+  return matchTeams(d, l.home, l.away);
 }
 
 export function createShared(code: string, coach: Coach, stateCode: unknown, seed: number, setup: unknown, now: number): SharedLeague {

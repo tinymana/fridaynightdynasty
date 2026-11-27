@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.21.0 — 2026-11-27
+
+Realism retune (softened) against the Ohio results archive. Simulation change: the `fnd` function must be redeployed
+with the merge, and a game replays differently from 0.20.0.
+
+### Changed
+- `RULES.runoffSeconds` 32 to 29 (the coach AI's kneel arithmetic reads the same constant). Even teams: 19.7 points and
+  64 plays a team (was 18.8 and 59).
+- `LEAGUE_TUNING` in `packages/league/src/program.ts`: `gap` 2 (rating points per point of prestige, was 1),
+  `homeEdge` 1 for every second man on the home roster (`matchTeams`, used by solo and shared leagues).
+  Over 348 league games: 21.1 points a team (was 17.7), home side wins 55% (real 54 to 55), decided by 21 or more 40%
+  (was 16; real 55 to 58), shutouts 10% (real 8 to 9), within 8 points 32%.
+- `nextSeason`: drift toward the middle 0.5 (was 0.4) and luck plus or minus 2.5 (was 2), so the wider gap does not
+  let one school run a league for 30 years.
+- `tools/league-realism.ts` measures the above and takes the tuning values as arguments.
+
+### Added
+- Player frames `truck`, `juke`, `pylon` (running back sheet), `dive`, `spike` (receiver sheet), `field` (special
+  teams sheet). Moves set `moveUntil`; an incomplete pass lays the nearest receiver out; the scorer spikes it; the
+  returner settles under a kick.
+- Handoffs: the client knows the call was a run (`viewRun`), so the quarterback faces his backfield (`ViewPlayer.back`)
+  and shows the handing-off arm for a third of a second after the ball changes hands, in place of the throwing pose.
+  `tools/handoff-check.mjs` samples every drawn frame of live runs.
+- Player frames `handoff` (quarterback sheet) and `crouch`, `tackle`, `swat`, `pick` (linebacker and safety sheet),
+  both new in `art/source/sheets3`.
+- Eleven panels `a-*.webp` from `17_action_cutscenes.png`; `cutinFor` now also answers runs and completions of 20
+  yards or more.
+- `flagDrop(event)`: three drawn penalty flags tumble in and land, placed from the play's number. `tools/flag-shot.mjs`.
+
 ## 0.20.0 — 2026-11-27
 
 Permanent saves. Needs migration `0004_fnd_saves.sql` and a redeploy of the `fnd` function.

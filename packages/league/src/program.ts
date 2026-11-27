@@ -15,6 +15,19 @@ export const CLASS_SHORT = ['Fr', 'So', 'Jr', 'Sr'] as const;
 const CLASS_GROUPS: Record<Group, number> = { QB: 1, RB: 2, WR: 3, TE: 1, OL: 4, DL: 3, LB: 3, CB: 2, S: 2, K: 0, P: 0 };
 /** Senior-year level of an average player at an average school. Set so a varsity matches the old generated teams. */
 const SENIOR_LEVEL = 54.2;
+/**
+ * How far apart schools are, and what playing at home is worth. Measured against real high school results by
+ * tools/league-realism.ts; the tool changes these to try other values, the game never does.
+ */
+export const LEAGUE_TUNING = {
+  /** Rating points a school's players gain or lose for each point of prestige above or below the middle. */
+  gap: 2,
+  /** Rating points a home player gets on the night. */
+  homeEdge: 1,
+  /** Every player gets it (1), or every second man on the roster (2). */
+  homeEvery: 2,
+};
+
 /** The middle of the prestige range: a school at this strength gets no lift and no drag. */
 const MID = 58;
 /** Underclassmen have to be this much better than an upperclassman to take his varsity place. */
@@ -94,7 +107,7 @@ export function enrolledIn(id: string): number | null {
  * player on the varsity anyway, and the weakest varsity player at his position goes down in his place.
  */
 export function programFor(leagueSeed: number, school: SchoolLike, season: number, callUps: readonly string[] = []): ProgramPlayer[] {
-  const lift = Math.round(school.prestige - MID);
+  const lift = Math.round((school.prestige - MID) * LEAGUE_TUNING.gap);
   const all: ProgramPlayer[] = [];
   for (let year = 4; year >= 1; year--) {
     for (const r of classOf(leagueSeed, school.id, season - year + 1)) {

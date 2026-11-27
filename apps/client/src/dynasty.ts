@@ -1,6 +1,6 @@
 import { GROUPS, WEATHER, overall, type GameSetup, type Team } from '@fnd/core';
 import {
-  CLASS_NAMES, CLASS_SHORT, MAX_CALL_UPS, RECORD_DEFS, REGULAR_WEEKS, STATES, career, emptyLine, incomingOf, newsText, occasionFor, openings, programOf, schoolOfPlayer, seasonYear, statsOf, recordOf, setCallUp, createDynasty, createLeague, editSchool, gameSeed, gameSetup, loadDynasty, nextSeason, playWeek, standings, stateByCode, teamFor, userGame, weekGames, winnerOf,
+  CLASS_NAMES, CLASS_SHORT, MAX_CALL_UPS, RECORD_DEFS, REGULAR_WEEKS, STATES, career, emptyLine, incomingOf, newsText, occasionFor, openings, programOf, schoolOfPlayer, seasonYear, statsOf, recordOf, setCallUp, createDynasty, createLeague, editSchool, gameSeed, gameSetup, loadDynasty, nextSeason, playWeek, standings, stateByCode, matchTeams, userGame, weekGames, winnerOf,
   type BoxScore, type Dynasty, type GameResult, type Honoree, type ProgramPlayer, type RecordNews, type SeasonAwards, type StatLine,
 } from '@fnd/league';
 import { bindSchoolForm, schoolFormHtml } from './school-form';
@@ -428,7 +428,7 @@ export class DynastyScreen {
     q('dyPlay')?.addEventListener('click', () => {
       const [hm, aw] = own!;
       this.host.play({
-        seed: gameSeed(d, d.week, hm, aw), teams: [teamFor(d, hm), teamFor(d, aw)], user: hm === d.user ? 0 : 1, setup: gameSetup(d, d.week, hm, aw),
+        seed: gameSeed(d, d.week, hm, aw), teams: matchTeams(d, hm, aw), user: hm === d.user ? 0 : 1, setup: gameSetup(d, d.week, hm, aw),
         week: d.week, home: hm, away: aw, label: `${state.name} year ${d.year}, ${weekName(d.week).toLowerCase()}`,
       });
     });

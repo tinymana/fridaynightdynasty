@@ -110,6 +110,14 @@ let marks: { los: number; toGain: number } | null = null;
 let thrower = -1;
 let armUntil = new Map<unknown, number>();
 let spinUntil = new Map<unknown, number>();
+/** Who had the ball last frame in the play being shown, and the man who has just handed it off. */
+let heldBy: { sim: unknown; idx: number } | null = null;
+let gave: { sim: unknown; idx: number; until: number } | null = null;
+/** The play being shown was called as a run. */
+let viewRun = false;
+/** A move drawn with its own picture (a truck, a juke, a dive), and the frame it lasts until. */
+let moveUntil = new Map<unknown, { pose: 'truck' | 'juke' | 'pylon'; until: number }>();
+const movePose = (player: unknown): 'truck' | 'juke' | 'pylon' | undefined => { const m = moveUntil.get(player); return m && m.until > frame ? m.pose : undefined; };
 let cheerTeam: 0 | 1 | null = null;
 let official: 'td' | 'point' | 'flag' | null = null;
 let kick: KickAnim | null = null;
@@ -199,7 +207,7 @@ function scrimmageLineup(off: 0 | 1, los: number, lined = false): ViewPlayer[] {
     }
     for (const slot of front.slots) {
       const [x, y] = abs(off, Math.min(los + slot.at[0], 108), CY_YD + slot.at[1]);
-      out.push({ team: other(off), x, y, moving: false, down: false, hasBall: false, pose: slot.group === 'DL' ? 'line' : undefined });
+      out.push({ team: other(off), x, y, moving: false, down: false, hasBall: false, pose: slot.group === 'DL' ? 'line' : 'crouch' });
     }
     return out;
   }
@@ -275,10 +283,13 @@ function showMoves(dt: number): void {
   movesShown.set(sim, sim.moves.length);
   const m = sim.moves[sim.moves.length - 1];
   // A stiff arm or a truck is drawn as one for the next half second.
-  if (m.kind === 'stiffArm' || m.kind === 'truck') armUntil.set(m.carrier, frame + 30);
-  // A spin or a juke turns the runner round for a moment.
+  if (m.kind === 'stiffArm') armUntil.set(m.carrier, frame + 30);
+  // A spin turns the runner round for a moment.
   if (m.kind === 'spin') spinUntil.set(m.carrier, frame + 24);
-  if (m.kind === 'juke') spinUntil.set(m.carrier, frame + 8);
+  // A truck, a juke and a dive each have a picture of their own.
+  if (m.kind === 'truck') moveUntil.set(m.carrier, { pose: 'truck', until: frame + 30 });
+  if (m.kind === 'juke') moveUntil.set(m.carrier, { pose: 'juke', until: frame + 14 });
+  if (m.kind === 'dive') moveUntil.set(m.carrier, { pose: 'pylon', until: frame + 36 });
   // A comic-book burst over the runner: the word, his number, a colour for each move. Rebuilding it restarts the pop.
   el.innerHTML = `<span class="burst"><b>${MOVE_WORDS[m.kind]}</b><small>#${m.carrier.number}</small></span>`;
   el.className = `k-${m.kind}`;
@@ -291,6 +302,8 @@ function showMoves(dt: number): void {
 
 /** The man nearest the ball when it is kicked swings his leg through it. */
 function kickPose(players: ViewPlayer[], k: KickAnim, f: number): void {
+  // With the ball coming down, the returner settles under it.
+  if (k.returner >= 0 && f > 0.55 && f < 1 && players[k.returner]) players[k.returner] = { ...players[k.returner], pose: 'field', moving: false };
   if (f > 0.35) return;
   let best = -1;
   let dist = 1e9;
@@ -318,7 +331,7 @@ function buildView(): FieldView {
     const players: ViewPlayer[] = sim.players.map((p) => {
       const [x, y] = abs(side, p.x / U, p.y / U);
       const fending = p.idx === 0 && (armUntil.get(p.player) ?? 0) > frame;
-      return { team: p.side === 0 ? other(side) : side, x, y, moving: p.x !== p.px || p.y !== p.py, down: p.idx === 0 && sim.done && !sim.result?.touchdown, hasBall: p.idx === 0, pose: fending ? (frame % 12 < 6 ? 'arm0' : 'arm1') : undefined, spin: p.idx === 0 && (spinUntil.get(p.player) ?? 0) > frame };
+      return { team: p.side === 0 ? other(side) : side, x, y, moving: p.x !== p.px || p.y !== p.py, down: p.idx === 0 && sim.done && !sim.result?.touchdown, hasBall: p.idx === 0, pose: (p.idx === 0 ? movePose(p.player) : undefined) ?? (fending ? (frame % 12 < 6 ? 'arm0' : 'arm1') : undefined), spin: p.idx === 0 && (spinUntil.get(p.player) ?? 0) > frame };
     });
     const c = players[0];
     return { players, ball: { x: c.x, y: c.y, z: 0, visible: false }, los: null, toGain: null, focusX: c.x, frame };
@@ -328,6 +341,13 @@ function buildView(): FieldView {
     const off = viewOffense;
     const b = sim.ball;
     if (b.state === 'held') thrower = b.holder;
+    // A run: the quarterback turns and hands the ball off, he does not set up to throw.
+    const isRun = !practiceRun && viewRun;
+    if (b.state === 'held') {
+      if (heldBy && heldBy.sim === sim && heldBy.idx !== b.holder && mode === 'live') gave = { sim, idx: heldBy.idx, until: frame + 20 };
+      heldBy = { sim, idx: b.holder };
+    }
+    const giving = gave && gave.sim === sim && gave.until > frame ? gave.idx : -1;
     const players: ViewPlayer[] = sim.players.map((p) => {
       const [x, y] = abs(off, p.x / U, p.y / U);
       const team = p.side === 0 ? off : other(off);
@@ -336,17 +356,45 @@ function buildView(): FieldView {
       const down = sim.tick < p.stunUntil || (sim.done && sim.result !== null && !sim.result.touchdown && b.holder === p.idx && !sim.result.incomplete && sim.result.turnover !== 'interception');
       let pose: ViewPlayer['pose'];
       const lineman = p.player.pos === 'OL' || p.player.pos === 'DL';
-      if (mode === 'post' && cheerTeam === team) pose = 'cheer';
+      // After a touchdown the man with the ball spikes it and his team throws its arms up.
+      if (mode === 'post' && cheerTeam === team) pose = hasBall ? 'spike' : 'cheer';
       else if (b.state === 'air' && b.t < 16 && p.idx === thrower) pose = 'throw1';
-      else if (hasBall && !moving && mode === 'live' && sim.tick > 12) pose = 'throw0';
+      else if (p.idx === giving) pose = 'handoff';
+      else if (hasBall && !moving && mode === 'live' && sim.tick > 12) pose = isRun ? 'ready' : 'throw0';
+      else if (hasBall && movePose(p.player)) pose = movePose(p.player);
       else if (hasBall && (armUntil.get(p.player) ?? 0) > frame) pose = frame % 12 < 6 ? 'arm0' : 'arm1';
       // A man who is in the play and not running is blocking or being blocked: hands up, not down in a stance.
       // Linemen get down in a three-point stance before the snap, and drive into their man after it.
       else if (lineman && !hasBall && !down && sim.tick <= 8) pose = 'line';
+      // Linebackers and the secondary wait in a crouch.
+      else if (p.side === 1 && !lineman && !moving && sim.tick <= 8) pose = 'crouch';
+      // The end of the play: the tackler is laid out where he made the stop, an interceptor has the ball above his head.
+      else if (sim.done && sim.result?.tackler === p.player && !down) pose = 'tackle';
+      else if (sim.done && hasBall && p.side === 1 && sim.result?.turnover === 'interception' && !moving) pose = 'pick';
       else if (lineman && !hasBall && !down && mode === 'live' && (p.engaged >= 0 || !moving)) pose = 'drive';
       else if (!moving && !hasBall && !down && mode === 'live' && sim.tick > 8) pose = 'ready';
-      return { team, x, y, moving, down, hasBall, pose, spin: hasBall && (spinUntil.get(p.player) ?? 0) > frame };
+      // Handing off, he faces the back behind him.
+      const turned = p.idx === giving || (isRun && hasBall && p.idx === thrower && !moving && mode === 'live' && sim.tick <= 40);
+      return { team, x, y, moving, down, hasBall, pose, back: turned, spin: hasBall && (spinUntil.get(p.player) ?? 0) > frame };
     });
+    // A pass that fell incomplete: the nearest receiver is laid out on the turf where he dived for it.
+    if (sim.done && sim.result?.incomplete && sim.result.thrown) {
+      let best = -1;
+      let dist = U * 5;
+      sim.players.forEach((p, i) => {
+        const d = Math.abs(p.x - b.x) + Math.abs(p.y - b.y);
+        if (p.side === 0 && p.idx !== thrower && p.player.pos !== 'OL' && d < dist) { dist = d; best = i; }
+      });
+      if (best >= 0 && !players[best].down) players[best] = { ...players[best], pose: 'dive', moving: false };
+      // And the nearest defender has his hand up where he knocked it away.
+      let near = -1;
+      dist = U * 4;
+      sim.players.forEach((p, i) => {
+        const d = Math.abs(p.x - b.x) + Math.abs(p.y - b.y);
+        if (p.side === 1 && d < dist) { dist = d; near = i; }
+      });
+      if (near >= 0 && !players[near].down) players[near] = { ...players[near], pose: 'swat', moving: false };
+    }
     // With the ball nearly there, the nearest receiver turns and puts his hands up for it.
     if (b.state === 'air' && b.T > 0 && b.t / b.T > 0.7) {
       let best = -1;
@@ -674,6 +722,7 @@ function commit(off: OffDecision, def: DefDecision): void {
   if (game.live) {
     viewSim = game.live;
     viewOffense = offTeam;
+    viewRun = off.kind === 'play' && game.playOf(offTeam, off.audible ?? off.playId).kind === 'run';
     const checked = off.kind === 'play' && off.audible !== undefined && off.audible !== off.playId;
     const play = off.kind === 'play' ? game.playOf(offTeam, off.audible ?? off.playId) : null;
     const called = game.defenseOf(other(offTeam), def);
@@ -769,6 +818,7 @@ function playOver(e: PlayEvent | null): void {
       viewSim = r.sim;
       viewReturn = null;
       viewOffense = r.offense;
+      viewRun = e?.type === 'run';
       acc = 0;
       $('tag').classList.remove('hidden');
       mode = 'replay';
@@ -916,6 +966,35 @@ function feelings(e: PlayEvent): void {
   crowdFeels(e);
 }
 
+/** A yellow penalty flag, drawn here: a square of cloth with a weighted knot at one corner. */
+const FLAG_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 14" shape-rendering="crispEdges"><path d="M2 3h11v1h2v2h1v4h-2v2h-3v1H5v-1H3v-2H2V8H1V5h1z" fill="#f5c400"/><path d="M4 4h7v1H4zM3 6h5v1H3z" fill="#ffe66a"/><path d="M10 9h4v1h-4zM6 11h5v1H6zM13 6h2v3h-2z" fill="#c89600"/><path d="M0 1h3v3H0z" fill="#8a6a00"/></svg>`;
+/**
+ * A flag on the play: one big flag is thrown across the screen from the far corner and two small ones follow it.
+ * Where they land comes from the play's own number, so it is the same on both coaches' screens.
+ */
+function flagDrop(e: PlayEvent): void {
+  const stage = $('stage');
+  const w = stage.clientWidth;
+  const h = stage.clientHeight;
+  const fromLeft = e.seq % 2 === 0;
+  for (let i = 0; i < 3; i++) {
+    const el = document.createElement('div');
+    el.className = 'flagdrop';
+    el.setAttribute('aria-hidden', 'true');
+    el.innerHTML = FLAG_SVG;
+    const size = i === 0 ? 0.075 : 0.04;
+    const land = 0.3 + ((e.seq * 17 + i * 23) % 40) / 100;
+    el.style.setProperty('--fw', `${Math.round(w * size)}px`);
+    el.style.setProperty('--x0', `${Math.round(fromLeft ? -w * 0.1 : w * 1.02)}px`);
+    el.style.setProperty('--x1', `${Math.round(w * (fromLeft ? land : 1 - land - size))}px`);
+    el.style.setProperty('--y1', `${Math.round(h * (0.42 + ((e.seq * 7 + i * 11) % 20) / 100))}px`);
+    el.style.setProperty('--ft', `${1.5 + i * 0.25}s`);
+    el.style.animationDelay = `${i * 140}ms`;
+    stage.appendChild(el);
+    window.setTimeout(() => el.remove(), 2400 + i * 400);
+  }
+}
+
 const CROWD_UP = ['🎉', '🙌', '👏', '📣', '🥳', '😆'];
 const CROWD_DOWN = ['😩', '😱', '🤦', '😬', '😤'];
 /**
@@ -1009,6 +1088,7 @@ function showResult(e: PlayEvent | null): void {
     + (show ? `<div class="show"><b>${show.title}</b>${show.lines.map((l) => `<span>${l}</span>`).join('')}</div>` : '');
   atmosphereAfterPlay(e, half);
   if (e && !quiet()) feelings(e);
+  if (e && e.type === 'penalty' && speed !== 0) flagDrop(e);
   // At half time the home band takes the field.
   if (show) {
     scene.showBand(true, occasion === 'homecoming');
@@ -1277,7 +1357,7 @@ function showLinePanel(playId: string, frontName: string, frontDesc: string, fro
   if (front) {
     for (const slot of front.slots) {
       const [x, y] = abs(off, Math.min(los + slot.at[0], 108), CY_YD + slot.at[1]);
-      shown.push({ team: other(off), x, y, moving: false, down: false, hasBall: false, pose: slot.group === 'DL' ? 'line' : undefined });
+      shown.push({ team: other(off), x, y, moving: false, down: false, hasBall: false, pose: slot.group === 'DL' ? 'line' : 'crouch' });
     }
     viewSim = null;
     viewReturn = null;
@@ -2445,10 +2525,12 @@ window.addEventListener('keydown', (ev) => {
 (window as unknown as Record<string, unknown>).__fnd = {
   /** Sends the band out or brings it off. For the automated checks. */
   band: (on: boolean, court = false) => scene.showBand(on, court),
+  /** Throws the penalty flags. For the automated checks. */
+  flag: (seq = 4) => flagDrop({ seq } as PlayEvent),
   /** Shows the crowd's reaction to a made-up play. For the automated checks. */
   crowd: (e: Partial<PlayEvent>) => crowdFeels({ seq: 7, offense: 0, down: 1, yards: 0, type: 'run', flags: {}, ...e } as PlayEvent),
   /** Where every drawn player is right now, in field yards. For the automated checks. */
-  view: () => (game && mode !== 'menu' ? buildView().players.map((p) => ({ team: p.team, x: p.x, y: p.y })) : null),
+  view: () => (game && mode !== 'menu' ? buildView().players.map((p) => ({ team: p.team, x: p.x, y: p.y, pose: p.pose ?? null, back: !!p.back, ball: p.hasBall })) : null),
   selftest: (s: number): string => gameHash(simulateGame(s, exhibitionTeams(s))),
   state: () => ({ mode, league: shared.current ? { code: shared.current.code, state: shared.current.state, year: shared.current.year, week: shared.current.week, you: shared.current.you, over: shared.current.over, played: shared.current.games.filter((g) => g.score).length } : null, dynasty: dynasty.active ? { year: dynasty.active.year, week: dynasty.active.week, user: dynasty.active.user, results: dynasty.active.results.length, history: dynasty.active.history.length } : null, cutin: $('cutin').classList.contains('hidden') ? null : ($('cutin') as HTMLImageElement).alt, setup: game?.setup ?? setup, myPlays: myPlays.length, myDefs: myDefs.length, career, practice: practiceRun ? { n: practiceRun.n, done: !!viewSim?.done } : null, phase: game?.state.phase, score: game?.state.score, quarter: game?.state.quarter, clock: game?.state.clock, sidelineOpen, playClock: clockOn ? Math.ceil(clockLeft / 1000) : null, book,
     online: net ? { pin: net.pin, state: net.view.state, turn: net.view.turn, you: net.view.you, sync: net.sync, serverHash: net.view.hash, localHash: game ? gameHash(game) : '', queued: net.queue.length, serverScore: net.view.score, mine: !!net.view.mine, voice: voice.state, peer: voice.peerState(String(net.view.you === 0 ? 1 : 0)), voiceSeen: net.view.voice } : null }),
