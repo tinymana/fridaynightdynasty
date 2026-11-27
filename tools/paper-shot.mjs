@@ -1,0 +1,30 @@
+// Screenshots of the weekly paper and the rivalry line on the dynasty page. Run: node tools/paper-shot.mjs
+import puppeteer from 'puppeteer-core';
+import { pathToFileURL } from 'node:url';
+const browser = await puppeteer.launch({ executablePath: process.env.CHROME ?? '/usr/bin/google-chrome', headless: 'new', args: ['--no-sandbox', '--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+const page = await browser.newPage();
+await page.setViewport({ width: 1000, height: 1200 });
+const errors = [];
+page.on('pageerror', (e) => errors.push(String(e)));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const st = () => page.evaluate(() => window.__fnd.state());
+const check = (name, ok) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`); if (!ok) errors.push(`check failed: ${name}`); };
+const text = (sel) => page.$eval(sel, (e) => e.textContent);
+await page.goto(pathToFileURL('site/play/index.html').href + '?lowres');
+await sleep(400); await page.click('#title'); await sleep(150);
+await page.select('#quarterPick', '6');
+await page.click('#dynastyBtn'); await page.select('#dyState', 'GA'); await sleep(100);
+const job = await page.$eval('#dyBody .job [data-school]', (e) => e.dataset.school);
+await page.click(`#dyBody [data-school="${job}"]`); await sleep(150);
+check('before the first game there is no paper to read, and the rival is named', !(await page.$('#dyPaper')) && (await text('#dyBody .dy-rivalline')).includes('Your rival'));
+for (let w = 1; w <= 6; w++) { await page.click('#dySim'); for (let t = 0; t < 900 && (await st()).dynasty.week !== w; t++) await sleep(100); await sleep(80); }
+check('rivalry week is announced before the game', (await text('#dyBody .dy-rival')).includes('Rivalry week'));
+await page.screenshot({ path: '/tmp/fnd-shots/rivalry-week.png' });
+await page.click('#dyPaper'); await sleep(1500);
+check('the paper has a masthead, a lead story about my school and three more stories', (await text('#dyBody .np-mast')).includes('Prep Ledger') && (await page.$$('#dyBody .np-story')).length === 3 && (await page.$$('#dyBody .np-lead')).length === 1);
+check('it looks ahead to rivalry week', (await text('#dyBody .paper')).includes('rivalry week'));
+await page.screenshot({ path: '/tmp/fnd-shots/paper.png', fullPage: true });
+await page.click('#npBack'); await sleep(100);
+check('back returns to the season', !!(await page.$('#dySim')));
+console.log(errors.length ? `errors: ${errors.join('; ')}` : 'errors: none');
+await browser.close();

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.24.0 — 2026-11-27
+
+Rivalries and the weekly paper. League change (`nextSeason`): redeploy the `fnd` function with the merge.
+
+### Added
+- `rivalries(d)`, `rivalOf`, `isRivalryGame`, `RIVALRY_WEEK`: rivals are the last-week opponents in the schedule.
+  The trophy name and the series before the coach arrived come from the league seed; `Dynasty.rivals` logs what the
+  dynasty adds (cleaned by `loadDynasty`; absent in old saves, which start their logs at zero).
+- `nextSeason`: +0.15 prestige for beating your rival.
+- `packages/league/src/paper.ts`: `weeklyPaper(d)` builds the week's page from results, standings, news and (for
+  other schools' games) a replay for the night's best player.
+- Dynasty page: rival line, rivalry-week notice, Read the paper. Cut-ins `n-rivalry`, `n-rivalry-win`.
+- `tests/paper.test.ts` (4 tests), `tools/paper-shot.mjs`.
+
 ## 0.23.0 — 2026-11-27
 
 The game book. Client and league package; no change to how a game plays, so no server redeploy for this one alone.
@@ -43,7 +57,7 @@ with the merge, and a game replays differently from 0.20.0.
   `homeEdge` 1 for every second man on the home roster (`matchTeams`, used by solo and shared leagues).
   Over 348 league games: 21.1 points a team (was 17.7), home side wins 55% (real 54 to 55), decided by 21 or more 40%
   (was 16; real 55 to 58), shutouts 10% (real 8 to 9), within 8 points 32%.
-- `nextSeason`: drift toward the middle 0.5 (was 0.4) and luck plus or minus 2.5 (was 2), so the wider gap does not
+- `nextSeason`: drift toward the middle 0.5 (was 0.4; 0.6 from 0.24.0) and luck plus or minus 2.5 (was 2), so the wider gap does not
   let one school run a league for 30 years.
 - `tools/league-realism.ts` measures the above and takes the tuning values as arguments.
 

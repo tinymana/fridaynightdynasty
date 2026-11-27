@@ -260,7 +260,54 @@ export interface Dynasty {
   stats?: StatBook;
   /** The awards voted at the end of each season, oldest first. */
   awards?: SeasonAwards[];
+  /** Rivalry games played in this dynasty, one entry per rivalry: wins for each side, ties, and who won last. */
+  rivals?: RivalryLog[];
 }
+
+/** Rivals meet in the last week of the regular season, every year. */
+export const RIVALRY_WEEK = REGULAR_WEEKS - 1;
+/** What a dynasty has added to a rivalry. `w` is wins for the school that hosts in the schedule, wins for the other, ties. */
+export interface RivalryLog {
+  w: [number, number, number];
+  /** 0 or 1: which of the two won the last meeting that had a winner. */
+  holder?: 0 | 1;
+}
+export interface Rivalry {
+  /** The two schools. */
+  a: number;
+  b: number;
+  /** What they play for. */
+  trophy: string;
+  /** All-time: wins for `a`, wins for `b`, ties. Fifty years of history plus this dynasty. */
+  series: [number, number, number];
+  /** The school that holds the trophy. */
+  holder: number;
+}
+const TROPHY_WHAT = ['Copper', 'Brass', 'Cedar', 'Mill', 'Harvest', 'Railroad', 'Quarry', 'Old County', 'River', 'Tin'];
+const TROPHY_THING = ['Lantern', 'Whistle', 'Drum', 'Anvil', 'Kettle', 'Horseshoe', 'Milk Can', 'Weathervane', 'Signal Flag', 'Toolbox'];
+
+/** The league's four rivalries, with the all-time series. Each pair meets in the season's last week. */
+export function rivalries(d: Pick<Dynasty, 'league' | 'rivals'>): Rivalry[] {
+  return schedule()[RIVALRY_WEEK].map(([a, b], k) => {
+    // The years before the coach arrived: a long series, never far from level.
+    const rng = Rng.stream(d.league.seed, `rivalry:${k}`);
+    const played = rng.int(38, 61);
+    const ties = rng.int(0, 3);
+    const aWins = Math.round((played - ties) * (0.5 + rng.range(-0.12, 0.12)));
+    const trophy = `the ${TROPHY_WHAT[rng.int(0, TROPHY_WHAT.length - 1)]} ${TROPHY_THING[rng.int(0, TROPHY_THING.length - 1)]}`;
+    const before: 0 | 1 = rng.chance(0.5) ? 0 : 1;
+    const log = d.rivals?.[k];
+    const holder = (log?.holder ?? before) === 0 ? a : b;
+    return { a, b, trophy, series: [aWins + (log?.w[0] ?? 0), played - ties - aWins + (log?.w[1] ?? 0), ties + (log?.w[2] ?? 0)], holder };
+  });
+}
+/** A school's rival. */
+export function rivalOf(school: number): number {
+  const pair = schedule()[RIVALRY_WEEK].find(([a, b]) => a === school || b === school)!;
+  return pair[0] === school ? pair[1] : pair[0];
+}
+/** True for the regular-season game between two rivals. */
+export const isRivalryGame = (week: number, home: number, away: number): boolean => week === RIVALRY_WEEK && rivalOf(home) === away;
 
 export interface SeasonRecord {
   year: number;
@@ -487,6 +534,22 @@ export function addResult(d: Dynasty, r: GameResult): Dynasty {
 export function closeWeek(d: Dynasty): Dynasty {
   if (!weekComplete(d)) throw new Error('this week still has games to play');
   const next: Dynasty = { ...d, week: d.week + 1, history: [...d.history] };
+  if (d.week === RIVALRY_WEEK) {
+    // Rivalry week: each series gets its game.
+    next.rivals = schedule()[RIVALRY_WEEK].map(([a, b], k) => {
+      const log: RivalryLog = { w: [...(d.rivals?.[k]?.w ?? [0, 0, 0])] as [number, number, number], ...(d.rivals?.[k]?.holder !== undefined ? { holder: d.rivals[k].holder } : {}) };
+      const g = d.results.find((r) => r.week === RIVALRY_WEEK && ((r.home === a && r.away === b) || (r.home === b && r.away === a)));
+      if (!g) return log;
+      const aScore = g.home === a ? g.score[0] : g.score[1];
+      const bScore = g.home === a ? g.score[1] : g.score[0];
+      if (aScore === bScore) log.w[2]++;
+      else {
+        log.w[aScore > bScore ? 0 : 1]++;
+        log.holder = aScore > bScore ? 0 : 1;
+      }
+      return log;
+    });
+  }
   if (next.week > REGULAR_WEEKS) {
     const final = d.results[d.results.length - 1];
     const champion = winnerOf(final);
@@ -548,8 +611,11 @@ export function nextSeason(d: Dynasty): Dynasty {
   const rng = Rng.stream(d.league.seed, `offseason:${d.year}`);
   const schools = d.league.schools.map((s, i) => {
     const row = table.find((r) => r.school === i)!;
-    const earned = (row.wins - row.losses) * 0.15 + (i === champion ? 0.5 : 0);
-    const drift = (PRESTIGE_MID - s.prestige) * 0.5;
+    // Beating your rival is worth a little on its own: kids want to play for the school that holds the trophy.
+    const rivalGame = d.results.find((g) => isRivalryGame(g.week, g.home, g.away) && (g.home === i || g.away === i));
+    const beatRival = !!rivalGame && (rivalGame.home === i ? rivalGame.score[0] > rivalGame.score[1] : rivalGame.score[1] > rivalGame.score[0]);
+    const earned = (row.wins - row.losses) * 0.15 + (i === champion ? 0.5 : 0) + (beatRival ? 0.15 : 0);
+    const drift = (PRESTIGE_MID - s.prestige) * 0.6;
     return { ...s, prestige: clamp(Math.round((s.prestige + earned + drift + rng.range(-2.5, 2.5)) * 10) / 10, PRESTIGE_MIN, PRESTIGE_MAX) };
   });
   // Seniors graduate, everyone moves up a class and a new freshman class arrives. Call-ups who earned a place no longer need the call.
@@ -570,6 +636,16 @@ export function career(d: Dynasty): { seasons: number; wins: number; losses: num
 }
 
 /** Checks a saved dynasty before it is used. Anything that does not hold together is thrown away. */
+/** A saved rivalry log, kept only if it is the right shape: one entry per rivalry, sensible counts. */
+function cleanRivals(raw: unknown[]): RivalryLog[] {
+  return Array.from({ length: LEAGUE_SIZE / 2 }, (_, k) => {
+    const r = raw[k] as RivalryLog | undefined;
+    const n = (x: unknown): number => (Number.isInteger(x) && (x as number) >= 0 && (x as number) < 1000 ? (x as number) : 0);
+    const w = Array.isArray(r?.w) ? r.w : [];
+    return { w: [n(w[0]), n(w[1]), n(w[2])], ...(r?.holder === 0 || r?.holder === 1 ? { holder: r.holder } : {}) };
+  });
+}
+
 export function loadDynasty(raw: unknown): Dynasty | null {
   try {
     const d = raw as Dynasty;
@@ -602,6 +678,7 @@ export function loadDynasty(raw: unknown): Dynasty | null {
       v: 1, league: { seed: base.seed, state: base.state, schools }, user: d.user, year: d.year, week: d.week, results, setup: cleanSetup(d.setup), history: d.history.filter((h) => h && Number.isInteger(h.year) && Array.isArray(h.record)),
       callUps: cleanCallUps(base.seed, schools[d.user], d.year, d.callUps), jv,
       ...(d.awards ? { awards: cleanAwards(d.awards, LEAGUE_SIZE) } : {}),
+      ...(Array.isArray(d.rivals) ? { rivals: cleanRivals(d.rivals) } : {}),
       ...(d.stats ? { stats: cleanStatBook(d.stats, schools.map((s) => historicBook(base.seed, s.id, s.prestige, cleanSetup(d.setup).quarterMinutes))) } : {}),
     };
   } catch {
@@ -614,3 +691,4 @@ export * from './stats';
 export * from './records';
 export * from './awards';
 export * from './gamebook';
+export * from './paper';

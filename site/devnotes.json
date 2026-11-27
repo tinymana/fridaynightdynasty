@@ -2,6 +2,37 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.24.0",
+      "date": "2026-11-27",
+      "title": "Rivalries and the Saturday paper",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Every school has a rival. They meet in the last week of the regular season, every year, and play for a trophy with a name of its own."
+        },
+        {
+          "tag": "new",
+          "text": "Each rivalry has fifty years behind it: an all-time series that is never far from level, and one school holding the trophy when you arrive. Your games add to it."
+        },
+        {
+          "tag": "new",
+          "text": "Beating your rival is worth a little extra to your program the next year, on top of the win."
+        },
+        {
+          "tag": "new",
+          "text": "Rivalry week is announced on the dynasty page, the game opens with a rivalry banner, and a win ends with one."
+        },
+        {
+          "tag": "new",
+          "text": "The weekly paper. After each week, read the state's prep sports page: your game leads, every other game gets a headline and the night's best player, with the standings, a notebook of records and injuries, and what is coming next."
+        },
+        {
+          "tag": "new",
+          "text": "A championship edition closes the season with the title game and the player of the year."
+        }
+      ]
+    },
+    {
       "version": "0.23.0",
       "date": "2026-11-27",
       "title": "The game book: box score, drives and play-by-play",
