@@ -2,6 +2,25 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.17.0",
+      "date": "2026-11-27",
+      "title": "Big-moment panels and paint on the grass",
+      "items": [
+        {
+          "tag": "new",
+          "text": "New pop-up panels for big moments: a touchdown spike and a dive for the pylon, \"Loose ball!\" on a fumble, \"No good!\" on a missed kick, a blocked kick, and a second interception panel."
+        },
+        {
+          "tag": "new",
+          "text": "Win a game and your players celebrate with the coach. Win the state final and you get the trophy. Half time on homecoming night shows the king and queen being crowned."
+        },
+        {
+          "tag": "new",
+          "text": "Paint on the grass: each school's name in its end zone and the home team's letters at midfield."
+        }
+      ]
+    },
+    {
       "version": "0.16.0",
       "date": "2026-11-27",
       "title": "New players, a real stadium and a sideline",

@@ -12,9 +12,10 @@ const st = () => page.evaluate(() => window.__fnd.state());
 const shot = async (sel, name) => { const el = await page.$(sel); await el.screenshot({ path: `${out}/${name}.png` }); console.log('shot', name); };
 const acts = () => page.$$eval('#panel [data-act]', (els) => els.map((e) => e.dataset.act));
 await page.goto(pathToFileURL('site/play/index.html').href);
-await sleep(400);
+await sleep(600);
 await page.click('#title');
-await sleep(150);
+await sleep(400);
+await shot('#setup', 'shot_menu');
 
 // Designer.
 await page.click('#editBook');
@@ -38,9 +39,20 @@ await page.select('#quarterPick', '4');
 await page.click('#dynastyBtn');
 await page.select('#dyState', 'TX');
 await sleep(100);
-await page.click('#dyBody [data-school="0"]');
+await sleep(100);
+await shot('#dynasty', 'shot_jobs');
+await page.click('#dyBody .job [data-school]');
 for (let w = 0; w < 4; w++) { await page.click('#dySim'); for (let i = 0; i < 600 && (await st()).dynasty.week !== w + 1; i++) await sleep(100); await sleep(100); }
 await shot('#dynasty', 'shot_dynasty');
+await page.click('#dyRecords');
+await sleep(150);
+await shot('#dynasty', 'shot_records');
+await page.click('#pgBack');
+await page.click('#dyProgram');
+await sleep(150);
+await page.setViewport({ width: 960, height: 760, deviceScaleFactor: 1.5 });
+await page.screenshot({ path: `${out}/shot_program.png` });
+await page.setViewport({ width: 960, height: 1000, deviceScaleFactor: 1.5 });
 await page.evaluate(() => localStorage.removeItem('fnd.dynasty.v1'));
 await page.evaluate(() => localStorage.removeItem('fnd.setup.v1'));
 await page.reload();
@@ -51,7 +63,8 @@ await sleep(150);
 // A game.
 await page.click('#goExhibition').catch(() => {}); await page.click('[data-team=\"0\"]');
 await page.evaluate(() => window.__fnd.setPlayClock(false));
-const done = { off: false, def: false, live: false, cut: false, kick: false };
+const done = { off: false, def: false, live: false, cut: false, kick: false, line: false };
+let lastPick = '';
 for (let n = 0; n < 9000; n++) {
   const s = await st();
   if (s.mode === 'final') break;
@@ -64,10 +77,13 @@ for (let n = 0; n < 9000; n++) {
   if (!done.def && a.some((x) => x.startsWith('d:'))) { await shot('#game', 'shot_defense'); done.def = true; }
   let pick = a.filter((x) => x === 'snap' || x.startsWith('a:') || x.startsWith('p:') || x.startsWith('d:') || x === 'pat' || x === 'k:deep');
   if (prompt.startsWith('4th') && a.includes('punt')) pick = [a.includes('fg') ? 'fg' : 'punt'];
-  const want = done.off && !done.live && a.includes('p:curls') ? 'p:curls' : pick[n % pick.length];
+  if (!done.line && a.includes('snap')) { await sleep(150); await shot('#game', 'shot_line'); done.line = true; }
+  const want = a.includes('snap') ? 'snap' : done.off && !done.live && a.includes('p:curls') ? 'p:curls' : pick[n % pick.length];
+  const wasCurls = lastPick === 'p:curls';
+  lastPick = want;
   if (!want) { await sleep(40); continue; }
   await page.click(`#panel [data-act="${want}"]`).catch(() => {});
-  if (want === 'p:curls' && !done.live) { await sleep(2350); await shot('#stage', 'shot_live'); done.live = true; await page.evaluate(() => window.__fnd.setSpeed(2)); }
+  if (want === 'snap' && wasCurls && !done.live) { await sleep(2350); await shot('#stage', 'shot_live'); done.live = true; await page.evaluate(() => window.__fnd.setSpeed(2)); }
   await sleep(40);
 }
 await sleep(400);

@@ -818,7 +818,7 @@ function showResult(e: PlayEvent | null): void {
   let period = '';
   if (s.phase === 'final') period = 'End of game. ';
   else if (s.quarter !== lastQuarter) period = lastQuarter === 2 ? 'Halftime. ' : lastQuarter === 4 ? 'End of regulation: overtime! Each team gets the ball at the ten. ' : lastQuarter > 4 ? 'Still level: another overtime. ' : `End of quarter ${lastQuarter}. `;
-  const cut = showCutins && speed !== 0 ? cutinFor(e, s.phase === 'final' ? 'final' : s.quarter !== lastQuarter && lastQuarter === 2 ? 'half' : null, s.score[0] + s.score[1] + s.quarter) : null;
+  const cut = showCutins && speed !== 0 ? cutinFor(e, s.phase === 'final' ? 'final' : s.quarter !== lastQuarter && lastQuarter === 2 ? 'half' : null, s.score[0] + s.score[1] + s.quarter, { won: s.score[user] > s.score[other(user)], title: occasion === 'championship', homecoming: occasion === 'homecoming' }) : null;
   const cutEl = $('cutin') as HTMLImageElement;
   cutEl.classList.toggle('hidden', !cut);
   if (cut) {

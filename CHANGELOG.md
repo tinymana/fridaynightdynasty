@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.17.0 — 2026-11-27
+
+Look-and-feel polish from the supplied art. Client only.
+
+### Added
+- Ten moment panels cut from `art/source/sheets2/22_moment_panels_spritesheet.png` (`assets/cutins/m-*.webp`);
+  `cutinFor` takes a `CutinContext` (won, title game, homecoming) to pick the celebration, trophy and crowning panels.
+- School names painted in the end zones and the home team's letters at midfield.
+
 ## 0.16.0 — 2026-11-27
 
 Players and stadium from the supplied sheets (`art/source/sheets2`).
