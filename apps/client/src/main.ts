@@ -248,7 +248,7 @@ function startReturn(then: () => void): void {
   acc = 0;
 }
 
-const MOVE_WORDS: Record<MoveKind, string> = { stiffArm: 'STIFF ARM!', truck: 'RUNS HIM OVER!', juke: 'JUKE!', spin: 'SPIN MOVE!', dive: 'DIVES AHEAD!' };
+const MOVE_WORDS: Record<MoveKind, string> = { stiffArm: 'STIFF ARM!', truck: 'TRUCKED!', juke: 'JUKE!', spin: 'SPIN!', dive: 'DIVES!' };
 const movesShown = new WeakMap<object, number>();
 let moveTimer = 0;
 
@@ -267,13 +267,13 @@ function showMoves(dt: number): void {
   // A spin or a juke turns the runner round for a moment.
   if (m.kind === 'spin') spinUntil.set(m.carrier, frame + 24);
   if (m.kind === 'juke') spinUntil.set(m.carrier, frame + 8);
-  el.textContent = `${MOVE_WORDS[m.kind]} #${m.carrier.number}`;
-  el.classList.remove('hidden');
-  // Restart the pop.
-  el.style.animation = 'none';
-  void el.offsetWidth;
-  el.style.animation = '';
-  moveTimer = 750;
+  // A comic-book burst over the runner: the word, his number, a colour for each move. Rebuilding it restarts the pop.
+  el.innerHTML = `<span class="burst"><b>${MOVE_WORDS[m.kind]}</b><small>#${m.carrier.number}</small></span>`;
+  el.className = `k-${m.kind}`;
+  const at = scene.carrierAt();
+  el.style.left = `${Math.round(Math.max(0.14, Math.min(0.86, at.x)) * 100)}%`;
+  el.style.top = `${Math.round(Math.max(0.3, Math.min(0.8, at.y - 0.13)) * 100)}%`;
+  moveTimer = 950;
   sfx.tackle();
 }
 
@@ -286,7 +286,18 @@ function kickPose(players: ViewPlayer[], k: KickAnim, f: number): void {
     const d = Math.abs(p.x - k.x0) + Math.abs(p.y - k.y0);
     if (p.team === k.kicking && d < dist) { dist = d; best = i; }
   });
-  if (best >= 0 && players[best]) players[best] = { ...players[best], pose: f < 0.12 ? 'kick0' : 'kick1', moving: false };
+  if (best < 0 || !players[best]) return;
+  const punt = k.e.type === 'punt';
+  players[best] = { ...players[best], pose: punt ? (f < 0.12 ? 'punt0' : 'punt1') : f < 0.12 ? 'kick0' : 'kick1', moving: false };
+  if (k.e.type !== 'fieldGoal' && k.e.type !== 'pat') return;
+  // On a place kick the next man over is the holder, down on one knee with the ball.
+  let holder = -1;
+  dist = 1e9;
+  k.start.forEach((p, i) => {
+    const d = Math.abs(p.x - k.x0) + Math.abs(p.y - k.y0);
+    if (i !== best && p.team === k.kicking && d < dist) { dist = d; holder = i; }
+  });
+  if (holder >= 0 && players[holder]) players[holder] = { ...players[holder], pose: 'hold', moving: false };
 }
 
 function buildView(): FieldView {
@@ -819,6 +830,7 @@ const quiet = (): boolean => speed === 0 || turbo;
 
 /** Before each snap: sometimes the stands start a chant. */
 function atmosphereBeforeSnap(): void {
+  scene.showBand(false);
   const s = game.state;
   if (s.phase === 'final') return;
   if (quiet() || s.phase !== 'scrimmage') return;
@@ -827,6 +839,63 @@ function atmosphereBeforeSnap(): void {
   if (chant && now >= chantUntil) {
     crowd[chant]();
     chantUntil = now + 9000;
+  }
+}
+
+/** Floats a small emoji up from a spot on the field view. `x` and `y` are fractions of the view. */
+function emote(face: string, x: number, y: number, delay = 0): void {
+  window.setTimeout(() => {
+    const el = document.createElement('span');
+    el.className = 'emote';
+    el.textContent = face;
+    el.setAttribute('aria-hidden', 'true');
+    el.style.left = `${Math.round(Math.max(0.05, Math.min(0.95, x)) * 100)}%`;
+    el.style.top = `${Math.round(Math.max(0.2, Math.min(0.94, y)) * 100)}%`;
+    $('stage').appendChild(el);
+    window.setTimeout(() => el.remove(), 1600);
+  }, delay);
+}
+/** Where each team's bench reads on screen: home on the left, visitors on the right. */
+const benchAt = (team: 0 | 1): [number, number] => [team === 0 ? 0.24 : 0.76, 0.9];
+
+/**
+ * Feelings. Now and then a player or a bench shows how the last play felt: joy at a touchdown, despair at a
+ * turnover, a flexed arm after a sack. Chosen from the play's own number, so it is not on every snap.
+ */
+function feelings(e: PlayEvent): void {
+  const f = e.flags;
+  const at = scene.carrierAt();
+  const sometimes = (n: number): boolean => e.seq % n === 0;
+  const off = e.offense;
+  const def = other(off);
+  const pick = (faces: string[]): string => faces[e.seq % faces.length];
+  if (f.touchdown || f.defensiveTouchdown) {
+    const scorer = f.defensiveTouchdown ? def : off;
+    emote(pick(['🎉', '🙌', '🔥']), at.x, at.y - 0.08);
+    emote(pick(['🙌', '🥳', '💪']), ...benchAt(scorer), 250);
+    emote(pick(['😞', '😩', '🤦']), ...benchAt(other(scorer)), 400);
+  } else if (f.interception || f.fumbleLost) {
+    emote(pick(['😱', '😬']), at.x, at.y - 0.08);
+    emote(pick(['😤', '💪', '🙌']), ...benchAt(def), 250);
+    emote(pick(['🤦', '😖']), ...benchAt(off), 400);
+  } else if (f.sack) {
+    emote('💪', at.x, at.y - 0.08);
+    if (sometimes(2)) emote('😖', ...benchAt(off), 300);
+  } else if (e.type === 'penalty') {
+    if (sometimes(2)) emote('🤦', ...benchAt(f.foul === 'offside' || f.foul === 'interference' ? def : off));
+  } else if (e.type === 'fieldGoal' || e.type === 'pat') {
+    if (!f.good) emote(pick(['😬', '😩']), ...benchAt(off));
+    else if (sometimes(2)) emote('👍', ...benchAt(off));
+  } else if (f.turnoverOnDowns) {
+    emote('🧱', at.x, at.y - 0.08);
+    emote('😤', ...benchAt(def), 250);
+  } else if ((e.type === 'run' || e.type === 'pass') && e.yards >= 15) {
+    emote(pick(['🔥', '💨', '😎']), at.x, at.y - 0.08);
+    if (sometimes(2)) emote('😮', ...benchAt(def), 300);
+  } else if ((e.type === 'run' || e.type === 'pass') && e.yards <= -3 && sometimes(2)) {
+    emote('😵', at.x, at.y - 0.08);
+  } else if (f.incomplete && e.down >= 3 && sometimes(2)) {
+    emote('😮‍💨', ...benchAt(def));
   }
 }
 
@@ -890,6 +959,13 @@ function showResult(e: PlayEvent | null): void {
   banner.innerHTML = `${e ? e.text : 'Time runs out.'}<small>${period}${situationText()}</small>`
     + (show ? `<div class="show"><b>${show.title}</b>${show.lines.map((l) => `<span>${l}</span>`).join('')}</div>` : '');
   atmosphereAfterPlay(e, half);
+  if (e && !quiet()) feelings(e);
+  // At half time the home band takes the field.
+  if (show) {
+    scene.showBand(true);
+    // The panel gives way after a moment so the band can be seen.
+    window.setTimeout(() => { if (mode === 'post') $('cutin').classList.add('hidden'); }, 2200);
+  }
   if (e) wearFrom(e);
   // In a dynasty the record book is open on the bench: say so the moment a school record falls or comes within reach.
   let recordCalls = 0;
@@ -2047,6 +2123,8 @@ window.addEventListener('keydown', (ev) => {
 
 /** Debug hooks used by the browser checks. */
 (window as unknown as Record<string, unknown>).__fnd = {
+  /** Sends the band out or brings it off. For the automated checks. */
+  band: (on: boolean) => scene.showBand(on),
   /** Where every drawn player is right now, in field yards. For the automated checks. */
   view: () => (game && mode !== 'menu' ? buildView().players.map((p) => ({ team: p.team, x: p.x, y: p.y })) : null),
   selftest: (s: number): string => gameHash(simulateGame(s, exhibitionTeams(s))),

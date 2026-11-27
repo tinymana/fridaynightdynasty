@@ -86,6 +86,11 @@ export class FieldScene extends Phaser.Scene {
   private paint: Phaser.GameObjects.Text[] = [];
   private squads: { img: Phaser.GameObjects.Image; team: number; n: number }[] = [];
   private referee: Phaser.GameObjects.Image | null = null;
+  /** The home band, out on the field at half time. */
+  private band: { img: Phaser.GameObjects.Image; y: number; n: number }[] = [];
+  private bandOn = false;
+  /** Where the ball carrier was last drawn, as fractions of the view. */
+  private carrier = { x: 0.5, y: 0.5 };
   /** Mud, torn turf and puddles, stamped where the plays go. */
   private wear!: Phaser.GameObjects.RenderTexture;
   /** Snow or frost lying on the field, trampled away where the players have been. */
@@ -177,10 +182,23 @@ export class FieldScene extends Phaser.Scene {
     this.squads = [];
     teams.forEach((_, i) => {
       for (let n = 0; n < 5; n++) {
-        const img = this.add.image((i === 0 ? 150 : 715) + n * 19, ground - 1, `side${i}`, 'pom0').setOrigin(0.5, 1).setScale(1 / ZOOM * 1.05).setDepth(9000);
+        const img = this.add.image((i === 0 ? 150 : 715) + n * 19, ground - 1, `side${i}`, 'pom0').setOrigin(0.5, 1).setScale(1 / ZOOM * 1.3).setDepth(9000);
         this.squads.push({ img, team: i, n });
       }
     });
+    // The home band, in the school's colours: the drum major out front, the colour guard on the wings, then
+    // brass, sousaphones and the drum line in ranks behind. They wait off the field until half time.
+    for (const o of this.band) o.img.destroy();
+    this.band = [];
+    const ranks: [string[], number][] = [[['major'], 0], [['guard0', 'brass0', 'brass1', 'brass0', 'brass1', 'brass0', 'guard1'], 26], [['guard1', 'sousa0', 'sousa1', 'sousa0', 'sousa1', 'sousa0', 'guard0'], 52], [['snare0', 'bass0', 'snare0', 'bass0', 'snare0'], 78]];
+    const centre = FIELD_TOP + FIELD_H / 2;
+    ranks.forEach(([names, back], r) => names.forEach((name, k) => {
+      const y = centre - 44 + back;
+      const x = wx(50) + (k - (names.length - 1) / 2) * 24;
+      const img = this.add.image(x, y, 'side0', name).setOrigin(0.5, 1).setScale(1 / ZOOM * 1.35).setDepth(y).setVisible(false);
+      this.band.push({ img, y, n: r + k });
+    }));
+    this.bandOn = false;
     this.referee?.destroy();
     this.referee = this.add.image(0, 0, 'side0', 'ref').setOrigin(0.5, 1).setScale(1 / ZOOM * 1.25).setVisible(false);
     // Paint on the grass: each school's name in its end zone and the home team's letters at midfield.
@@ -313,7 +331,8 @@ export class FieldScene extends Phaser.Scene {
     const step = Math.floor(view.frame / 6) % RUN.length;
     this.sprites.forEach((s, i) => {
       const p = view.players[i];
-      if (!p) {
+      // The teams are in the locker room while the band is on the field.
+      if (!p || this.bandOn) {
         s.setVisible(false);
         return;
       }
@@ -324,6 +343,7 @@ export class FieldScene extends Phaser.Scene {
       const frame: FrameName = p.down ? 'down' : p.pose ?? (p.moving ? RUN[(step + i) % RUN.length] : 'stance0');
       const turned = p.spin ? Math.floor(view.frame / 4) % 2 === 1 : false;
       s.setVisible(true).setTexture(`p${p.team}_${frame}`).setFlipX((p.team === 1) !== turned).setDepth(y).setPosition(x, y + 2);
+      if (p.hasBall) this.carrier = { x: (x - this.camX) / VIEW_W, y: y / VIEW_H };
       if (p.hasBall) g.fillStyle(0xf2c14e).fillTriangle(x - 3, y - 26, x + 3, y - 26, x, y - 22);
     });
 
@@ -338,6 +358,8 @@ export class FieldScene extends Phaser.Scene {
     });
     if (this.crew[2] && view.down) this.crew[2].setFrame(`box${Math.min(4, Math.max(1, view.down))}`);
 
+    // The band marks time, every other player on the off beat.
+    if (this.bandOn) for (const m of this.band) m.img.setY(m.y - (Math.floor((view.frame + m.n * 10) / 10) % 2));
     // Cheerleaders shake their pom-poms in turn, and all together when their team scores.
     for (const c of this.squads) {
       const wild = view.cheering === c.team;
@@ -366,7 +388,7 @@ export class FieldScene extends Phaser.Scene {
       this.ball.setPosition(bx, by - 7 - b.z);
     }
 
-    const target = Phaser.Math.Clamp(wx(view.focusX) - VIEW_W / 2, 0, WORLD_W - VIEW_W);
+    const target = Phaser.Math.Clamp(wx(this.bandOn ? 50 : view.focusX) - VIEW_W / 2, 0, WORLD_W - VIEW_W);
     this.camX += (target - this.camX) * Math.min(1, delta / 180);
     // With the camera zoomed, scroll is measured from the centre of the view.
     this.cameras.main.scrollX = Math.round(this.camX * ZOOM) / ZOOM - (VIEW_W * ZOOM - VIEW_W) / 2;
@@ -402,6 +424,17 @@ export class FieldScene extends Phaser.Scene {
     if (kind === 'puddle') this.stamp.setFrame(`puddle${n % 3}`).setScale(0.5).setAngle(0).setAlpha(0.85);
     else this.stamp.setFrame(`mud${n % 5}`).setScale(kind === 'mud' ? 0.42 : 0.36).setAngle((n % 4) * 90).setAlpha(kind === 'mud' ? 0.72 : 0.34);
     this.wear.draw(this.stamp, px, py);
+  }
+
+  /** Sends the band out to midfield, or brings it off. While it is out the camera watches it. */
+  showBand(on: boolean): void {
+    this.bandOn = on && this.ready;
+    for (const m of this.band) m.img.setVisible(this.bandOn);
+  }
+
+  /** Where the ball carrier is on screen: 0,0 is the top left of the view and 1,1 the bottom right. */
+  carrierAt(): { x: number; y: number } {
+    return this.carrier;
   }
 
   snapCamera(focusX: number): void {

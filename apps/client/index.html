@@ -104,9 +104,22 @@
   @keyframes wx-wind { to { background-position: 300px 0; } }
   @media (prefers-reduced-motion: reduce) { #wx { animation: none !important; } }
   #wxTag { position: absolute; left: 8px; top: 8px; background: rgba(8, 9, 20, 0.85); border: 1px solid var(--line); border-radius: 3px; padding: 2px 7px; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); }
-  #moveTag { position: absolute; left: 50%; top: 14%; transform: translateX(-50%); background: rgba(8, 9, 20, 0.88); border: 2px solid var(--accent); color: var(--accent); font-weight: 700; font-size: 18px; letter-spacing: 2px; padding: 4px 14px; border-radius: 4px; text-shadow: 0 2px 0 #000; animation: movepop 0.2s steps(3) both; pointer-events: none; white-space: nowrap; }
-  @keyframes movepop { from { transform: translateX(-50%) scale(0.4); } to { transform: translateX(-50%) scale(1); } }
-  @media (prefers-reduced-motion: reduce) { #moveTag { animation: none; } }
+  /* Move call-outs: just the word, big and loud, in a colour of its own, popping up over the runner. */
+  #moveTag { position: absolute; left: 50%; top: 30%; width: 0; height: 0; pointer-events: none; z-index: 4; }
+  #moveTag .burst { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%) rotate(-8deg); display: grid; justify-items: center; white-space: nowrap; animation: movepop 0.22s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+  #moveTag b { font-family: var(--disp); font-weight: 400; font-size: 24px; letter-spacing: 1px; color: var(--pop, #ffd21f); -webkit-text-stroke: 2px #14122a; paint-order: stroke fill; text-shadow: 3px 3px 0 #14122a, 5px 5px 0 rgba(255, 255, 255, 0.85); }
+  #moveTag small { font-family: var(--disp); font-size: 11px; color: #fff; -webkit-text-stroke: 1px #14122a; paint-order: stroke fill; text-shadow: 2px 2px 0 #14122a; margin-top: 7px; }
+  #moveTag.k-juke { --pop: #ffd21f; }
+  #moveTag.k-truck { --pop: #ff4a2a; }
+  #moveTag.k-stiffArm { --pop: #ff9a1f; }
+  #moveTag.k-spin { --pop: #4fd8ff; }
+  #moveTag.k-dive { --pop: #8cf05a; }
+  /* Feelings: a small emoji that floats up from a player or a bench and fades. */
+  .emote { position: absolute; z-index: 4; font-size: 22px; line-height: 1; pointer-events: none; transform: translate(-50%, -50%); animation: emote 1.5s ease-out both; filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.5)); }
+  @keyframes emote { 0% { opacity: 0; transform: translate(-50%, -20%) scale(0.4); } 15% { opacity: 1; transform: translate(-50%, -60%) scale(1.15); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -190%) scale(1); } }
+  @media (prefers-reduced-motion: reduce) { .emote { animation-duration: 0.01s; } }
+  @keyframes movepop { from { transform: translate(-50%, -50%) rotate(-30deg) scale(0.15); } to { transform: translate(-50%, -50%) rotate(-8deg) scale(1); } }
+  @media (prefers-reduced-motion: reduce) { #moveTag .burst { animation: none; } }
   #cutin { position: absolute; left: 50%; top: 44%; transform: translate(-50%, -50%); width: min(46%, 440px); image-rendering: pixelated; border: 3px solid var(--accent); border-radius: 4px; box-shadow: 0 8px 0 rgba(0, 0, 0, 0.55); animation: cutin 0.28s steps(4) both; pointer-events: none; }
   @keyframes cutin { from { transform: translate(-50%, -50%) scale(0.2); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
   @media (prefers-reduced-motion: reduce) { #cutin { animation: none; } }

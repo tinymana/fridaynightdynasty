@@ -10,7 +10,7 @@ await page.setViewport({ width: 1000, height: 1100 });
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(pathToFileURL('site/play/index.html').href);
+await page.goto(`${pathToFileURL('site/play/index.html').href}?lowres`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 await sleep(400);
 await page.click('#title');
@@ -21,7 +21,7 @@ let shown = false;
 for (let i = 0; i < 20000 && !shown; i++) {
   const s = await page.evaluate(() => window.__fnd.state());
   if (s.mode === 'final') break;
-  if (await page.$('#banner .show')) { await sleep(300); await page.screenshot({ path: `${out}/halftime.png` }); shown = true; console.log(await page.$eval('#banner .show', (e) => e.innerText)); break; }
+  if (await page.$('#banner .show')) { await sleep(3600); await (await page.$('#stage')).screenshot({ path: `${out}/halftime.png` }); shown = true; console.log(await page.$eval('#banner .show', (e) => e.innerText)); break; }
   if (s.mode !== 'choose') { await sleep(20); continue; }
   const acts = await page.$$eval('#panel [data-act]', (els) => els.map((e) => e.dataset.act));
   const prompt = await page.$eval('#prompt', (e) => e.textContent);

@@ -21,7 +21,7 @@ let line = false, move = false, audibles = 0;
 for (let i = 0; i < 4000 && !(line && move && audibles >= 2); i++) {
   const s = await st();
   if (s.mode === 'final') break;
-  if (!move && await page.$eval('#moveTag', (e) => !e.classList.contains('hidden') && e.textContent.length > 0).catch(() => false)) { await page.screenshot({ path: `${out}/move.png` }); move = true; console.log('move:', await page.$eval('#moveTag', (e) => e.textContent)); }
+  if (!move && await page.$eval('#moveTag', (e) => !e.classList.contains('hidden') && e.textContent.length > 0).catch(() => false)) { await (await page.$('#stage')).screenshot({ path: `${out}/move.png` }); move = true; console.log('move:', await page.$eval('#moveTag', (e) => e.textContent)); }
   if (s.mode !== 'choose') { await sleep(30); continue; }
   const acts = await page.$$eval('#panel [data-act]', (els) => els.map((e) => e.dataset.act));
   if (acts.includes('snap')) {

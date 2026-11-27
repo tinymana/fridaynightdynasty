@@ -25,6 +25,11 @@ FRAMES = [
     ('stance0', 985 + 63, 1095), ('stance1', 1114, 1162), ('kick0', 1254, 1301), ('kick1', 1318, 1364),
 ]
 
+# Kicking-game frames from the special-teams sheet's red-and-silver row, drawn a little smaller there.
+ST_ROW = (113, 190)
+ST_SCALE = 0.45
+ST_FRAMES = [('snap', 103, 173), ('hold', 356, 435), ('punt0', 615, 668), ('punt1', 669, 723)]
+
 def classify(px, upper):
     """Returns (material, shade): 0 keep the sheet's colour, 1 jersey, 2 helmet, 3 pants."""
     r, g, b, a = [int(v) for v in px]
@@ -38,13 +43,15 @@ def classify(px, upper):
 
 def cut_players():
     sheet = Image.open(SRC + '01_tecmo_players_spritesheet.png').convert('RGBA')
-    base = Image.new('RGBA', (CELL_W * len(FRAMES), CELL_H), (0, 0, 0, 0))
-    mask = Image.new('RGBA', (CELL_W * len(FRAMES), CELL_H), (0, 0, 0, 0))
-    for i, (name, x0, x1) in enumerate(FRAMES):
-        fr = sheet.crop((x0, ROW[0], x1, ROW[1]))
+    st = Image.open(SRC + '14_special_teams_pack_spritesheet.png').convert('RGBA')
+    every = [(n, x0, x1, sheet, ROW, SCALE) for n, x0, x1 in FRAMES] + [(n, x0, x1, st, ST_ROW, ST_SCALE) for n, x0, x1 in ST_FRAMES]
+    base = Image.new('RGBA', (CELL_W * len(every), CELL_H), (0, 0, 0, 0))
+    mask = Image.new('RGBA', (CELL_W * len(every), CELL_H), (0, 0, 0, 0))
+    for i, (name, x0, x1, src, row, scale) in enumerate(every):
+        fr = src.crop((x0, row[0], x1, row[1]))
         box = fr.getbbox()
         fr = fr.crop(box)
-        w, h = max(1, round(fr.width * SCALE)), max(1, round(fr.height * SCALE))
+        w, h = min(CELL_W, max(1, round(fr.width * scale))), min(CELL_H, max(1, round(fr.height * scale)))
         small = fr.resize((w, h), Image.LANCZOS)
         a = np.array(small)
         a[:, :, 3] = np.where(a[:, :, 3] > 110, 255, 0)
@@ -65,7 +72,7 @@ def cut_players():
         mask.paste(Image.fromarray(m), (ox, oy))
     base.save(OUT + 'players-base.png', optimize=True)
     mask.save(OUT + 'players-mask.png', optimize=True)
-    return [f[0] for f in FRAMES]
+    return [f[0] for f in every]
 
 def boxes(im, y0, y1, min_w, min_h, bg=(58, 58, 58), tol=26):
     """Rectangles that stand out from the sheet's flat grey background between two rows."""
@@ -168,6 +175,9 @@ CREW = [('stick', 492, 16, 549, 90), ('box1', 215, 16, 264, 90), ('box2', 215, 9
 # Cheerleaders, from the red squad's row of the cheer sheet (repainted per school): (name, x0, x1).
 CHEER_ROW = (128, 204)
 CHEER = [('pom0', 211, 272), ('pom1', 281, 343), ('wave0', 79, 122), ('wave1', 149, 192)]
+# The marching band, from the red band's row (repainted per school): (name, x0, x1).
+BAND_ROW = (114, 190)
+BAND = [('major', 106, 166), ('brass0', 290, 333), ('brass1', 344, 390), ('sousa0', 471, 517), ('sousa1', 549, 595), ('snare0', 619, 661), ('bass0', 742, 794), ('guard0', 917, 974), ('guard1', 980, 1029)]
 # The referee, in stripes: (name, x0, x1) in the first row of the referee sheet.
 REF_ROW = (14, 130)
 REFS = [('ref', 78, 137), ('refrun0', 213, 275), ('refrun1', 289, 359), ('reftd', 475, 534), ('refpoint', 639, 725), ('refflag', 1025, 1127)]
@@ -178,6 +188,8 @@ def cut_sideline():
     parts = [(n, *repaintable(sheet.crop((x0, SIDE_ROW[0], x1, SIDE_ROW[1])))) for n, x0, x1 in SIDE]
     cheer = Image.open(SRC + '06_cheerleaders_spritesheet.png').convert('RGBA')
     parts += [(n, *repaintable(cheer.crop((x0, CHEER_ROW[0], x1, CHEER_ROW[1])))) for n, x0, x1 in CHEER]
+    band = Image.open(SRC + '16_marching_band_formations_spritesheet.png').convert('RGBA')
+    parts += [(n, *repaintable(band.crop((x0, BAND_ROW[0], x1, BAND_ROW[1])))) for n, x0, x1 in BAND]
     refs = Image.open(SRC + '02_referees_spritesheet.png').convert('RGBA')
     for n, x0, x1 in REFS:
         fr = refs.crop((x0, REF_ROW[0], x1, REF_ROW[1]))
