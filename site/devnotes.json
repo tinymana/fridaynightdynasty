@@ -4,7 +4,7 @@
     {
       "version": "0.18.0",
       "date": "2026-11-27",
-      "title": "A field that wears",
+      "title": "A field that wears, and players who block, catch and spin",
       "items": [
         {
           "tag": "new",
@@ -13,6 +13,10 @@
         {
           "tag": "new",
           "text": "In the rain the field churns to mud and puddles form. In snow the field starts white and gets trampled back to green where the plays go."
+        },
+        {
+          "tag": "new",
+          "text": "More poses. Linemen and blockers stand up with their hands out once the ball is snapped, a receiver puts his hands up as the ball arrives, and a runner who spins or jukes turns as he does it."
         },
         {
           "tag": "note",

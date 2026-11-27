@@ -97,6 +97,7 @@ let marks: { los: number; toGain: number } | null = null;
 /** Poses for the drawing: who threw the ball and when, who is fending a tackler off, and which team is celebrating. */
 let thrower = -1;
 let armUntil = new Map<unknown, number>();
+let spinUntil = new Map<unknown, number>();
 let cheerTeam: 0 | 1 | null = null;
 let kick: KickAnim | null = null;
 /** A kick, punt or turnover being run back: the real return, replayed from the game. */
@@ -262,6 +263,9 @@ function showMoves(dt: number): void {
   const m = sim.moves[sim.moves.length - 1];
   // A stiff arm or a truck is drawn as one for the next half second.
   if (m.kind === 'stiffArm' || m.kind === 'truck') armUntil.set(m.carrier, frame + 30);
+  // A spin or a juke turns the runner round for a moment.
+  if (m.kind === 'spin') spinUntil.set(m.carrier, frame + 24);
+  if (m.kind === 'juke') spinUntil.set(m.carrier, frame + 8);
   el.textContent = `${MOVE_WORDS[m.kind]} #${m.carrier.number}`;
   el.classList.remove('hidden');
   // Restart the pop.
@@ -290,7 +294,7 @@ function buildView(): FieldView {
     const players: ViewPlayer[] = sim.players.map((p) => {
       const [x, y] = abs(side, p.x / U, p.y / U);
       const fending = p.idx === 0 && (armUntil.get(p.player) ?? 0) > frame;
-      return { team: p.side === 0 ? other(side) : side, x, y, moving: p.x !== p.px || p.y !== p.py, down: p.idx === 0 && sim.done && !sim.result?.touchdown, hasBall: p.idx === 0, pose: fending ? (frame % 12 < 6 ? 'arm0' : 'arm1') : undefined };
+      return { team: p.side === 0 ? other(side) : side, x, y, moving: p.x !== p.px || p.y !== p.py, down: p.idx === 0 && sim.done && !sim.result?.touchdown, hasBall: p.idx === 0, pose: fending ? (frame % 12 < 6 ? 'arm0' : 'arm1') : undefined, spin: p.idx === 0 && (spinUntil.get(p.player) ?? 0) > frame };
     });
     const c = players[0];
     return { players, ball: { x: c.x, y: c.y, z: 0, visible: false }, los: null, toGain: null, focusX: c.x, frame };
@@ -311,8 +315,20 @@ function buildView(): FieldView {
       else if (b.state === 'air' && b.t < 16 && p.idx === thrower) pose = 'throw1';
       else if (hasBall && !moving && mode === 'live' && sim.tick > 12) pose = 'throw0';
       else if (hasBall && (armUntil.get(p.player) ?? 0) > frame) pose = frame % 12 < 6 ? 'arm0' : 'arm1';
-      return { team, x, y, moving, down, hasBall, pose };
+      // A man who is in the play and not running is blocking or being blocked: hands up, not down in a stance.
+      else if (!moving && !hasBall && !down && mode === 'live' && sim.tick > 8) pose = 'ready';
+      return { team, x, y, moving, down, hasBall, pose, spin: hasBall && (spinUntil.get(p.player) ?? 0) > frame };
     });
+    // With the ball nearly there, the nearest receiver turns and puts his hands up for it.
+    if (b.state === 'air' && b.T > 0 && b.t / b.T > 0.7) {
+      let best = -1;
+      let dist = U * 4;
+      sim.players.forEach((p, i) => {
+        const d = Math.abs(p.x - b.x) + Math.abs(p.y - b.y);
+        if (p.side === 0 && p.idx !== thrower && d < dist) { dist = d; best = i; }
+      });
+      if (best >= 0) players[best] = { ...players[best], pose: 'catch' };
+    }
     const [bx, by] = abs(off, b.x / U, b.y / U);
     const z = b.state === 'air' && b.T > 0 ? Math.round(4 * Math.min(16, b.T * 0.3) * (b.t / b.T) * (1 - b.t / b.T)) : 0;
     return { players, ball: { x: bx, y: by, z, visible: b.state !== 'held' || mode === 'presnap' }, los: marks?.los ?? null, toGain: marks?.toGain ?? null, focusX: bx, frame, down: (game as Game | undefined)?.state.phase === 'scrimmage' ? game.state.down : 1 };
