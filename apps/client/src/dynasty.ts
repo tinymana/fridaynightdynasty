@@ -1,7 +1,7 @@
 import { GROUPS, WEATHER, overall, type GameSetup, type Team } from '@fnd/core';
 import {
-  CLASS_NAMES, CLASS_SHORT, MAX_CALL_UPS, REGULAR_WEEKS, STATES, career, incomingOf, occasionFor, openings, programOf, recordOf, setCallUp, createDynasty, createLeague, editSchool, gameSeed, gameSetup, loadDynasty, nextSeason, playWeek, standings, stateByCode, teamFor, userGame, weekGames, winnerOf,
-  type Dynasty, type GameResult, type ProgramPlayer,
+  CLASS_NAMES, CLASS_SHORT, MAX_CALL_UPS, RECORD_DEFS, REGULAR_WEEKS, STATES, career, emptyLine, incomingOf, newsText, occasionFor, openings, programOf, schoolOfPlayer, seasonYear, statsOf, recordOf, setCallUp, createDynasty, createLeague, editSchool, gameSeed, gameSetup, loadDynasty, nextSeason, playWeek, standings, stateByCode, teamFor, userGame, weekGames, winnerOf,
+  type BoxScore, type Dynasty, type GameResult, type ProgramPlayer, type RecordNews, type StatLine,
 } from '@fnd/league';
 import { bindSchoolForm, schoolFormHtml } from './school-form';
 
@@ -42,7 +42,11 @@ export class DynastyScreen {
   private busy = false;
   private editing = -1;
   /** Which page of the dynasty is showing: the season, or the program (varsity, junior varsity, classes). */
-  private view: 'season' | 'program' = 'season';
+  private view: 'season' | 'program' | 'stats' | 'records' = 'season';
+  /** Which school's record book is open. */
+  private bookOf = -1;
+  /** Record calls already made in the game being played, so each is made once. */
+  private called = new Set<string>();
 
   constructor(private readonly root: HTMLElement, private readonly title: HTMLElement, private readonly host: DynastyHost, newSeed: () => number) {
     this.d = loadDynasty(host.load());
@@ -66,23 +70,63 @@ export class DynastyScreen {
 
   render(): void {
     if (this.d && this.view === 'program') this.renderProgram(this.d);
+    else if (this.d && this.view === 'stats') this.renderStats(this.d);
+    else if (this.d && this.view === 'records') this.renderRecords(this.d);
     else if (this.d) this.renderSeason(this.d);
     else this.renderNew();
   }
 
   /** Records the coach's finished game and plays the rest of that week. */
-  finishGame(g: DynastyGame, score: readonly [number, number]): { won: boolean | null; text: string } {
+  finishGame(g: DynastyGame, score: readonly [number, number], box?: BoxScore): { won: boolean | null; text: string; records: string[] } {
     const d = this.d!;
     const mine: GameResult = { week: g.week, home: g.home, away: g.away, score: [score[0], score[1]] };
-    this.d = playWeek(d, mine);
+    this.d = playWeek(d, mine, box);
     this.host.save(this.d);
+    this.called.clear();
+    // Records my school set tonight, and at the end of the season the season and career marks too.
+    const me = d.league.schools[d.user].name;
+    const records = (this.d.stats?.news ?? []).filter((n) => n.school === d.user && n.year === seasonYear(d.year) && (n.week === g.week || (g.week === REGULAR_WEEKS && n.week === -1))).map((n) => newsText(n, me));
+    const done = (r: { won: boolean | null; text: string }): { won: boolean | null; text: string; records: string[] } => ({ ...r, records });
     const us = g.user === 0 ? score[0] : score[1];
     const them = g.user === 0 ? score[1] : score[0];
     if (g.week === REGULAR_WEEKS) {
       const champ = winnerOf(mine) === d.user;
-      return { won: champ, text: champ ? `${d.league.schools[d.user].name} are ${stateByCode(d.league.state).name} champions!${us === them ? ' A tie goes to the home team, which finished first.' : ''}` : `Runners-up. ${us === them ? 'A tie goes to the home team, which finished first.' : 'So close.'}` };
+      return done({ won: champ, text: champ ? `${d.league.schools[d.user].name} are ${stateByCode(d.league.state).name} champions!${us === them ? ' A tie goes to the home team, which finished first.' : ''}` : `Runners-up. ${us === them ? 'A tie goes to the home team, which finished first.' : 'So close.'}` });
     }
-    return { won: us === them ? null : us > them, text: `${weekName(g.week)} is in the books.` };
+    return done({ won: us === them ? null : us > them, text: `${weekName(g.week)} is in the books.` });
+  }
+
+  /**
+   * Record watch, called after every play of the coach's own game. Says so once when one of his players
+   * passes a school record for a game, a season or a career, and once when a yardage record is within reach.
+   */
+  watch(g: DynastyGame, box: BoxScore): string[] {
+    const d = this.d;
+    if (!d) return [];
+    const stats = statsOf(d);
+    const book = stats.books[d.user];
+    const out: string[] = [];
+    const team = g.teams[g.user];
+    for (const [id, line] of Object.entries(box.players[g.user])) {
+      const name = team.roster.find((p) => p.id === id)?.name ?? 'Unknown';
+      const before = stats.season[id] ?? emptyLine();
+      const earlier = stats.career[id] ?? emptyLine();
+      for (const def of RECORD_DEFS) {
+        const spans: [string, string, number][] = [['game', 'in a game', line[def.key]], ['season', 'in a season', before[def.key] + line[def.key]], ['career', 'in a career', earlier[def.key] + before[def.key] + line[def.key]]];
+        for (const [scope, words, value] of spans) {
+          const old = book[`${scope}:${def.key}`];
+          const tag = `${id}:${scope}:${def.key}`;
+          if (value > old.value && !this.called.has(tag)) {
+            this.called.add(tag);
+            out.push(`School record! ${name} now has ${value} ${def.unit} ${words}, passing ${old.name}'s ${old.value} from ${old.year}.`);
+          } else if (scope === 'game' && def.key.endsWith('Yds') && value <= old.value && value >= old.value * 0.85 && !this.called.has(`near:${tag}`)) {
+            this.called.add(`near:${tag}`);
+            out.push(`Record watch: ${name} is ${old.value - value + 1} ${def.unit} from the school record (${old.name}, ${old.value}, ${old.year}).`);
+          }
+        }
+      }
+    }
+    return out;
   }
 
   private renderNew(): void {
@@ -118,6 +162,81 @@ export class DynastyScreen {
       this.host.save(this.d);
       this.render();
     }));
+  }
+
+  /** The latest records to fall around the league, newest first. */
+  private newsHtml(d: Dynasty): string {
+    const news = (d.stats?.news ?? []).slice(0, 4);
+    if (!news.length) return '';
+    const line = (n: RecordNews): string => `<div class="dy-game${n.school === d.user ? ' me' : ''}"><span>${esc(newsText(n, d.league.schools[n.school].name))}</span><span>${n.year}</span></div>`;
+    return `<h3>Records that have fallen</h3>${news.map(line).join('')}`;
+  }
+
+  /** Season statistics: my team's leaders and the league's. */
+  private renderStats(d: Dynasty): void {
+    const schools = d.league.schools;
+    const me = schools[d.user];
+    this.title.textContent = `${seasonYear(d.year)} statistics`;
+    const stats = statsOf(d);
+    const who = new Map<string, { name: string; pos: string; year: number; school: number }>();
+    for (let i = 0; i < schools.length; i++) for (const p of programOf(d, i)) who.set(p.id, { name: p.name, pos: p.pos, year: p.year, school: i });
+    const all = Object.entries(stats.season).map(([id, l]) => ({ id, l, p: who.get(id) })).filter((x): x is { id: string; l: StatLine; p: { name: string; pos: string; year: number; school: number } } => !!x.p);
+    const mine = all.filter((x) => x.p.school === d.user);
+    const nm = (x: (typeof all)[number], league = false): string => `${esc(x.p.name)} <span class="cls c${x.p.year}">${CLASS_SHORT[x.p.year - 1]}</span>${league ? ` <small>${esc(schools[x.p.school].abbr)}</small>` : ''}`;
+    const table = (title: string, head: string[], rows: (typeof all), cells: (x: (typeof all)[number]) => (string | number)[], league = false): string => (rows.length
+      ? `<h3>${title}</h3><table><tr><th>Player</th>${head.map((h) => `<th>${h}</th>`).join('')}</tr>${rows.map((x) => `<tr class="${league && x.p.school === d.user ? 'me' : ''}"><td>${nm(x, league)}</td>${cells(x).map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</table>` : '');
+    const top = (list: typeof all, key: keyof StatLine, n: number): typeof all => list.filter((x) => x.l[key] > 0).sort((a, b) => b.l[key] - a.l[key] || (a.id < b.id ? -1 : 1)).slice(0, n);
+    const avg = (y: number, a: number): string => (a ? (y / a).toFixed(1) : '0.0');
+    const passing = (x: (typeof all)[number]): (string | number)[] => [`${x.l.passComp}/${x.l.passAtt}`, x.l.passYds, x.l.passTd, x.l.passInt];
+    const rushing = (x: (typeof all)[number]): (string | number)[] => [x.l.rushAtt, x.l.rushYds, avg(x.l.rushYds, x.l.rushAtt), x.l.rushTd];
+    const receiving = (x: (typeof all)[number]): (string | number)[] => [x.l.rec, x.l.recYds, avg(x.l.recYds, x.l.rec), x.l.recTd];
+    const defense = (x: (typeof all)[number]): (string | number)[] => [x.l.tackles, x.l.sacks, x.l.ints];
+    const kicking = (x: (typeof all)[number]): (string | number)[] => [`${x.l.fgMade}/${x.l.fgAtt}`, x.l.xpMade, x.l.fgMade * 3 + x.l.xpMade];
+    const empty = !all.length;
+    this.root.innerHTML = `<div class="orow center"><button class="seg on" id="pgBack">Back to the season</button><button class="seg" id="stRecords">Record book</button></div>
+      ${empty ? '<p>No games have been played yet this season. The numbers start with week 1.</p>' : ''}
+      <div class="dy-cols prog"><div><h2 class="colhead">${esc(me.name)} ${esc(me.mascot)}</h2>
+        ${table('Passing', ['C/A', 'Yds', 'TD', 'Int'], top(mine, 'passAtt', 3), passing)}
+        ${table('Rushing', ['Att', 'Yds', 'Avg', 'TD'], top(mine, 'rushYds', 6), rushing)}
+        ${table('Receiving', ['Rec', 'Yds', 'Avg', 'TD'], top(mine, 'recYds', 7), receiving)}
+        ${table('Defense', ['Tkl', 'Sacks', 'Int'], top(mine, 'tackles', 10), defense)}
+        ${table('Kicking', ['FG', 'XP', 'Pts'], top(mine, 'xpMade', 2), kicking)}</div>
+      <div><h2 class="colhead">${esc(stateByCode(d.league.state).name)} leaders</h2>
+        ${table('Passing yards', ['C/A', 'Yds', 'TD', 'Int'], top(all, 'passYds', 5), passing, true)}
+        ${table('Rushing yards', ['Att', 'Yds', 'Avg', 'TD'], top(all, 'rushYds', 5), rushing, true)}
+        ${table('Receiving yards', ['Rec', 'Yds', 'Avg', 'TD'], top(all, 'recYds', 5), receiving, true)}
+        ${table('Tackles', ['Tkl', 'Sacks', 'Int'], top(all, 'tackles', 5), defense, true)}
+        ${table('Sacks', ['Tkl', 'Sacks', 'Int'], top(all, 'sacks', 5), defense, true)}
+        ${table('Interceptions', ['Tkl', 'Sacks', 'Int'], top(all, 'ints', 5), defense, true)}</div></div>`;
+    (this.root.querySelector('#pgBack') as HTMLElement).addEventListener('click', () => { this.view = 'season'; this.render(); });
+    (this.root.querySelector('#stRecords') as HTMLElement).addEventListener('click', () => { this.view = 'records'; this.bookOf = d.user; this.render(); });
+  }
+
+  /** A school's record book: single game, season and career, with who holds each and since when. */
+  private renderRecords(d: Dynasty): void {
+    const schools = d.league.schools;
+    const at = this.bookOf >= 0 && this.bookOf < schools.length ? this.bookOf : d.user;
+    const s = schools[at];
+    this.title.textContent = `${s.name} ${s.mascot} record book`;
+    const stats = statsOf(d);
+    const book = stats.books[at];
+    const mineEra = seasonYear(1);
+    const cell = (k: string): string => {
+      const e = book[k];
+      return `<td class="${e.year >= mineEra ? 'fresh' : ''}"><b>${e.value}</b> ${esc(e.name)} <small>${e.year}</small></td>`;
+    };
+    const rows = RECORD_DEFS.map((def) => `<tr><td>${def.label}</td>${cell(`game:${def.key}`)}${cell(`season:${def.key}`)}${cell(`career:${def.key}`)}</tr>`).join('');
+    const pts = book['game:teamPoints'];
+    const fallen = stats.news.filter((n) => n.school === at).slice(0, 12);
+    this.root.innerHTML = `<p>Every mark in the book belongs to somebody. Beat it and your player's name goes in. Records set since you took the job in ${mineEra} are shown in gold.</p>
+      <div class="orow center"><button class="seg on" id="pgBack">Back to the season</button><button class="seg" id="rcStats">Statistics</button>
+        <label class="pick">School <select id="rcSchool">${schools.map((x, i) => `<option value="${i}"${i === at ? ' selected' : ''}>${esc(x.name)} ${esc(x.mascot)}${i === d.user ? ' (yours)' : ''}</option>`).join('')}</select></label></div>
+      <div class="prog recbook"><table><tr><th>Record</th><th>Game</th><th>Season</th><th>Career</th></tr>${rows}
+        <tr><td>Points by the team</td><td class="${pts.year >= mineEra ? 'fresh' : ''}"><b>${pts.value}</b> ${pts.name ? `against ${esc(pts.name)} ` : ''}<small>${pts.year}</small></td><td></td><td></td></tr></table></div>
+      ${fallen.length ? `<h3>Records broken at ${esc(s.name)}</h3>${fallen.map((n) => `<div class="dy-game me"><span>${esc(newsText(n, s.name))}</span><span>${n.year}</span></div>`).join('')}` : `<p class="sl-note" style="text-align:center">Nobody has broken a ${esc(s.name)} record since ${mineEra - 1}.</p>`}`;
+    (this.root.querySelector('#pgBack') as HTMLElement).addEventListener('click', () => { this.view = 'season'; this.render(); });
+    (this.root.querySelector('#rcStats') as HTMLElement).addEventListener('click', () => { this.view = 'stats'; this.render(); });
+    (this.root.querySelector('#rcSchool') as HTMLSelectElement).addEventListener('change', (e) => { this.bookOf = Number((e.target as HTMLSelectElement).value); this.render(); });
   }
 
   /** The program page: who is on the varsity, who is on the junior varsity, and who is coming. */
@@ -216,11 +335,14 @@ export class DynastyScreen {
       <div class="dy-cols"><div><h3>Standings</h3><table><tr><th>#</th><th>School</th><th>Record</th><th>PF</th><th>PA</th></tr>${rows}</table></div>
       <div>${upcoming}${last.length ? `<h3>${weekName(lastWeek)} results</h3>${last.map(line).join('')}` : ''}${past}</div></div>
       ${this.editing >= 0 ? schoolFormHtml(schools[this.editing]) : `<div class="orow center" style="margin-top:12px"><label class="pick">Rename a school <select id="dyEdit"><option value="">Choose\u2026</option>${schools.map((s, i) => `<option value="${i}">${esc(s.name)} ${esc(s.mascot)}</option>`).join('')}</select></label></div>`}
-      <div class="orow center" style="margin-top:14px"><button class="seg on" id="dyProgram">Your program: varsity and JV</button><button class="seg" id="dyBack">Main menu</button><button class="seg" id="dyQuit">Abandon this dynasty</button></div>
+      ${this.newsHtml(d)}
+      <div class="orow center" style="margin-top:14px"><button class="seg on" id="dyProgram">Your program: varsity and JV</button><button class="seg on" id="dyStats">Statistics</button><button class="seg on" id="dyRecords">Record book</button><button class="seg" id="dyBack">Main menu</button><button class="seg" id="dyQuit">Abandon this dynasty</button></div>
       <div id="dyMsg" class="sl-note" role="status" aria-live="polite" style="text-align:center"></div>`;
     const q = (id: string): HTMLElement | null => this.root.querySelector(`#${id}`);
     q('dyBack')!.addEventListener('click', () => this.host.back());
     q('dyProgram')!.addEventListener('click', () => { this.view = 'program'; this.render(); });
+    q('dyStats')!.addEventListener('click', () => { this.view = 'stats'; this.render(); });
+    q('dyRecords')!.addEventListener('click', () => { this.view = 'records'; this.bookOf = d.user; this.render(); });
     q('dyEdit')?.addEventListener('change', (e) => {
       const i = (e.target as HTMLSelectElement).value;
       if (i === '') return;

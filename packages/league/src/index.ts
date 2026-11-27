@@ -1,6 +1,8 @@
 import { DEFAULT_SETUP, Rng, clamp, cleanSetup, hashString, type GameSetup, type Team, type TeamColors, type Weather } from '@fnd/core';
 import { simulateGame } from '@fnd/match-sim';
-import { MAX_CALL_UPS, cleanCallUps, incomingClass, jvTeam, programFor, varsityTeam, type ProgramPlayer } from './program';
+import { MAX_CALL_UPS, cleanCallUps, enrolledIn, incomingClass, jvTeam, programFor, varsityTeam, type ProgramPlayer } from './program';
+import { cleanStatBook, closeSeason, historicBook, recordGame, type RecordNews, type StatBook } from './records';
+import { boxScore, type BoxScore } from './stats';
 
 /**
  * A high school league and its seasons. Pure data and pure functions: the same league seed always gives the
@@ -253,6 +255,8 @@ export interface Dynasty {
   callUps?: string[];
   /** This season's junior varsity scores, regular season only. */
   jv?: GameResult[];
+  /** Player statistics and every school's record book. Kept by a solo dynasty from its first game. */
+  stats?: StatBook;
 }
 
 export interface SeasonRecord {
@@ -366,6 +370,32 @@ export function gameWeather(d: Pick<Dynasty, 'league' | 'year'>, week: number, h
 /** Quarter length is the dynasty's; the weather is that game's. */
 export const gameSetup = (d: Dynasty, week: number, home: number, away: number): GameSetup => ({ quarterMinutes: d.setup.quarterMinutes, weather: gameWeather(d, week, home, away) });
 
+/** The stat book a dynasty starts with: nothing played yet, and every school's records as the last fifty years left them. */
+export function statsOf(d: Dynasty): StatBook {
+  return d.stats ?? { season: {}, career: {}, news: [], books: d.league.schools.map((s) => historicBook(d.league.seed, s.id, s.prestige, d.setup.quarterMinutes)) };
+}
+/** Which school a program player belongs to, from his id. -1 for an id that is nobody's. */
+export function schoolOfPlayer(d: Pick<Dynasty, 'league'>, id: string): number {
+  return d.league.schools.findIndex((s) => id.startsWith(`${s.id}_c`));
+}
+/** Every program player's name in the league this season, by id. */
+function nameBook(d: Dynasty): (id: string) => string {
+  const names = new Map<string, string>();
+  for (let i = 0; i < LEAGUE_SIZE; i++) for (const p of programOf(d, i)) names.set(p.id, p.name);
+  return (id) => names.get(id) ?? 'Unknown';
+}
+/** True for a player who will be back next season (anyone but a senior). */
+const returning = (d: Dynasty, id: string): boolean => {
+  const enrolled = enrolledIn(id);
+  return enrolled !== null && d.year - enrolled + 1 < 4;
+};
+
+/** Plays a game between two schools and keeps its box score. */
+export function simulateWithBox(d: Dynasty, week: number, home: number, away: number): { result: GameResult; box: BoxScore } {
+  const g = simulateGame(gameSeed(d, week, home, away), [teamFor(d, home), teamFor(d, away)], { setup: gameSetup(d, week, home, away) });
+  return { result: { week, home, away, score: [g.state.score[0], g.state.score[1]] }, box: boxScore(g.events) };
+}
+
 export function simulate(d: Dynasty, week: number, home: number, away: number): GameResult {
   const g = simulateGame(gameSeed(d, week, home, away), [teamFor(d, home), teamFor(d, away)], { setup: gameSetup(d, week, home, away) });
   return { week, home, away, score: [g.state.score[0], g.state.score[1]] };
@@ -414,15 +444,30 @@ export function recordOf(results: readonly GameResult[], school: number): [numbe
 }
 
 /**
- * Plays out the current week. `mine` is the result of the coach's own game when he played it;
- * leave it out to have the AI coach his team too. Returns a new dynasty; the input is not changed.
+ * Plays out the current week. `mine` is the result of the coach's own game when he played it, and `mineBox`
+ * its box score; leave them out to have the AI coach his team too. Every game's numbers go into the season
+ * statistics and are checked against the record books. Returns a new dynasty; the input is not changed.
  */
-export function playWeek(d: Dynasty, mine?: GameResult): Dynasty {
+export function playWeek(d: Dynasty, mine?: GameResult, mineBox?: BoxScore): Dynasty {
   if (d.week > REGULAR_WEEKS) throw new Error('the season is over');
   const own = userGame(d);
   if (mine && (!own || mine.home !== own[0] || mine.away !== own[1] || mine.week !== d.week)) throw new Error('that result is not for this week\'s game');
   let next = d;
-  for (const [h, a] of weekGames(d)) next = addResult(next, mine && own && h === own[0] && a === own[1] ? mine : simulate(d, d.week, h, a));
+  let stats = statsOf(d);
+  const names = nameBook(d);
+  for (const [h, a] of weekGames(d)) {
+    const isMine = !!(mine && own && h === own[0] && a === own[1]);
+    const played = isMine ? null : simulateWithBox(d, d.week, h, a);
+    next = addResult(next, isMine ? mine! : played!.result);
+    const box = isMine ? mineBox : played!.box;
+    if (box) stats = recordGame(stats, box, [h, a], [d.league.schools[h].name, d.league.schools[a].name], names, d.year, d.week).stats;
+  }
+  // When the title game is over the season and career records are settled. The season's numbers stay on show until next year starts.
+  if (d.week === REGULAR_WEEKS) {
+    const settled = closeSeason(stats, (id) => schoolOfPlayer(d, id), names, (id) => returning(d, id), d.year).stats;
+    stats = { ...stats, books: settled.books, news: settled.news };
+  }
+  next = { ...next, stats };
   // The junior varsity plays the same schedule through the regular season.
   if (d.week < REGULAR_WEEKS) next = { ...next, jv: [...(d.jv ?? []), ...weekGames(d).map(([h, a]) => simulateJv(d, d.week, h, a))] };
   return closeWeek(next);
@@ -442,6 +487,8 @@ export function nextSeason(d: Dynasty): Dynasty {
   });
   // Seniors graduate, everyone moves up a class and a new freshman class arrives. Call-ups who earned a place no longer need the call.
   const moved: Dynasty = { ...d, league: { ...d.league, schools }, year: d.year + 1, week: 0, results: [], jv: [] };
+  // Last season's numbers go into each returning player's career line.
+  if (d.stats) moved.stats = closeSeason(d.stats, (id) => schoolOfPlayer(d, id), nameBook(d), (id) => returning(d, id), d.year).stats;
   return { ...moved, callUps: cleanCallUps(moved.league.seed, schools[d.user], moved.year, d.callUps ?? []) };
 }
 
@@ -487,6 +534,7 @@ export function loadDynasty(raw: unknown): Dynasty | null {
     return {
       v: 1, league: { seed: base.seed, state: base.state, schools }, user: d.user, year: d.year, week: d.week, results, setup: cleanSetup(d.setup), history: d.history.filter((h) => h && Number.isInteger(h.year) && Array.isArray(h.record)),
       callUps: cleanCallUps(base.seed, schools[d.user], d.year, d.callUps), jv,
+      ...(d.stats ? { stats: cleanStatBook(d.stats, schools.map((s) => historicBook(base.seed, s.id, s.prestige, cleanSetup(d.setup).quarterMinutes))) } : {}),
     };
   } catch {
     return null;
@@ -494,3 +542,5 @@ export function loadDynasty(raw: unknown): Dynasty | null {
 }
 
 export { CLASS_NAMES, CLASS_SHORT, MAX_CALL_UPS, enrolledIn, type ProgramPlayer } from './program';
+export * from './stats';
+export * from './records';

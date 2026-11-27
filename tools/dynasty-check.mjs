@@ -86,12 +86,32 @@ try {
   }
   check('the coached game reaches the final whistle', (await st()).mode === 'final');
   check('the league catches up after the game', await waitFor(async () => (await st()).dynasty.week === 1));
+  check('the final screen names each team\'s leaders', /carries for/.test(await text('#finalLeaders')) && /tackles/.test(await text('#finalLeaders')));
   check('the button returns to the dynasty', (await text('#again')) === 'Back to the dynasty');
   await page.click('#again');
   await sleep(150);
   s = await st();
   check('week 1 has four results recorded', s.dynasty.results === 4 && (await text('#dyBody')).includes('Week 1 results'));
   await page.screenshot({ path: `${out}/dynasty-standings.png` });
+
+  // Statistics and the record book.
+  await page.click('#dyStats');
+  await sleep(100);
+  let body = await text('#dyBody');
+  check('statistics show my team and the league leaders after one week', body.includes('Passing') && body.includes('Rushing yards') && body.includes('leaders') && (await page.$$('#dyBody table')).length >= 8 && (await page.$$('#dyBody tr.me')).length >= 0);
+  await page.screenshot({ path: `${out}/dynasty-stats.png`, fullPage: true });
+  await page.click('#stRecords');
+  await sleep(100);
+  body = await text('#dyBody');
+  check('the record book lists ten records for a game, a season and a career, with holders and years', (await page.$$('#dyBody .recbook tr')).length === 12 && body.includes('Rushing yards') && /19[7-9]\d|20[0-2]\d/.test(body));
+  await page.screenshot({ path: `${out}/dynasty-records.png`, fullPage: true });
+  const other = await page.$eval('#rcSchool', (e) => [...e.options].find((o) => !o.selected).value);
+  const mineBook = await text('#dyBody .recbook');
+  await page.select('#rcSchool', other);
+  await sleep(80);
+  check('another school has its own book', (await text('#dyBody .recbook')) !== mineBook);
+  await page.click('#pgBack');
+  await sleep(100);
 
   // The assistant coaches the rest of the season.
   for (let w = 1; w <= 7; w++) {

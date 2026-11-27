@@ -2,6 +2,41 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.14.0",
+      "date": "2026-11-26",
+      "title": "Statistics, school records and a new look",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Statistics. Every game in a dynasty now keeps a box score for every player at all eight schools: passing, rushing, receiving, tackles, sacks, interceptions and kicking. The Statistics page shows your team's leaders and the league leaders."
+        },
+        {
+          "tag": "new",
+          "text": "School record books. Each school has records for a single game, a season and a career, and the book is already full when you arrive: fifty years of names and numbers. Beat one and your player's name goes in."
+        },
+        {
+          "tag": "new",
+          "text": "Record watch. During your own games the bench tells you when a player is closing in on a school record, and the moment one falls it is called on the field and by the announcer. Season and career records are settled when the season ends."
+        },
+        {
+          "tag": "new",
+          "text": "Records that fall anywhere in the league show up on the dynasty screen, and you can open any school's record book."
+        },
+        {
+          "tag": "new",
+          "text": "The final screen of every game names each team's leaders: passer, runner, receiver and tackler."
+        },
+        {
+          "tag": "improved",
+          "text": "A new look everywhere, taken from the scoreboard and start-screen art: pixel lettering, gold frames for the home side and blue for the visitors, and larger text on the call sheet, the dynasty pages and the menus."
+        },
+        {
+          "tag": "note",
+          "text": "Statistics and records are in solo dynasty. A dynasty saved before this update starts its statistics from its next game."
+        }
+      ]
+    },
+    {
       "version": "0.13.0",
       "date": "2026-11-26",
       "title": "A real main menu, and schools that are hiring",
@@ -602,9 +637,9 @@
       "text": "Rain, wind, snow and heat. Playable now."
     },
     {
-      "status": "planned",
-      "title": "Complete statistics",
-      "text": "Full box scores for teams and players, checked so every number adds up."
+      "status": "testing",
+      "title": "Statistics and school records",
+      "text": "Box scores for every player, season and career numbers, league leaders, and a record book for every school with records that can be broken. Playable now in solo dynasty."
     },
     {
       "status": "testing",
@@ -657,9 +692,9 @@
       "text": "Chants, a pep band with a fight song for every school, a PA announcer, and half-time shows with homecoming and senior night. Playable now."
     },
     {
-      "status": "next",
+      "status": "testing",
       "title": "A cleaner look",
-      "text": "The main menu is done. Still to come: the same pass over the game screen, the playbook and the dynasty pages."
+      "text": "One look across the menu, the game screen, the call sheet and the dynasty pages, taken from the supplied art. Playable now."
     },
     {
       "status": "planned",

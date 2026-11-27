@@ -7,13 +7,13 @@ import {
 import { fieldGoalDistance } from '@fnd/football-ai';
 import { AutoCoach, Game, gameHash, replayGame, simulateGame, summarize, type LoggedDecision, type MoveKind, type PlaySim, type ReturnSim } from '@fnd/match-sim';
 import { leagueTeams, type Career, type RoomView } from '@fnd/online';
-import { occasionFor, type Occasion } from '@fnd/league';
+import { boxScore, occasionFor, type Occasion, type StatLine } from '@fnd/league';
 import { FIGHT_SONG_BEAT, chantFor, fightSong, halftimeShow, type CrowdInput, type Note } from './atmosphere';
 import { OnlineError, online } from './net/online';
 import { cutinFor } from './cutins';
 import menuArtUrl from './assets/menu-stadium.webp';
 import pressStartUrl from '@fontsource/press-start-2p/files/press-start-2p-latin-400-normal.woff2';
-import pixelifyUrl from '@fontsource/pixelify-sans/files/pixelify-sans-latin-400-normal.woff2';
+import jerseyUrl from '@fontsource/jersey-15/files/jersey-15-latin-400-normal.woff2';
 import { DynastyScreen, type DynastyGame } from './dynasty';
 import { SharedLeagueScreen } from './shared-league';
 import { openDefenseDesigner, openOffenseDesigner, practiceTeams, type DesignerHost } from './designer';
@@ -810,6 +810,16 @@ function showResult(e: PlayEvent | null): void {
   banner.innerHTML = `${e ? e.text : 'Time runs out.'}<small>${period}${situationText()}</small>`
     + (show ? `<div class="show"><b>${show.title}</b>${show.lines.map((l) => `<span>${l}</span>`).join('')}</div>` : '');
   atmosphereAfterPlay(e, half);
+  // In a dynasty the record book is open on the bench: say so the moment a school record falls or comes within reach.
+  let recordCalls = 0;
+  if (dynastyGame && !turbo && e) {
+    const calls = dynasty.watch(dynastyGame, boxScore(game.events));
+    recordCalls = calls.length;
+    if (calls.length) {
+      banner.innerHTML += calls.map((c) => `<div class="rec">${c}</div>`).join('');
+      if (calls[0].startsWith('School record') && !quiet()) announce(calls[0]);
+    }
+  }
   if (e) {
     if (e.flags.touchdown || e.flags.defensiveTouchdown || ((e.type === 'fieldGoal' || e.type === 'pat' || e.type === 'twoPoint') && e.flags.good)) sfx.score();
     else if (e.flags.interception || e.flags.fumbleLost || e.flags.safety || e.flags.turnoverOnDowns) sfx.bad();
@@ -817,7 +827,7 @@ function showResult(e: PlayEvent | null): void {
     else if (e.flags.incomplete || e.type === 'punt' || e.type === 'kickoff' || e.type === 'kneel' || e.type === 'penalty') sfx.whistle();
     else sfx.tackle();
   }
-  const base = show ? 7000 : cut ? 3000 : big || period ? 2600 : e?.type === 'kneel' ? 1000 : 1700;
+  const base = show ? 7000 : recordCalls ? 4500 : cut ? 3000 : big || period ? 2600 : e?.type === 'kneel' ? 1000 : 1700;
   timer = turbo ? 40 : speed === 0 ? Math.min(base, 900) : speed === 1 ? base : Math.round(base * 0.5);
   mode = 'post';
 }
@@ -1422,6 +1432,25 @@ function showFinal(): void {
   $('finalMeta').textContent = `Seed ${seed} · ${game.log.length} decisions · game fingerprint ${gameHash(game)}${official}`;
   if (net) window.clearInterval(net.timer);
   $('finalCareer').textContent = '';
+  $('finalRecords').innerHTML = '';
+  // The night's leaders for each team, from the box score.
+  const box = boxScore(game.events);
+  const leaders = ([0, 1] as const).map((t) => {
+    const lines = Object.entries(box.players[t]);
+    const name = (id: string): string => teams[t].roster.find((p) => p.id === id)?.name ?? '';
+    const best = (key: keyof StatLine): [string, StatLine] | null => lines.filter(([, l]) => l[key] > 0).sort((x, y) => y[1][key] - x[1][key])[0] ?? null;
+    const parts: string[] = [];
+    const p = best('passAtt');
+    if (p) parts.push(`${name(p[0])} ${p[1].passComp}/${p[1].passAtt} for ${p[1].passYds}${p[1].passTd ? `, ${p[1].passTd} TD` : ''}${p[1].passInt ? `, ${p[1].passInt} int` : ''}`);
+    const r = best('rushYds');
+    if (r) parts.push(`${name(r[0])} ${r[1].rushAtt} carries for ${r[1].rushYds}${r[1].rushTd ? `, ${r[1].rushTd} TD` : ''}`);
+    const c = best('recYds');
+    if (c) parts.push(`${name(c[0])} ${c[1].rec} catches for ${c[1].recYds}${c[1].recTd ? `, ${c[1].recTd} TD` : ''}`);
+    const d = best('tackles');
+    if (d) parts.push(`${name(d[0])} ${d[1].tackles} tackles${d[1].sacks ? `, ${d[1].sacks} ${d[1].sacks === 1 ? 'sack' : 'sacks'}` : ''}${d[1].ints ? `, ${d[1].ints} int` : ''}`);
+    return `<div><b>${teams[t].abbr}</b> ${parts.join(' · ')}</div>`;
+  });
+  $('finalLeaders').innerHTML = leaders.join('');
   $('again').textContent = dynastyGame ? 'Back to the dynasty' : net?.view.league ? 'Back to the league' : 'New game';
   leagueReturn = net?.view.league?.code ?? null;
   if (net) void loadCareer(true);
@@ -1433,7 +1462,10 @@ function showFinal(): void {
     ($('again') as HTMLButtonElement).disabled = true;
     // Let the final score paint before the other games are worked out.
     window.setTimeout(() => {
-      $('finalCareer').textContent = dynasty.finishGame(g, score).text;
+      const done = dynasty.finishGame(g, score, boxScore(game.events));
+      $('finalCareer').textContent = done.text;
+      $('finalRecords').innerHTML = done.records.map((r) => `<div>${r}</div>`).join('');
+      if (done.records.length && !quiet()) announce(`A new school record. ${done.records[0]}`);
       ($('again') as HTMLButtonElement).disabled = false;
     }, 60);
   }
@@ -1795,8 +1827,8 @@ voice.onChange(renderVoice);
 ($('setupLogo') as HTMLImageElement).src = logoUrl;
 ($('menuArt') as HTMLImageElement).src = menuArtUrl;
 // Pixel faces for the menu, carried inside the page like everything else.
-for (const [family, url] of [['Press Start 2P', pressStartUrl], ['Pixelify Sans', pixelifyUrl]] as const) {
-  try { void new FontFace(family, `url(${url}) format('woff2')`).load().then((f) => document.fonts.add(f)); } catch { /* the fallback face is fine */ }
+for (const [family, url, weight] of [['Press Start 2P', pressStartUrl, '400'], ['Jersey 15', jerseyUrl, '400']] as const) {
+  try { void new FontFace(family, `url(${url}) format('woff2')`, { weight }).load().then((f) => document.fonts.add(f)); } catch { /* the fallback face is fine */ }
 }
 $('version').textContent = `v${devnotes.notes[0].version} · ${devnotes.notes[0].title}`;
 $('title').addEventListener('click', () => showSetup(true, 'menu'));
