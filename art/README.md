@@ -17,3 +17,13 @@ logo in `cutins-events.jpg`, which must be cropped out or repainted before that 
 
 All sheets are JPEG on a grey background with uneven spacing, so each sprite has to be cut out and cleaned by hand
 (or re-exported as PNG with transparency on a fixed grid) before use.
+
+## Second set (`source/sheets2`)
+
+Supplied 27 November 2026. Cut by `tools/cut-sprites.py`.
+
+- **In the game:** `01_tecmo_players_spritesheet.png` (the red-and-silver row, repainted per school), the bleachers
+  and press box from `05_high_school_crowd_spritesheet.png`, and the wall ads from `09_sponsor_banners.jpg`.
+- **Not yet used:** referees, cheerleaders, sideline and field props, menu assets, stadium signs.
+- **Left out on purpose:** the "Welcome to Friday Night Lights" sign (the title of a book, film and series), the
+  mascot-specific signs (schools are generated), and the cooler with a single-letter logo.

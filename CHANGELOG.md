@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.16.0 — 2026-11-27
+
+Players and stadium from the supplied sheets (`art/source/sheets2`).
+
+### Added
+- `tools/cut-sprites.py` cuts the sheets into `players-base.png`, `players-mask.png` (which pixels are jersey,
+  helmet or pants, and how light) and `stadium.png`, and writes `apps/client/src/art-atlas.ts`.
+- `FieldScene` draws at two screen pixels per world unit (960 x 620), repaints the player frames per school from
+  the mask, and adds stands and sponsors' boards above the field. Client only; the simulation is untouched.
+- `tools/field-shot.mjs`.
+
 ## 0.15.0 — 2026-11-27
 
 Season awards.

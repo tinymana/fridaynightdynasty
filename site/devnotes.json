@@ -2,6 +2,29 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.16.0",
+      "date": "2026-11-27",
+      "title": "New players and a real stadium",
+      "items": [
+        {
+          "tag": "new",
+          "text": "New players on the field, cut from the new sprite sheet and repainted in each school's jersey, helmet and pants colours. They run with a four-frame stride, set in a stance before the snap and go to ground when tackled."
+        },
+        {
+          "tag": "new",
+          "text": "A stadium behind the field: bleachers full of fans, a press box at midfield, and a wall of local sponsors' boards."
+        },
+        {
+          "tag": "improved",
+          "text": "The field is drawn at twice the resolution, so sprites and boards are sharp on big screens."
+        },
+        {
+          "tag": "note",
+          "text": "Still to come from the new art: throwing, catching and kicking poses, touchdown celebrations, referees, cheerleaders, sideline benches and chain crew."
+        }
+      ]
+    },
+    {
       "version": "0.15.0",
       "date": "2026-11-27",
       "title": "Season awards",
