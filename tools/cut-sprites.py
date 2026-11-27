@@ -25,6 +25,11 @@ FRAMES = [
     ('stance0', 985 + 63, 1095), ('stance1', 1114, 1162), ('kick0', 1254, 1301), ('kick1', 1318, 1364),
 ]
 
+# Kicking-game frames from the special-teams sheet's red-and-silver row, drawn a little smaller there.
+ST_ROW = (113, 190)
+ST_SCALE = 0.45
+ST_FRAMES = [('snap', 103, 173), ('hold', 356, 435), ('punt0', 615, 668), ('punt1', 669, 723)]
+
 def classify(px, upper):
     """Returns (material, shade): 0 keep the sheet's colour, 1 jersey, 2 helmet, 3 pants."""
     r, g, b, a = [int(v) for v in px]
@@ -38,13 +43,15 @@ def classify(px, upper):
 
 def cut_players():
     sheet = Image.open(SRC + '01_tecmo_players_spritesheet.png').convert('RGBA')
-    base = Image.new('RGBA', (CELL_W * len(FRAMES), CELL_H), (0, 0, 0, 0))
-    mask = Image.new('RGBA', (CELL_W * len(FRAMES), CELL_H), (0, 0, 0, 0))
-    for i, (name, x0, x1) in enumerate(FRAMES):
-        fr = sheet.crop((x0, ROW[0], x1, ROW[1]))
+    st = Image.open(SRC + '14_special_teams_pack_spritesheet.png').convert('RGBA')
+    every = [(n, x0, x1, sheet, ROW, SCALE) for n, x0, x1 in FRAMES] + [(n, x0, x1, st, ST_ROW, ST_SCALE) for n, x0, x1 in ST_FRAMES]
+    base = Image.new('RGBA', (CELL_W * len(every), CELL_H), (0, 0, 0, 0))
+    mask = Image.new('RGBA', (CELL_W * len(every), CELL_H), (0, 0, 0, 0))
+    for i, (name, x0, x1, src, row, scale) in enumerate(every):
+        fr = src.crop((x0, row[0], x1, row[1]))
         box = fr.getbbox()
         fr = fr.crop(box)
-        w, h = max(1, round(fr.width * SCALE)), max(1, round(fr.height * SCALE))
+        w, h = min(CELL_W, max(1, round(fr.width * scale))), min(CELL_H, max(1, round(fr.height * scale)))
         small = fr.resize((w, h), Image.LANCZOS)
         a = np.array(small)
         a[:, :, 3] = np.where(a[:, :, 3] > 110, 255, 0)
@@ -65,7 +72,7 @@ def cut_players():
         mask.paste(Image.fromarray(m), (ox, oy))
     base.save(OUT + 'players-base.png', optimize=True)
     mask.save(OUT + 'players-mask.png', optimize=True)
-    return [f[0] for f in FRAMES]
+    return [f[0] for f in every]
 
 def boxes(im, y0, y1, min_w, min_h, bg=(58, 58, 58), tol=26):
     """Rectangles that stand out from the sheet's flat grey background between two rows."""
@@ -165,10 +172,30 @@ SIDE = [('stand0', 79, 125), ('stand1', 137, 183), ('stand2', 195, 249), ('stand
 # The chain crew, in their own colours: (name, x0, y0, x1, y1).
 CREW = [('stick', 492, 16, 549, 90), ('box1', 215, 16, 264, 90), ('box2', 215, 93, 264, 173), ('box3', 355, 16, 407, 90), ('box4', 419, 16, 475, 90)]
 
+# Cheerleaders, from the red squad's row of the cheer sheet (repainted per school): (name, x0, x1).
+CHEER_ROW = (128, 204)
+CHEER = [('pom0', 211, 272), ('pom1', 281, 343), ('wave0', 79, 122), ('wave1', 149, 192)]
+# The marching band, from the red band's row (repainted per school): (name, x0, x1).
+BAND_ROW = (114, 190)
+BAND = [('major', 106, 166), ('brass0', 290, 333), ('brass1', 344, 390), ('sousa0', 471, 517), ('sousa1', 549, 595), ('snare0', 619, 661), ('bass0', 742, 794), ('guard0', 917, 974), ('guard1', 980, 1029)]
+# The referee, in stripes: (name, x0, x1) in the first row of the referee sheet.
+REF_ROW = (14, 130)
+REFS = [('ref', 78, 137), ('refrun0', 213, 275), ('refrun1', 289, 359), ('reftd', 475, 534), ('refpoint', 639, 725), ('refflag', 1025, 1127)]
+
 def cut_sideline():
     sheet = Image.open(SRC + '18_sideline_teams_spritesheet.png').convert('RGBA')
     crew = Image.open(SRC + '20_chain_gang_spritesheet.png').convert('RGBA')
     parts = [(n, *repaintable(sheet.crop((x0, SIDE_ROW[0], x1, SIDE_ROW[1])))) for n, x0, x1 in SIDE]
+    cheer = Image.open(SRC + '06_cheerleaders_spritesheet.png').convert('RGBA')
+    parts += [(n, *repaintable(cheer.crop((x0, CHEER_ROW[0], x1, CHEER_ROW[1])))) for n, x0, x1 in CHEER]
+    band = Image.open(SRC + '16_marching_band_formations_spritesheet.png').convert('RGBA')
+    parts += [(n, *repaintable(band.crop((x0, BAND_ROW[0], x1, BAND_ROW[1])))) for n, x0, x1 in BAND]
+    refs = Image.open(SRC + '02_referees_spritesheet.png').convert('RGBA')
+    for n, x0, x1 in REFS:
+        fr = refs.crop((x0, REF_ROW[0], x1, REF_ROW[1]))
+        fr = fr.crop(fr.getbbox())
+        small = fr.resize((max(1, round(fr.width * 0.3)), max(1, round(fr.height * 0.3))), Image.LANCZOS)
+        parts.append((n, small, Image.new('RGBA', small.size, (0, 0, 0, 0))))
     for n, x0, y0, x1, y1 in CREW:
         fr = crew.crop((x0, y0, x1, y1))
         fr = fr.crop(fr.getbbox())
@@ -188,14 +215,53 @@ def cut_sideline():
     mask.save(OUT + 'sideline-mask.png', optimize=True)
     return meta
 
+# Turf wear, from the weather sheet: (name, box). Grass in the tile is keyed out so the mark can be stamped on any field.
+TURF = [('mud0', (92, 52, 167, 126)), ('mud1', (8, 132, 82, 205)), ('mud2', (187, 132, 262, 205)), ('mud3', (272, 132, 347, 205)), ('mud4', (92, 132, 167, 205)),
+        ('puddle0', (1218, 52, 1290, 126)), ('puddle1', (1297, 52, 1370, 126)), ('puddle2', (1218, 132, 1370, 205))]
+COVER = [('snow', (403, 55, 467, 100)), ('frost', (750, 52, 822, 126))]
+
+def cut_turf():
+    sheet = Image.open(SRC + '15_dynamic_weather_turf_fog_spritesheet.png').convert('RGBA')
+    parts = []
+    for name, box in TURF:
+        a = np.array(sheet.crop(box)).astype(int)
+        r, g, b = a[:, :, 0], a[:, :, 1], a[:, :, 2]
+        grass = (g > r * 1.12) & (g > b * 1.12) & (g > 70)
+        a[:, :, 3] = np.where(grass, 0, a[:, :, 3])
+        t = Image.fromarray(a.astype(np.uint8))
+        t = t.crop(t.getbbox())
+        parts.append((name, t.resize((max(1, round(t.width * 0.5)), max(1, round(t.height * 0.5))), Image.LANCZOS)))
+    for name, box in COVER:
+        t = sheet.crop((box[0] + 3, box[1] + 3, box[2] - 3, box[3] - 3))
+        parts.append((name, t.resize((32, 32), Image.LANCZOS)))
+    # A soft round blob, used to trample snow back to grass.
+    blob = Image.new('RGBA', (24, 24), (0, 0, 0, 0))
+    bd = np.zeros((24, 24, 4), dtype=np.uint8)
+    for y in range(24):
+        for x in range(24):
+            d = ((x - 11.5) ** 2 + (y - 11.5) ** 2) ** 0.5
+            if d < 11: bd[y, x] = (255, 255, 255, 255 if d < 8 else int(255 * (11 - d) / 3))
+    parts.append(('blob', Image.fromarray(bd)))
+    H = max(t.height for _, t in parts)
+    W = sum(t.width + 1 for _, t in parts)
+    strip = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    meta = {}
+    x = 0
+    for name, t in parts:
+        strip.paste(t, (x, 0)); meta[name] = [x, 0, t.width, t.height]; x += t.width + 1
+    strip.save(OUT + 'turf.png', optimize=True)
+    return meta
+
 if __name__ == '__main__':
     names = cut_players()
     meta = cut_stadium()
     side = cut_sideline()
+    turf = cut_turf()
     with open('apps/client/src/art-atlas.ts', 'w') as f:
         f.write('// Written by tools/cut-sprites.py. Do not edit by hand.\n')
         f.write(f'export const PLAYER_CELL = {{ w: {CELL_W}, h: {CELL_H} }};\n')
         f.write(f'export const PLAYER_FRAMES = {json.dumps(names)} as const;\n')
         f.write(f'export const STADIUM = {json.dumps(meta)};\n')
         f.write(f'export const SIDELINE: Record<string, number[]> = {json.dumps(side)};\n')
+        f.write(f'export const TURF: Record<string, number[]> = {json.dumps(turf)};\n')
     print(len(names), 'player frames;', len(meta['ads']), 'sponsor boards;', len(meta['stands']), 'stands')

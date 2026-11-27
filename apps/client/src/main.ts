@@ -97,7 +97,9 @@ let marks: { los: number; toGain: number } | null = null;
 /** Poses for the drawing: who threw the ball and when, who is fending a tackler off, and which team is celebrating. */
 let thrower = -1;
 let armUntil = new Map<unknown, number>();
+let spinUntil = new Map<unknown, number>();
 let cheerTeam: 0 | 1 | null = null;
+let official: 'td' | 'point' | 'flag' | null = null;
 let kick: KickAnim | null = null;
 /** A kick, punt or turnover being run back: the real return, replayed from the game. */
 let viewReturn: { sim: ReturnSim; frame: 0 | 1; then: (() => void) | null; hold: number } | null = null;
@@ -246,7 +248,7 @@ function startReturn(then: () => void): void {
   acc = 0;
 }
 
-const MOVE_WORDS: Record<MoveKind, string> = { stiffArm: 'STIFF ARM!', truck: 'RUNS HIM OVER!', juke: 'JUKE!', spin: 'SPIN MOVE!', dive: 'DIVES AHEAD!' };
+const MOVE_WORDS: Record<MoveKind, string> = { stiffArm: 'STIFF ARM!', truck: 'TRUCKED!', juke: 'JUKE!', spin: 'SPIN!', dive: 'DIVES!' };
 const movesShown = new WeakMap<object, number>();
 let moveTimer = 0;
 
@@ -262,13 +264,16 @@ function showMoves(dt: number): void {
   const m = sim.moves[sim.moves.length - 1];
   // A stiff arm or a truck is drawn as one for the next half second.
   if (m.kind === 'stiffArm' || m.kind === 'truck') armUntil.set(m.carrier, frame + 30);
-  el.textContent = `${MOVE_WORDS[m.kind]} #${m.carrier.number}`;
-  el.classList.remove('hidden');
-  // Restart the pop.
-  el.style.animation = 'none';
-  void el.offsetWidth;
-  el.style.animation = '';
-  moveTimer = 750;
+  // A spin or a juke turns the runner round for a moment.
+  if (m.kind === 'spin') spinUntil.set(m.carrier, frame + 24);
+  if (m.kind === 'juke') spinUntil.set(m.carrier, frame + 8);
+  // A comic-book burst over the runner: the word, his number, a colour for each move. Rebuilding it restarts the pop.
+  el.innerHTML = `<span class="burst"><b>${MOVE_WORDS[m.kind]}</b><small>#${m.carrier.number}</small></span>`;
+  el.className = `k-${m.kind}`;
+  const at = scene.carrierAt();
+  el.style.left = `${Math.round(Math.max(0.14, Math.min(0.86, at.x)) * 100)}%`;
+  el.style.top = `${Math.round(Math.max(0.3, Math.min(0.8, at.y - 0.13)) * 100)}%`;
+  moveTimer = 950;
   sfx.tackle();
 }
 
@@ -281,7 +286,18 @@ function kickPose(players: ViewPlayer[], k: KickAnim, f: number): void {
     const d = Math.abs(p.x - k.x0) + Math.abs(p.y - k.y0);
     if (p.team === k.kicking && d < dist) { dist = d; best = i; }
   });
-  if (best >= 0 && players[best]) players[best] = { ...players[best], pose: f < 0.12 ? 'kick0' : 'kick1', moving: false };
+  if (best < 0 || !players[best]) return;
+  const punt = k.e.type === 'punt';
+  players[best] = { ...players[best], pose: punt ? (f < 0.12 ? 'punt0' : 'punt1') : f < 0.12 ? 'kick0' : 'kick1', moving: false };
+  if (k.e.type !== 'fieldGoal' && k.e.type !== 'pat') return;
+  // On a place kick the next man over is the holder, down on one knee with the ball.
+  let holder = -1;
+  dist = 1e9;
+  k.start.forEach((p, i) => {
+    const d = Math.abs(p.x - k.x0) + Math.abs(p.y - k.y0);
+    if (i !== best && p.team === k.kicking && d < dist) { dist = d; holder = i; }
+  });
+  if (holder >= 0 && players[holder]) players[holder] = { ...players[holder], pose: 'hold', moving: false };
 }
 
 function buildView(): FieldView {
@@ -290,7 +306,7 @@ function buildView(): FieldView {
     const players: ViewPlayer[] = sim.players.map((p) => {
       const [x, y] = abs(side, p.x / U, p.y / U);
       const fending = p.idx === 0 && (armUntil.get(p.player) ?? 0) > frame;
-      return { team: p.side === 0 ? other(side) : side, x, y, moving: p.x !== p.px || p.y !== p.py, down: p.idx === 0 && sim.done && !sim.result?.touchdown, hasBall: p.idx === 0, pose: fending ? (frame % 12 < 6 ? 'arm0' : 'arm1') : undefined };
+      return { team: p.side === 0 ? other(side) : side, x, y, moving: p.x !== p.px || p.y !== p.py, down: p.idx === 0 && sim.done && !sim.result?.touchdown, hasBall: p.idx === 0, pose: fending ? (frame % 12 < 6 ? 'arm0' : 'arm1') : undefined, spin: p.idx === 0 && (spinUntil.get(p.player) ?? 0) > frame };
     });
     const c = players[0];
     return { players, ball: { x: c.x, y: c.y, z: 0, visible: false }, los: null, toGain: null, focusX: c.x, frame };
@@ -311,11 +327,23 @@ function buildView(): FieldView {
       else if (b.state === 'air' && b.t < 16 && p.idx === thrower) pose = 'throw1';
       else if (hasBall && !moving && mode === 'live' && sim.tick > 12) pose = 'throw0';
       else if (hasBall && (armUntil.get(p.player) ?? 0) > frame) pose = frame % 12 < 6 ? 'arm0' : 'arm1';
-      return { team, x, y, moving, down, hasBall, pose };
+      // A man who is in the play and not running is blocking or being blocked: hands up, not down in a stance.
+      else if (!moving && !hasBall && !down && mode === 'live' && sim.tick > 8) pose = 'ready';
+      return { team, x, y, moving, down, hasBall, pose, spin: hasBall && (spinUntil.get(p.player) ?? 0) > frame };
     });
+    // With the ball nearly there, the nearest receiver turns and puts his hands up for it.
+    if (b.state === 'air' && b.T > 0 && b.t / b.T > 0.7) {
+      let best = -1;
+      let dist = U * 4;
+      sim.players.forEach((p, i) => {
+        const d = Math.abs(p.x - b.x) + Math.abs(p.y - b.y);
+        if (p.side === 0 && p.idx !== thrower && d < dist) { dist = d; best = i; }
+      });
+      if (best >= 0) players[best] = { ...players[best], pose: 'catch' };
+    }
     const [bx, by] = abs(off, b.x / U, b.y / U);
     const z = b.state === 'air' && b.T > 0 ? Math.round(4 * Math.min(16, b.T * 0.3) * (b.t / b.T) * (1 - b.t / b.T)) : 0;
-    return { players, ball: { x: bx, y: by, z, visible: b.state !== 'held' || mode === 'presnap' }, los: marks?.los ?? null, toGain: marks?.toGain ?? null, focusX: bx, frame, down: (game as Game | undefined)?.state.phase === 'scrimmage' ? game.state.down : 1 };
+    return { players, ball: { x: bx, y: by, z, visible: b.state !== 'held' || mode === 'presnap' }, los: marks?.los ?? null, toGain: marks?.toGain ?? null, focusX: bx, frame, down: (game as Game | undefined)?.state.phase === 'scrimmage' ? game.state.down : 1, official: mode === 'post' ? official : null, cheering: mode === 'post' ? cheerTeam : null };
   }
   if (kick) {
     const k = kick;
@@ -495,6 +523,7 @@ function startPractice(make: (seed: number) => PlaySim, label: string): void {
   practiceRun = { make, n: 0, pause: 0, told: false };
   mode = 'menu';
   scene.setTeams(practiceTeams);
+  scene.resetTurf('grass');
   $('game').classList.add('practice');
   show('game');
   $('panel').innerHTML = `<div class="wide"><button class="act" id="prAgain">Run it again</button><button class="act" id="prBack">Back to the designer</button></div><div class="waiting">${label.replace(/[&<>]/g, '')} on the practice field</div>`;
@@ -748,8 +777,41 @@ function ballOn(): string {
   return s.yardLine < 50 ? `${teams[s.possession].abbr} ${s.yardLine}` : `${teams[other(s.possession)].abbr} ${100 - s.yardLine}`;
 }
 
+/**
+ * What a play leaves on the field. On a dry night the turf scuffs along the line and where the runner went down;
+ * in the rain it turns to mud and puddles; in snow the cover is trampled off. Worked out from the play alone, so
+ * a rejoined or reloaded game shows the same field.
+ */
+let wornTo = -1;
+function wearFrom(e: PlayEvent): void {
+  if ((e.type !== 'run' && e.type !== 'pass') || e.seq <= wornTo) return;
+  wornTo = e.seq;
+  const w = game.setup.weather;
+  const kind = w === 'rain' ? 'mud' : 'scuff';
+  // A cheap, steady scatter from the play's own number.
+  const r = (k: number): number => (((e.seq * 2654435761 + k * 40503) >>> 0) % 1000) / 1000;
+  const [lx] = abs(e.offense, e.yardLine, CY_YD);
+  const lateral = CY_YD + (r(1) - 0.5) * 14;
+  const marks = w === 'rain' ? 3 : w === 'snow' ? 4 : 2;
+  for (let i = 0; i < marks; i++) scene.addWear(lx + (r(10 + i) - 0.5) * 1.6, lateral + (i - (marks - 1) / 2) * 2.4 + (r(20 + i) - 0.5), kind, e.seq + i);
+  if (!e.flags.incomplete) {
+    const [ex] = abs(e.offense, Math.max(1, Math.min(99, e.yardLine + e.yards)), CY_YD);
+    scene.addWear(ex, lateral + (r(2) - 0.5) * 20, kind, e.seq + 7);
+  }
+  if (w === 'rain' && e.seq % 5 === 0) scene.addWear(lx + (r(3) - 0.5) * 12, CY_YD + (r(4) - 0.5) * 34, 'puddle', e.seq);
+}
+
+/** Lays the field for this game's weather and marks it with every play already run. */
+function startTurf(): void {
+  const w = game.setup.weather;
+  scene.resetTurf(w === 'snow' ? 'snow' : 'grass');
+  wornTo = -1;
+  for (const e of game.events) wearFrom(e);
+}
+
 /** Sets up the stands and the band for a new game. Team 0 is at home. */
 function startAtmosphere(): void {
+  startTurf();
   const lg = net?.view.league;
   occasion = dynastyGame ? occasionFor(dynastyGame.week, dynastyGame.home) : lg ? occasionFor(lg.week, lg.home) : null;
   let h = 0;
@@ -768,6 +830,7 @@ const quiet = (): boolean => speed === 0 || turbo;
 
 /** Before each snap: sometimes the stands start a chant. */
 function atmosphereBeforeSnap(): void {
+  scene.showBand(false);
   const s = game.state;
   if (s.phase === 'final') return;
   if (quiet() || s.phase !== 'scrimmage') return;
@@ -776,6 +839,63 @@ function atmosphereBeforeSnap(): void {
   if (chant && now >= chantUntil) {
     crowd[chant]();
     chantUntil = now + 9000;
+  }
+}
+
+/** Floats a small emoji up from a spot on the field view. `x` and `y` are fractions of the view. */
+function emote(face: string, x: number, y: number, delay = 0): void {
+  window.setTimeout(() => {
+    const el = document.createElement('span');
+    el.className = 'emote';
+    el.textContent = face;
+    el.setAttribute('aria-hidden', 'true');
+    el.style.left = `${Math.round(Math.max(0.05, Math.min(0.95, x)) * 100)}%`;
+    el.style.top = `${Math.round(Math.max(0.2, Math.min(0.94, y)) * 100)}%`;
+    $('stage').appendChild(el);
+    window.setTimeout(() => el.remove(), 1600);
+  }, delay);
+}
+/** Where each team's bench reads on screen: home on the left, visitors on the right. */
+const benchAt = (team: 0 | 1): [number, number] => [team === 0 ? 0.24 : 0.76, 0.9];
+
+/**
+ * Feelings. Now and then a player or a bench shows how the last play felt: joy at a touchdown, despair at a
+ * turnover, a flexed arm after a sack. Chosen from the play's own number, so it is not on every snap.
+ */
+function feelings(e: PlayEvent): void {
+  const f = e.flags;
+  const at = scene.carrierAt();
+  const sometimes = (n: number): boolean => e.seq % n === 0;
+  const off = e.offense;
+  const def = other(off);
+  const pick = (faces: string[]): string => faces[e.seq % faces.length];
+  if (f.touchdown || f.defensiveTouchdown) {
+    const scorer = f.defensiveTouchdown ? def : off;
+    emote(pick(['🎉', '🙌', '🔥']), at.x, at.y - 0.08);
+    emote(pick(['🙌', '🥳', '💪']), ...benchAt(scorer), 250);
+    emote(pick(['😞', '😩', '🤦']), ...benchAt(other(scorer)), 400);
+  } else if (f.interception || f.fumbleLost) {
+    emote(pick(['😱', '😬']), at.x, at.y - 0.08);
+    emote(pick(['😤', '💪', '🙌']), ...benchAt(def), 250);
+    emote(pick(['🤦', '😖']), ...benchAt(off), 400);
+  } else if (f.sack) {
+    emote('💪', at.x, at.y - 0.08);
+    if (sometimes(2)) emote('😖', ...benchAt(off), 300);
+  } else if (e.type === 'penalty') {
+    if (sometimes(2)) emote('🤦', ...benchAt(f.foul === 'offside' || f.foul === 'interference' ? def : off));
+  } else if (e.type === 'fieldGoal' || e.type === 'pat') {
+    if (!f.good) emote(pick(['😬', '😩']), ...benchAt(off));
+    else if (sometimes(2)) emote('👍', ...benchAt(off));
+  } else if (f.turnoverOnDowns) {
+    emote('🧱', at.x, at.y - 0.08);
+    emote('😤', ...benchAt(def), 250);
+  } else if ((e.type === 'run' || e.type === 'pass') && e.yards >= 15) {
+    emote(pick(['🔥', '💨', '😎']), at.x, at.y - 0.08);
+    if (sometimes(2)) emote('😮', ...benchAt(def), 300);
+  } else if ((e.type === 'run' || e.type === 'pass') && e.yards <= -3 && sometimes(2)) {
+    emote('😵', at.x, at.y - 0.08);
+  } else if (f.incomplete && e.down >= 3 && sometimes(2)) {
+    emote('😮‍💨', ...benchAt(def));
   }
 }
 
@@ -810,6 +930,7 @@ function showResult(e: PlayEvent | null): void {
   updateBug();
   // The team that just scored a touchdown throws its arms up.
   cheerTeam = e && (e.flags.touchdown || e.flags.defensiveTouchdown) ? (e.flags.defensiveTouchdown ? other(e.offense) : e.offense) : null;
+  official = !e ? null : e.type === 'penalty' ? 'flag' : cheerTeam !== null ? 'td' : e.flags.firstDown ? 'point' : null;
   // A call sheet left up by a play that never ran (the clock ran out first) comes down.
   if ($('panel').querySelector('[data-act]')) setPanelWaiting('');
   setStaticIfIdle();
@@ -838,6 +959,14 @@ function showResult(e: PlayEvent | null): void {
   banner.innerHTML = `${e ? e.text : 'Time runs out.'}<small>${period}${situationText()}</small>`
     + (show ? `<div class="show"><b>${show.title}</b>${show.lines.map((l) => `<span>${l}</span>`).join('')}</div>` : '');
   atmosphereAfterPlay(e, half);
+  if (e && !quiet()) feelings(e);
+  // At half time the home band takes the field.
+  if (show) {
+    scene.showBand(true);
+    // The panel gives way after a moment so the band can be seen.
+    window.setTimeout(() => { if (mode === 'post') $('cutin').classList.add('hidden'); }, 2200);
+  }
+  if (e) wearFrom(e);
   // In a dynasty the record book is open on the bench: say so the moment a school record falls or comes within reach.
   let recordCalls = 0;
   if (dynastyGame && !turbo && e) {
@@ -1994,6 +2123,8 @@ window.addEventListener('keydown', (ev) => {
 
 /** Debug hooks used by the browser checks. */
 (window as unknown as Record<string, unknown>).__fnd = {
+  /** Sends the band out or brings it off. For the automated checks. */
+  band: (on: boolean) => scene.showBand(on),
   /** Where every drawn player is right now, in field yards. For the automated checks. */
   view: () => (game && mode !== 'menu' ? buildView().players.map((p) => ({ team: p.team, x: p.x, y: p.y })) : null),
   selftest: (s: number): string => gameHash(simulateGame(s, exhibitionTeams(s))),
