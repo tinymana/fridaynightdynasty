@@ -95,14 +95,17 @@
   #phaser, #phaser canvas { width: 100% !important; height: 100% !important; display: block; image-rendering: auto; }
   #banner { position: absolute; left: 50%; bottom: 6%; transform: translateX(-50%); max-width: 92%; background: rgba(8, 9, 20, 0.9); border: 2px solid var(--accent); border-radius: 4px; padding: 8px 14px; font-size: 14px; text-align: center; line-height: 1.35; }
   #wx { position: absolute; inset: 0; pointer-events: none; }
-  #wx.rain { background-image: repeating-linear-gradient(105deg, transparent 0 14px, rgba(190, 215, 255, 0.42) 14px 16px, transparent 16px 31px); background-size: 62px 120px; animation: wx-rain 0.45s linear infinite; }
-  #wx.snow { background-image: radial-gradient(rgba(255, 255, 255, 0.85) 1.6px, transparent 2px), radial-gradient(rgba(255, 255, 255, 0.6) 1.2px, transparent 1.6px); background-size: 46px 46px, 30px 30px; background-position: 0 0, 14px 9px; animation: wx-snow 3.2s linear infinite; }
-  #wx.wind { background-image: repeating-linear-gradient(0deg, transparent 0 70px, rgba(255, 255, 255, 0.1) 70px 71px, transparent 71px 150px); background-size: 300px 150px; animation: wx-wind 0.9s linear infinite; }
+  #wx { background-repeat: repeat; image-rendering: pixelated; }
+  #wx::after { content: ""; position: absolute; inset: 0; background-image: var(--mist, none); background-size: 640px 200px; background-repeat: repeat; opacity: 0.35; animation: wx-mist 26s linear infinite; }
+  #wx.rain { background-size: 404px 146px; opacity: 0.4; animation: wx-rain 2.8s linear infinite; }
+  #wx.snow { background-size: 590px 146px; opacity: 0.85; animation: wx-snow 5s linear infinite; }
+  #wx.wind { background-size: 405px 204px; animation: wx-wind 3s linear infinite; }
   #wx.heat { background: linear-gradient(rgba(255, 170, 60, 0.1), rgba(255, 170, 60, 0)); }
-  @keyframes wx-rain { to { background-position: -62px 120px; } }
-  @keyframes wx-snow { to { background-position: 46px 46px, 44px 39px; } }
-  @keyframes wx-wind { to { background-position: 300px 0; } }
-  @media (prefers-reduced-motion: reduce) { #wx { animation: none !important; } }
+  @keyframes wx-rain { to { background-position: -404px 1022px; } }
+  @keyframes wx-snow { to { background-position: 0 146px; } }
+  @keyframes wx-wind { to { background-position: 405px 204px; } }
+  @keyframes wx-mist { to { background-position: 640px 0; } }
+  @media (prefers-reduced-motion: reduce) { #wx, #wx::after { animation: none !important; } }
   #wxTag { position: absolute; left: 8px; top: 8px; background: rgba(8, 9, 20, 0.85); border: 1px solid var(--line); border-radius: 3px; padding: 2px 7px; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); }
   /* Move call-outs: just the word, big and loud, in a colour of its own, popping up over the runner. */
   #moveTag { position: absolute; left: 50%; top: 30%; width: 0; height: 0; pointer-events: none; z-index: 4; }

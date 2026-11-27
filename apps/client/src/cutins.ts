@@ -23,6 +23,15 @@ import mNoGood from './assets/cutins/m-no-good.webp';
 import mPicked from './assets/cutins/m-picked.webp';
 import mTdPylon from './assets/cutins/m-td-pylon.webp';
 import mTdSpike from './assets/cutins/m-td-spike.webp';
+import nBus from './assets/cutins/n-bus.webp';
+import nChalk from './assets/cutins/n-chalk.webp';
+import nCointoss from './assets/cutins/n-cointoss.webp';
+import nFourth from './assets/cutins/n-fourth.webp';
+import nHandshake from './assets/cutins/n-handshake.webp';
+import nHomecoming from './assets/cutins/n-homecoming.webp';
+import nLocker from './assets/cutins/n-locker.webp';
+import nOvertime from './assets/cutins/n-overtime.webp';
+import nRunthrough from './assets/cutins/n-runthrough.webp';
 
 /** Broadcast-style cut-in panels. Art by the creative director; cut from the sheets in art/source by tools/cut-art.py. */
 export interface Cutin {
@@ -40,10 +49,15 @@ export interface CutinContext {
   title?: boolean;
   /** Half time on homecoming night. */
   homecoming?: boolean;
+  /** The coach's team is at home. */
+  home?: boolean;
 }
 
+/** A point in the night that gets its own panel: before the kickoff, the half, the start of the fourth, overtime, the end. */
+export type CutinPeriod = 'opening' | 'half' | 'fourth' | 'overtime' | 'final' | null;
+
 /** The panel for what just happened, or null for an ordinary play. `n` varies the touchdown art from score to score. */
-export function cutinFor(e: PlayEvent | null, period: 'half' | 'final' | null, n: number, ctx: CutinContext = {}): Cutin | null {
+export function cutinFor(e: PlayEvent | null, period: CutinPeriod, n: number, ctx: CutinContext = {}): Cutin | null {
   if (e) {
     if (e.flags.touchdown || e.flags.defensiveTouchdown) return { url: TOUCHDOWNS[n % TOUCHDOWNS.length], alt: 'Touchdown' };
     if (e.flags.safety) return { url: safety, alt: 'Safety' };
@@ -55,7 +69,11 @@ export function cutinFor(e: PlayEvent | null, period: 'half' | 'final' | null, n
     if (e.flags.sack) return { url: sack, alt: 'Sack' };
     if (e.type === 'kickoff' && e.flags.onside) return { url: kickoff, alt: 'Onside kick' };
   }
-  if (period === 'final') return ctx.won && ctx.title ? { url: mChampions, alt: 'State champions' } : ctx.won ? { url: mCelebration, alt: 'A win' } : { url: final, alt: 'Game over' };
-  if (period === 'half') return ctx.homecoming ? { url: mCrowning, alt: 'The homecoming king and queen are crowned' } : { url: n % 2 ? halftime : mHalftimeShow, alt: 'Half time' };
+  if (period === 'final') return ctx.won && ctx.title ? { url: mChampions, alt: 'State champions' } : ctx.won ? { url: mCelebration, alt: 'A win' } : { url: n % 2 ? nHandshake : final, alt: 'Game over' };
+  if (period === 'half') return ctx.homecoming ? { url: mCrowning, alt: 'The homecoming king and queen are crowned' } : { url: [halftime, nLocker, mHalftimeShow, nChalk][n % 4], alt: 'Half time' };
+  if (period === 'fourth') return { url: nFourth, alt: 'Fourth quarter' };
+  if (period === 'overtime') return { url: n % 2 ? nCointoss : nOvertime, alt: 'Overtime' };
+  // Before the kickoff: the homecoming banner, the home team through the paper banner, or the bus pulling in on the road.
+  if (period === 'opening') return ctx.homecoming ? { url: nHomecoming, alt: 'Homecoming' } : ctx.home ? { url: nRunthrough, alt: 'The home team runs out' } : { url: nBus, alt: 'The bus arrives' };
   return null;
 }

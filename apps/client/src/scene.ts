@@ -87,7 +87,7 @@ export class FieldScene extends Phaser.Scene {
   private squads: { img: Phaser.GameObjects.Image; team: number; n: number }[] = [];
   private referee: Phaser.GameObjects.Image | null = null;
   /** The home band, out on the field at half time. */
-  private band: { img: Phaser.GameObjects.Image; y: number; n: number }[] = [];
+  private band: { img: Phaser.GameObjects.Image; y: number; n: number; court?: boolean }[] = [];
   private bandOn = false;
   /** Where the ball carrier was last drawn, as fractions of the view. */
   private carrier = { x: 0.5, y: 0.5 };
@@ -198,6 +198,13 @@ export class FieldScene extends Phaser.Scene {
       const img = this.add.image(x, y, 'side0', name).setOrigin(0.5, 1).setScale(1 / ZOOM * 1.35).setDepth(y).setVisible(false);
       this.band.push({ img, y, n: r + k });
     }));
+    // The homecoming court: king and queen at the front, their court either side, the banner carried in behind.
+    const court: [string, number, number][] = [['hcbanner', 0, -62], ['court0', -62, 60], ['court1', -38, 62], ['king', -11, 66], ['queen', 11, 66], ['court2', 38, 62], ['court3', 66, 60]];
+    for (const [name, dx, dy] of court) {
+      const y = centre + dy;
+      const img = this.add.image(wx(50) + dx, y, 'side0', name).setOrigin(0.5, 1).setScale(1 / ZOOM * 1.35).setDepth(y).setVisible(false);
+      this.band.push({ img, y, n: 0, court: true });
+    }
     this.bandOn = false;
     this.referee?.destroy();
     this.referee = this.add.image(0, 0, 'side0', 'ref').setOrigin(0.5, 1).setScale(1 / ZOOM * 1.25).setVisible(false);
@@ -359,7 +366,7 @@ export class FieldScene extends Phaser.Scene {
     if (this.crew[2] && view.down) this.crew[2].setFrame(`box${Math.min(4, Math.max(1, view.down))}`);
 
     // The band marks time, every other player on the off beat.
-    if (this.bandOn) for (const m of this.band) m.img.setY(m.y - (Math.floor((view.frame + m.n * 10) / 10) % 2));
+    if (this.bandOn) for (const m of this.band) if (!m.court) m.img.setY(m.y - (Math.floor((view.frame + m.n * 10) / 10) % 2));
     // Cheerleaders shake their pom-poms in turn, and all together when their team scores.
     for (const c of this.squads) {
       const wild = view.cheering === c.team;
@@ -427,9 +434,9 @@ export class FieldScene extends Phaser.Scene {
   }
 
   /** Sends the band out to midfield, or brings it off. While it is out the camera watches it. */
-  showBand(on: boolean): void {
+  showBand(on: boolean, court = false): void {
     this.bandOn = on && this.ready;
-    for (const m of this.band) m.img.setVisible(this.bandOn);
+    for (const m of this.band) m.img.setVisible(this.bandOn && (!m.court || court));
   }
 
   /** Where the ball carrier is on screen: 0,0 is the top left of the view and 1,1 the bottom right. */

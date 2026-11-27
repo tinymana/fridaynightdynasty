@@ -196,6 +196,13 @@ def cut_sideline():
         fr = fr.crop(fr.getbbox())
         small = fr.resize((max(1, round(fr.width * 0.3)), max(1, round(fr.height * 0.3))), Image.LANCZOS)
         parts.append((n, small, Image.new('RGBA', small.size, (0, 0, 0, 0))))
+    # The homecoming court, in their own clothes: (name, box).
+    hc = Image.open(SRC + '17_homecoming_senior_night_spritesheet.png').convert('RGBA')
+    for n, box in [('king', (18, 30, 58, 114)), ('queen', (66, 30, 110, 114)), ('court0', (284, 34, 332, 114)), ('court1', (348, 34, 396, 114)), ('court2', (416, 34, 464, 114)), ('court3', (476, 34, 548, 114)), ('hcbanner', (995, 105, 1345, 200))]:
+        fr = hc.crop(box)
+        fr = fr.crop(fr.getbbox())
+        small = fr.resize((max(1, round(fr.width * 0.42)), max(1, round(fr.height * 0.42))), Image.LANCZOS)
+        parts.append((n, small, Image.new('RGBA', small.size, (0, 0, 0, 0))))
     for n, x0, y0, x1, y1 in CREW:
         fr = crew.crop((x0, y0, x1, y1))
         fr = fr.crop(fr.getbbox())
@@ -252,11 +259,34 @@ def cut_turf():
     strip.save(OUT + 'turf.png', optimize=True)
     return meta
 
+def cut_weather():
+    """Rain, snow, mist and blowing leaves, as repeating tiles laid over the field by the page."""
+    sheet = Image.open(SRC + '15_dynamic_weather_turf_fog_spritesheet.png').convert('RGBA')
+    def save(name, box, mode):
+        t = np.array(sheet.crop(box)).astype(int)
+        r, g, b, a = t[:, :, 0], t[:, :, 1], t[:, :, 2], t[:, :, 3]
+        lum = (r + g + b) // 3
+        if mode == 'white':    # bright flakes on a dark ground: brightness becomes opacity
+            out = np.dstack([np.full_like(r, 255)] * 3 + [np.clip((lum - 90) * 2.2, 0, 255) * (a > 40)])
+        elif mode == 'fog':
+            out = np.dstack([np.full_like(r, 235), np.full_like(r, 238), np.full_like(r, 245), np.clip((lum - 70) * 0.9, 0, 150) * (a > 40)])
+        elif mode == 'colour':  # coloured leaves: keep them, drop the grey ground
+            sat = np.max(t[:, :, :3], axis=2) - np.min(t[:, :, :3], axis=2)
+            out = np.dstack([r, g, b, np.where((sat > 40) & (a > 40), 255, 0)])
+        else:
+            out = t
+        Image.fromarray(out.astype(np.uint8)).save(OUT + f'wx-{name}.png', optimize=True)
+    save('rain', (8, 262, 210, 335), 'asis')
+    save('snow', (405, 262, 700, 335), 'white')
+    save('fog', (824, 262, 1040, 330), 'fog')
+    save('leaves', (1097, 262, 1232, 330), 'colour')
+
 if __name__ == '__main__':
     names = cut_players()
     meta = cut_stadium()
     side = cut_sideline()
     turf = cut_turf()
+    cut_weather()
     with open('apps/client/src/art-atlas.ts', 'w') as f:
         f.write('// Written by tools/cut-sprites.py. Do not edit by hand.\n')
         f.write(f'export const PLAYER_CELL = {{ w: {CELL_W}, h: {CELL_H} }};\n')

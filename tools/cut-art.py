@@ -14,6 +14,16 @@ PANELS = {
         'intercepted': (749, 31, 1024, 192), 'safety': (1066, 103, 1342, 186), 'sack': (52, 262, 323, 417),
         'halftime': (985, 472, 1137, 597), 'final': (1151, 472, 1343, 597), 'kickoff': (1129, 616, 1342, 737), 'helmet': (862, 616, 1113, 737),
     },
+    'sheets3/10_high_school_cutscenes_1.png': {
+        'n-runthrough': (28, 29, 540, 321), 'n-locker': (578, 299, 948, 540), 'n-fourth': (1035, 665, 1346, 738),
+    },
+    'sheets3/11_high_school_cutscenes_2.png': {
+        'n-bus': (29, 29, 580, 302), 'n-handshake': (28, 565, 328, 748), 'n-homecoming': (695, 577, 1015, 650),
+        'n-overtime': (1035, 665, 1346, 738),
+    },
+    'sheets3/13_high_school_cutscenes_3.png': {
+        'n-cointoss': (28, 29, 460, 288), 'n-chalk': (490, 29, 906, 287),
+    },
 }
 os.makedirs(OUT, exist_ok=True)
 for sheet, panels in PANELS.items():

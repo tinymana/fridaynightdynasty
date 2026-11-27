@@ -11,6 +11,10 @@ import { boxScore, occasionFor, type Occasion, type StatLine } from '@fnd/league
 import { FIGHT_SONG_BEAT, chantFor, fightSong, halftimeShow, type CrowdInput, type Note } from './atmosphere';
 import { OnlineError, online } from './net/online';
 import { cutinFor } from './cutins';
+import wxRainUrl from './assets/wx-rain.png';
+import wxSnowUrl from './assets/wx-snow.png';
+import wxFogUrl from './assets/wx-fog.png';
+import wxLeavesUrl from './assets/wx-leaves.png';
 import menuArtUrl from './assets/menu-stadium.webp';
 import pressStartUrl from '@fontsource/press-start-2p/files/press-start-2p-latin-400-normal.woff2';
 import jerseyUrl from '@fontsource/jersey-15/files/jersey-15-latin-400-normal.woff2';
@@ -939,7 +943,7 @@ function showResult(e: PlayEvent | null): void {
   let period = '';
   if (s.phase === 'final') period = 'End of game. ';
   else if (s.quarter !== lastQuarter) period = lastQuarter === 2 ? 'Halftime. ' : lastQuarter === 4 ? 'End of regulation: overtime! Each team gets the ball at the ten. ' : lastQuarter > 4 ? 'Still level: another overtime. ' : `End of quarter ${lastQuarter}. `;
-  const cut = showCutins && speed !== 0 ? cutinFor(e, s.phase === 'final' ? 'final' : s.quarter !== lastQuarter && lastQuarter === 2 ? 'half' : null, s.score[0] + s.score[1] + s.quarter, { won: s.score[user] > s.score[other(user)], title: occasion === 'championship', homecoming: occasion === 'homecoming' }) : null;
+  const cut = showCutins && speed !== 0 ? cutinFor(e, s.phase === 'final' ? 'final' : s.quarter === lastQuarter ? null : lastQuarter === 2 ? 'half' : lastQuarter === 3 ? 'fourth' : lastQuarter >= 4 ? 'overtime' : null, s.score[0] + s.score[1] + s.quarter, { won: s.score[user] > s.score[other(user)], title: occasion === 'championship', homecoming: occasion === 'homecoming' }) : null;
   const cutEl = $('cutin') as HTMLImageElement;
   cutEl.classList.toggle('hidden', !cut);
   if (cut) {
@@ -949,6 +953,8 @@ function showResult(e: PlayEvent | null): void {
     cutEl.style.animation = 'none';
     void cutEl.offsetWidth;
     cutEl.style.animation = '';
+    // The quarter and overtime banners are a flash, not a picture to hold on.
+    if (cut.alt === 'Fourth quarter' || cut.alt === 'Overtime') window.setTimeout(() => { if (cutEl.alt === cut.alt) cutEl.classList.add('hidden'); }, 2000);
   }
   const lastQuarterWas = lastQuarter;
   lastQuarter = s.quarter;
@@ -962,7 +968,7 @@ function showResult(e: PlayEvent | null): void {
   if (e && !quiet()) feelings(e);
   // At half time the home band takes the field.
   if (show) {
-    scene.showBand(true);
+    scene.showBand(true, occasion === 'homecoming');
     // The panel gives way after a moment so the band can be seen.
     window.setTimeout(() => { if (mode === 'post') $('cutin').classList.add('hidden'); }, 2200);
   }
@@ -1560,7 +1566,14 @@ function startGame(team: 0 | 1, conditions: GameSetup = setup): void {
   $('banner').innerHTML = `${teams[receiving].name} will receive the opening kickoff.<small>You are coaching the ${teams[user].name} ${teams[user].mascot}. ${setupLine(game.setup)}.</small>`;
   $('banner').classList.remove('hidden');
   setPanelWaiting('Kickoff');
-  timer = 2200;
+  const opening = showCutins && speed !== 0 ? cutinFor(null, 'opening', 0, { homecoming: occasion === 'homecoming', home: user === 0 }) : null;
+  if (opening) {
+    const cutEl = $('cutin') as HTMLImageElement;
+    cutEl.src = opening.url;
+    cutEl.alt = opening.alt;
+    cutEl.classList.remove('hidden');
+  }
+  timer = opening ? 3200 : 2200;
   mode = 'post';
 }
 
@@ -1568,6 +1581,10 @@ function startGame(team: 0 | 1, conditions: GameSetup = setup): void {
 function showWeather(): void {
   const w = game.setup.weather;
   $('wx').className = w === 'clear' ? '' : w;
+  // Rain, snow and blowing leaves from the weather sheet, with a drift of mist behind the rain and the snow.
+  const sheet = w === 'rain' ? wxRainUrl : w === 'snow' ? wxSnowUrl : w === 'wind' ? wxLeavesUrl : '';
+  $('wx').style.backgroundImage = sheet ? `url(${sheet})` : '';
+  $('wx').style.setProperty('--mist', w === 'rain' || w === 'snow' ? `url(${wxFogUrl})` : 'none');
   $('wxTag').textContent = WEATHER[w].name;
   $('wxTag').classList.toggle('hidden', w === 'clear');
 }
@@ -2124,7 +2141,7 @@ window.addEventListener('keydown', (ev) => {
 /** Debug hooks used by the browser checks. */
 (window as unknown as Record<string, unknown>).__fnd = {
   /** Sends the band out or brings it off. For the automated checks. */
-  band: (on: boolean) => scene.showBand(on),
+  band: (on: boolean, court = false) => scene.showBand(on, court),
   /** Where every drawn player is right now, in field yards. For the automated checks. */
   view: () => (game && mode !== 'menu' ? buildView().players.map((p) => ({ team: p.team, x: p.x, y: p.y })) : null),
   selftest: (s: number): string => gameHash(simulateGame(s, exhibitionTeams(s))),

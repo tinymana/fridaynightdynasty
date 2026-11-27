@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.19.0 — 2026-11-27
+
+Weather overlays and the homecoming court. Client only.
+
+### Added
+- `wx-rain.png`, `wx-snow.png`, `wx-fog.png`, `wx-leaves.png` cut by `cut_weather()` in `tools/cut-sprites.py`;
+  `showWeather()` tiles them over the stage (`#wx`), with the fog sheet as a mist layer behind rain and snow.
+  Loops move by whole tiles so they do not jump; they stop under `prefers-reduced-motion`.
+- Homecoming court (king, queen, four attendants, banner) in the sideline atlas; `FieldScene.showBand(on, court)`
+  shows it with the halftime band when the occasion is homecoming.
+- Nine panels from the new cutscene sheets (`art/source/sheets3`, cut by `tools/cut-art.py` as `n-*.webp`):
+  run-through, bus, homecoming banner (`cutinFor(null, 'opening', …)` at the opening kickoff), fourth-quarter and
+  overtime banners, coin toss, locker room, chalk talk, handshake. `CutinPeriod` replaces the `'half' | 'final'` union.
+- `tools/opening-shot.mjs`.
+
 ## 0.18.0 — 2026-11-27
 
 A field that wears. Client only.

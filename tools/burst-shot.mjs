@@ -22,7 +22,7 @@ for (const [k, word, n] of kinds) {
   const box = await stage.boundingBox();
   await page.screenshot({ path: `/tmp/fnd-shots/burst-${k}.png`, clip: { x: box.x + box.width / 2 - 150, y: box.y + box.height * 0.4 - 90, width: 300, height: 180 } });
 }
-await page.evaluate(() => { document.getElementById('moveTag').classList.add('hidden'); window.__fnd.band(true); });
+await page.evaluate(() => { document.getElementById('moveTag').classList.add('hidden'); window.__fnd.band(true, true); });
 await sleep(1800);
 await stage.screenshot({ path: '/tmp/fnd-shots/band.png' });
 await browser.close();
