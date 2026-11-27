@@ -14,11 +14,11 @@ import { PLAYER_CELL, PLAYER_FRAMES, SIDELINE, STADIUM } from './art-atlas';
 // `?lowres` draws at one pixel to the unit: the automated checks use it, because a headless browser paints in software.
 const ZOOM = typeof location !== 'undefined' && /[?&]lowres\b/.test(location.search) ? 1 : 2;
 export const VIEW_W = 480;
-export const VIEW_H = 328;
+export const VIEW_H = 336;
 const WORLD_W = 960;
 /** Above the field: the stands, then the wall with the sponsors' boards. */
 const WALL_H = 14;
-const FIELD_TOP = 56;
+const FIELD_TOP = 64;
 const FIELD_H = 240;
 /** Below the field: the near sideline, where the benches, the coaches and the chain crew stand. */
 const APRON_H = 32;
@@ -76,6 +76,7 @@ export class FieldScene extends Phaser.Scene {
   private ready = false;
   private crew: Phaser.GameObjects.Image[] = [];
   private bench: Phaser.GameObjects.Image[] = [];
+  private paint: Phaser.GameObjects.Text[] = [];
 
   constructor() {
     super('field');
@@ -96,10 +97,19 @@ export class FieldScene extends Phaser.Scene {
     const tex = this.textures.get('stadium');
     STADIUM.ads.forEach((r, i) => tex.add(`ad${i}`, 0, r[0], r[1], r[2], r[3]));
     STADIUM.stands.forEach((r, i) => tex.add(`stand${i}`, 0, r[0], r[1], r[2], r[3]));
-    // Home stands with the press box at midfield, and bare bleachers out past the goal lines.
-    const order = [3, 0, 1, 0, 1, 2, 1, 0, 1, 0, 3];
-    const gap = WORLD_W / order.length;
-    order.forEach((k, i) => this.add.image(gap * (i + 0.5), FIELD_TOP - WALL_H, 'stadium', `stand${k}`).setOrigin(0.5, 1).setScale(1 / ZOOM).setDepth(-95));
+    // The stands, seen square on: one long bleacher with the visitors thin at one end, the home crowd and the band in
+    // the middle, the press tower at midfield and the scoreboard at the far end. Tiles butt together; nothing overlaps.
+    const room = FIELD_TOP - WALL_H - 6;
+    const tallest = Math.max(...STADIUM.stands.map((r) => r[3]));
+    const scale = Math.min(1 / ZOOM, room / tallest);
+    const [SPARSE, PACKED_A, PACKED_B, BAND, TOWER, BOARD] = [1, 2, 3, 4, 5, 6];
+    const order = [SPARSE, PACKED_A, PACKED_B, BAND, PACKED_A, TOWER, PACKED_B, PACKED_A, PACKED_B, SPARSE, BOARD];
+    const widths = order.map((k) => STADIUM.stands[k][2] * scale);
+    let at = (WORLD_W - widths.reduce((sum, w) => sum + w, 0)) / 2;
+    order.forEach((k, i) => {
+      this.add.image(Math.round(at), FIELD_TOP - WALL_H - 4, 'stadium', `stand${k}`).setOrigin(0, 1).setScale(scale).setDepth(-95);
+      at += widths[i];
+    });
     for (let i = 0, x = 26; x < WORLD_W - 20; i++, x += 58) {
       this.add.image(x, FIELD_TOP - WALL_H / 2 - 1, 'stadium', `ad${i % STADIUM.ads.length}`).setOrigin(0.5, 0.5).setScale(1 / ZOOM).setDepth(-90);
     }
@@ -140,6 +150,22 @@ export class FieldScene extends Phaser.Scene {
       const row: [string, number][] = [['coach0', 0], ['stand0', 16], ['stand1', 30], ['bench', 66], ['stand3', 104], ['bench', 138], ['stand2', 174], ['coach1', 190]];
       for (const [name, dx] of row) this.bench.push(this.add.image(x0 + dx, ground, key, name).setOrigin(0.5, 1).setScale(1 / ZOOM * 1.15).setDepth(9000));
     });
+    // Paint on the grass: each school's name in its end zone and the home team's letters at midfield.
+    for (const o of this.paint) o.destroy();
+    this.paint = [];
+    const font = '"Press Start 2P", monospace';
+    teams.forEach((t, i) => {
+      const name = t.name.toUpperCase();
+      const size = Math.min(22, Math.floor(214 / Math.max(6, name.length)));
+      const zone = this.add.text(i === 0 ? 40 : WORLD_W - 40, FIELD_TOP + FIELD_H / 2, name, { fontFamily: font, fontSize: `${size * ZOOM}px`, color: '#f3f1e7' })
+        .setOrigin(0.5, 0.5).setScale(1 / ZOOM).setAngle(i === 0 ? -90 : 90).setDepth(-99).setAlpha(0.92);
+      zone.setStroke(`#${shade(t.colors.jersey, 0.45).toString(16).padStart(6, '0')}`, 4 * ZOOM);
+      this.paint.push(zone);
+    });
+    const mid = this.add.text(wx(50), FIELD_TOP + FIELD_H / 2, teams[0].abbr, { fontFamily: font, fontSize: `${26 * ZOOM}px`, color: `#${teams[0].colors.jersey.toString(16).padStart(6, '0')}` })
+      .setOrigin(0.5, 0.5).setScale(1 / ZOOM).setDepth(-99).setAlpha(0.55);
+    mid.setStroke('#f3f1e7', 3 * ZOOM);
+    this.paint.push(mid);
     // The chain crew: two sticks ten yards apart and the down box at the ball.
     for (const o of this.crew) o.destroy();
     this.crew = ['stick', 'stick', 'box1'].map((name) => this.add.image(0, FIELD_TOP + FIELD_H + 13, 'side0', name).setOrigin(0.5, 1).setScale(1 / ZOOM * 1.3).setDepth(9001).setVisible(false));
