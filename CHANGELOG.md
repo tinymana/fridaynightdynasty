@@ -10,6 +10,8 @@ Players and stadium from the supplied sheets (`art/source/sheets2`).
 - `FieldScene` draws at two screen pixels per world unit (960 x 620), repaints the player frames per school from
   the mask, and adds stands and sponsors' boards above the field. Client only; the simulation is untouched.
 - `tools/field-shot.mjs`.
+- Sideline and chain crew (`sideline-base.png`, `sideline-mask.png`, `SIDELINE`), repainted per school; the box shows the down.
+- `ViewPlayer.pose`: throw, stiff arm, kick and celebration frames chosen by the client from the simulation's state.
 
 ## 0.15.0 — 2026-11-27
 

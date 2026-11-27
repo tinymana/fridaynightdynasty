@@ -6,18 +6,22 @@ import type { Team, TeamColors } from '@fnd/core';
 import playersBaseUrl from './assets/players-base.png';
 import playersMaskUrl from './assets/players-mask.png';
 import stadiumUrl from './assets/stadium.png';
-import { PLAYER_CELL, PLAYER_FRAMES, STADIUM } from './art-atlas';
+import sidelineBaseUrl from './assets/sideline-base.png';
+import sidelineMaskUrl from './assets/sideline-mask.png';
+import { PLAYER_CELL, PLAYER_FRAMES, SIDELINE, STADIUM } from './art-atlas';
 
 /** The scene is laid out in world units and drawn at two screen pixels to the unit, so sprites carry twice the detail. */
 // `?lowres` draws at one pixel to the unit: the automated checks use it, because a headless browser paints in software.
 const ZOOM = typeof location !== 'undefined' && /[?&]lowres\b/.test(location.search) ? 1 : 2;
 export const VIEW_W = 480;
-export const VIEW_H = 310;
+export const VIEW_H = 328;
 const WORLD_W = 960;
 /** Above the field: the stands, then the wall with the sponsors' boards. */
 const WALL_H = 14;
 const FIELD_TOP = 56;
 const FIELD_H = 240;
+/** Below the field: the near sideline, where the benches, the coaches and the chain crew stand. */
+const APRON_H = 32;
 /** Players are drawn a little over life size against the field, as they always have been in games like this, so they read. */
 const PLAYER_SCALE = 0.62;
 type FrameName = (typeof PLAYER_FRAMES)[number];
@@ -36,6 +40,8 @@ export interface ViewPlayer {
   moving: boolean;
   down: boolean;
   hasBall: boolean;
+  /** A pose to show in place of the usual stance, stride or fall: a throw, a stiff arm, a kick, a celebration. */
+  pose?: FrameName;
 }
 export interface FieldView {
   players: ViewPlayer[];
@@ -44,6 +50,8 @@ export interface FieldView {
   toGain: number | null;
   focusX: number;
   frame: number;
+  /** The down, for the box on the sideline. */
+  down?: number;
 }
 
 const DIGITS: Record<string, string[]> = {
@@ -66,6 +74,8 @@ export class FieldScene extends Phaser.Scene {
   private field!: Phaser.GameObjects.Graphics;
   private camX = 240;
   private ready = false;
+  private crew: Phaser.GameObjects.Image[] = [];
+  private bench: Phaser.GameObjects.Image[] = [];
 
   constructor() {
     super('field');
@@ -75,6 +85,8 @@ export class FieldScene extends Phaser.Scene {
     this.load.image('players-base', playersBaseUrl);
     this.load.image('players-mask', playersMaskUrl);
     this.load.image('stadium', stadiumUrl);
+    this.load.image('sideline-base', sidelineBaseUrl);
+    this.load.image('sideline-mask', sidelineMaskUrl);
   }
 
   create(): void {
@@ -112,6 +124,25 @@ export class FieldScene extends Phaser.Scene {
       return;
     }
     teams.forEach((t, i) => this.makePlayerTextures(i, t.colors));
+    // The near sideline: each team's bench, a few players standing, a coach, all in the school's colours.
+    for (const o of this.bench) o.destroy();
+    this.bench = [];
+    const ground = FIELD_TOP + FIELD_H + APRON_H - 3;
+    teams.forEach((t, i) => {
+      const key = `side${i}`;
+      if (this.textures.exists(key)) this.textures.remove(key);
+      const img = this.repaint('sideline-base', 'sideline-mask', t.colors);
+      const tex = this.textures.createCanvas(key, img.width, img.height)!;
+      tex.getContext().putImageData(img, 0, 0);
+      tex.refresh();
+      for (const [name, r] of Object.entries(SIDELINE)) tex.add(name, 0, r[0], r[1], r[2], r[3]);
+      const x0 = i === 0 ? 250 : 520;
+      const row: [string, number][] = [['coach0', 0], ['stand0', 16], ['stand1', 30], ['bench', 66], ['stand3', 104], ['bench', 138], ['stand2', 174], ['coach1', 190]];
+      for (const [name, dx] of row) this.bench.push(this.add.image(x0 + dx, ground, key, name).setOrigin(0.5, 1).setScale(1 / ZOOM * 1.15).setDepth(9000));
+    });
+    // The chain crew: two sticks ten yards apart and the down box at the ball.
+    for (const o of this.crew) o.destroy();
+    this.crew = ['stick', 'stick', 'box1'].map((name) => this.add.image(0, FIELD_TOP + FIELD_H + 13, 'side0', name).setOrigin(0.5, 1).setScale(1 / ZOOM * 1.3).setDepth(9001).setVisible(false));
     for (const s of this.sprites) s.destroy();
     this.sprites = [];
     for (let i = 0; i < 22; i++) this.sprites.push(this.add.image(0, 0, 'p0_stance0').setOrigin(0.5, 1).setScale(PLAYER_SCALE).setVisible(false));
@@ -123,6 +154,18 @@ export class FieldScene extends Phaser.Scene {
    * mask says which pixels are jersey, helmet or pants and how light each is, and those are repainted.
    */
   private makePlayerTextures(team: number, c: TeamColors): void {
+    const base = this.repaint('players-base', 'players-mask', c);
+    PLAYER_FRAMES.forEach((name, n) => {
+      const key = `p${team}_${name}`;
+      if (this.textures.exists(key)) this.textures.remove(key);
+      const tex = this.textures.createCanvas(key, PLAYER_CELL.w, PLAYER_CELL.h)!;
+      tex.getContext().putImageData(base, -n * PLAYER_CELL.w, 0, n * PLAYER_CELL.w, 0, PLAYER_CELL.w, PLAYER_CELL.h);
+      tex.refresh();
+    });
+  }
+
+  /** Returns an atlas with its jersey, helmet and pants pixels repainted in a school's colours. */
+  private repaint(baseKey: string, maskKey: string, c: TeamColors): ImageData {
     const read = (key: string): ImageData => {
       const img = this.textures.get(key).getSourceImage() as HTMLImageElement;
       const cv = document.createElement('canvas');
@@ -132,8 +175,8 @@ export class FieldScene extends Phaser.Scene {
       cx.drawImage(img, 0, 0);
       return cx.getImageData(0, 0, img.width, img.height);
     };
-    const base = read('players-base');
-    const mask = read('players-mask');
+    const base = read(baseKey);
+    const mask = read(maskKey);
     const colours = [0, c.jersey, c.helmet, c.pants];
     for (let i = 0; i < base.data.length; i += 4) {
       const mat = Math.round(mask.data[i] / 60);
@@ -148,13 +191,7 @@ export class FieldScene extends Phaser.Scene {
         base.data[i + k] = Math.round(v * dark + (255 - v * dark) * lift);
       }
     }
-    PLAYER_FRAMES.forEach((name, n) => {
-      const key = `p${team}_${name}`;
-      if (this.textures.exists(key)) this.textures.remove(key);
-      const tex = this.textures.createCanvas(key, PLAYER_CELL.w, PLAYER_CELL.h)!;
-      tex.getContext().putImageData(base, -n * PLAYER_CELL.w, 0, n * PLAYER_CELL.w, 0, PLAYER_CELL.w, PLAYER_CELL.h);
-      tex.refresh();
-    });
+    return base;
   }
 
   private drawField(teams: readonly [Team, Team]): void {
@@ -177,8 +214,8 @@ export class FieldScene extends Phaser.Scene {
       }
     });
     // Sideline apron.
-    g.fillStyle(0x1f5a29).fillRect(0, FIELD_TOP + FIELD_H, WORLD_W, 14);
-    g.fillStyle(0x8a8fb5).fillRect(300, FIELD_TOP + 245, 120, 3).fillRect(540, FIELD_TOP + 245, 120, 3);
+    g.fillStyle(0x1f5a29).fillRect(0, FIELD_TOP + FIELD_H, WORLD_W, APRON_H);
+    g.fillStyle(0x7a3b2a).fillRect(0, FIELD_TOP + FIELD_H + APRON_H - 5, WORLD_W, 5);
     // Lines.
     g.fillStyle(0xf3f1e7, 0.85);
     for (let yd = 0; yd <= 100; yd += 5) g.fillRect(wx(yd) - (yd % 100 === 0 ? 1 : 0), FIELD_TOP, yd % 100 === 0 ? 2 : 1, FIELD_H);
@@ -225,10 +262,21 @@ export class FieldScene extends Phaser.Scene {
       const y = Math.round(wy(p.y));
       g.fillStyle(0x000000, 0.28).fillEllipse(x, y + 1, 13, 4);
       // Every man runs on his own beat, so a line of players is not a chorus line.
-      const frame: FrameName = p.down ? 'down' : p.moving ? RUN[(step + i) % RUN.length] : 'stance0';
+      const frame: FrameName = p.down ? 'down' : p.pose ?? (p.moving ? RUN[(step + i) % RUN.length] : 'stance0');
       s.setVisible(true).setTexture(`p${p.team}_${frame}`).setFlipX(p.team === 1).setDepth(y).setPosition(x, y + 2);
       if (p.hasBall) g.fillStyle(0xf2c14e).fillTriangle(x - 3, y - 26, x + 3, y - 26, x, y - 22);
     });
+
+    // The sticks stand at the start of the series and ten yards on; the box follows the ball.
+    const dir = view.toGain !== null && view.los !== null && view.toGain < view.los ? -1 : 1;
+    const marks = [view.toGain === null ? null : view.toGain - dir * 10, view.toGain, view.los];
+    this.crew.forEach((o, k) => {
+      const at = marks[k];
+      const show = at !== null && at !== undefined && view.los !== null && at >= 0 && at <= 100;
+      o.setVisible(show);
+      if (show) o.setX(Math.round(wx(at!)) + (k === 2 ? 3 : 0));
+    });
+    if (this.crew[2] && view.down) this.crew[2].setFrame(`box${Math.min(4, Math.max(1, view.down))}`);
 
     const b = view.ball;
     this.ball.setVisible(b.visible);

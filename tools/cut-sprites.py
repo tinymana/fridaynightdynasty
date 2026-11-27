@@ -121,12 +121,60 @@ def cut_stadium():
     strip.save(OUT + 'stadium.png', optimize=True)
     return meta
 
+def repaintable(fr, lying=False):
+    """Shrinks a frame to game size and returns (colour layer, material mask)."""
+    fr = fr.crop(fr.getbbox())
+    w, h = max(1, round(fr.width * SCALE)), max(1, round(fr.height * SCALE))
+    a = np.array(fr.resize((w, h), Image.LANCZOS))
+    a[:, :, 3] = np.where(a[:, :, 3] > 110, 255, 0)
+    red = [(x, y) for y in range(h) for x in range(w) if classify(a[y, x], True)[0] == 1]
+    cy = sum(q[1] for q in red) / max(1, len(red))
+    cx = sum(q[0] for q in red) / max(1, len(red))
+    m = np.zeros((h, w, 4), dtype=np.uint8)
+    for y in range(h):
+        for x in range(w):
+            mat, v = classify(a[y, x], (x > cx) if lying else (y < cy))
+            if mat: m[y, x] = (mat * 60, min(255, int(v * 255)), 0, 255)
+    return Image.fromarray(a), Image.fromarray(m)
+
+# The sideline, from the red-and-silver row of the sideline sheet: (name, x0, x1).
+SIDE_ROW = (124, 213)
+SIDE = [('stand0', 79, 125), ('stand1', 137, 183), ('stand2', 195, 249), ('stand3', 253, 302), ('bench', 381, 553),
+        ('parka', 573, 625), ('coach0', 705, 765), ('coach1', 766, 825), ('cheer0', 1108, 1158), ('cheer1', 1159, 1207), ('cheer2', 1208, 1256)]
+# The chain crew, in their own colours: (name, x0, y0, x1, y1).
+CREW = [('stick', 492, 16, 549, 90), ('box1', 215, 16, 264, 90), ('box2', 215, 93, 264, 173), ('box3', 355, 16, 407, 90), ('box4', 419, 16, 475, 90)]
+
+def cut_sideline():
+    sheet = Image.open(SRC + '18_sideline_teams_spritesheet.png').convert('RGBA')
+    crew = Image.open(SRC + '20_chain_gang_spritesheet.png').convert('RGBA')
+    parts = [(n, *repaintable(sheet.crop((x0, SIDE_ROW[0], x1, SIDE_ROW[1])))) for n, x0, x1 in SIDE]
+    for n, x0, y0, x1, y1 in CREW:
+        fr = crew.crop((x0, y0, x1, y1))
+        fr = fr.crop(fr.getbbox())
+        small = fr.resize((max(1, round(fr.width * SCALE)), max(1, round(fr.height * SCALE))), Image.LANCZOS)
+        parts.append((n, small, Image.new('RGBA', small.size, (0, 0, 0, 0))))
+    H = max(b.height for _, b, _ in parts)
+    W = sum(b.width + 1 for _, b, _ in parts)
+    base = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    mask = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    meta = {}
+    x = 0
+    for n, b, m in parts:
+        base.paste(b, (x, H - b.height)); mask.paste(m, (x, H - b.height))
+        meta[n] = [x, H - b.height, b.width, b.height]
+        x += b.width + 1
+    base.save(OUT + 'sideline-base.png', optimize=True)
+    mask.save(OUT + 'sideline-mask.png', optimize=True)
+    return meta
+
 if __name__ == '__main__':
     names = cut_players()
     meta = cut_stadium()
+    side = cut_sideline()
     with open('apps/client/src/art-atlas.ts', 'w') as f:
         f.write('// Written by tools/cut-sprites.py. Do not edit by hand.\n')
         f.write(f'export const PLAYER_CELL = {{ w: {CELL_W}, h: {CELL_H} }};\n')
         f.write(f'export const PLAYER_FRAMES = {json.dumps(names)} as const;\n')
         f.write(f'export const STADIUM = {json.dumps(meta)};\n')
+        f.write(f'export const SIDELINE: Record<string, number[]> = {json.dumps(side)};\n')
     print(len(names), 'player frames;', len(meta['ads']), 'sponsor boards;', len(meta['stands']), 'stands')
