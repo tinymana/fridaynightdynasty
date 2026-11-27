@@ -103,12 +103,33 @@ def cut_stadium():
         if all(np.abs(sig(b) - sig(k)).mean() > 26 for k in kept): kept.append(b)
     H = 28
     pieces = [ads.crop(b).resize((round((b[2] - b[0]) * H / (b[3] - b[1])), H), Image.LANCZOS) for b in kept]
-    crowd = Image.open(SRC + '05_high_school_crowd_spritesheet.png').convert('RGBA')
-    stands = []
-    for (x0, y0, x1, y1) in [(306, 0, 715, 200), (690, 40, 1010, 200), (1040, 20, 1365, 200), (8, 55, 350, 200)]:
-        s = crowd.crop((x0, y0, x1, y1))
-        s = s.crop(s.getbbox())
-        stands.append(s.resize((round(s.width * 0.42), round(s.height * 0.42)), Image.LANCZOS))
+    # The stands, seen square on, from the front-view stadium sheet: tiles that butt together, and three props
+    # whose flat grey background is flooded away from the edges.
+    front = Image.open(SRC + '23_front_stadium.jpg').convert('RGB')
+    TILE_H = 88
+    def tile(box):
+        t = front.crop(box)
+        return t.resize((round(t.width * TILE_H / t.height), TILE_H), Image.LANCZOS).convert('RGBA')
+    def prop(box):
+        t = front.crop(box).convert('RGBA')
+        a = np.array(t).astype(int)
+        h, w = a.shape[:2]
+        bg = np.array([58, 58, 58])
+        near = np.abs(a[:, :, :3] - bg).sum(axis=2) < 40
+        seen = np.zeros((h, w), dtype=bool)
+        stack = [(x, y) for x in range(w) for y in (0, h - 1)] + [(x, y) for y in range(h) for x in (0, w - 1)]
+        while stack:
+            x, y = stack.pop()
+            if x < 0 or y < 0 or x >= w or y >= h or seen[y, x] or not near[y, x]: continue
+            seen[y, x] = True
+            stack += [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
+        a[:, :, 3] = np.where(seen, 0, 255)
+        t = Image.fromarray(a.astype(np.uint8))
+        t = t.crop(t.getbbox())
+        return t.resize((round(t.width * TILE_H / t.height), TILE_H), Image.LANCZOS)
+    # empty, sparse, packed, packed, band; then press tower and scoreboard
+    stands = [tile((47, 42, 647, 328)), tile((691, 42, 1265, 328)), tile((47, 372, 647, 662)), tile((691, 372, 1265, 662)), tile((47, 730, 640, 968)),
+              prop((1345, 70, 1745, 665)), prop((2145, 228, 2535, 665))]
     SH = max(s.height for s in stands)
     width = sum(p.width + 2 for p in pieces) + sum(s.width + 2 for s in stands)
     strip = Image.new('RGBA', (width, max(H, SH)), (0, 0, 0, 0))

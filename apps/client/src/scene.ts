@@ -14,11 +14,11 @@ import { PLAYER_CELL, PLAYER_FRAMES, SIDELINE, STADIUM } from './art-atlas';
 // `?lowres` draws at one pixel to the unit: the automated checks use it, because a headless browser paints in software.
 const ZOOM = typeof location !== 'undefined' && /[?&]lowres\b/.test(location.search) ? 1 : 2;
 export const VIEW_W = 480;
-export const VIEW_H = 328;
+export const VIEW_H = 336;
 const WORLD_W = 960;
 /** Above the field: the stands, then the wall with the sponsors' boards. */
 const WALL_H = 14;
-const FIELD_TOP = 56;
+const FIELD_TOP = 64;
 const FIELD_H = 240;
 /** Below the field: the near sideline, where the benches, the coaches and the chain crew stand. */
 const APRON_H = 32;
@@ -97,18 +97,18 @@ export class FieldScene extends Phaser.Scene {
     const tex = this.textures.get('stadium');
     STADIUM.ads.forEach((r, i) => tex.add(`ad${i}`, 0, r[0], r[1], r[2], r[3]));
     STADIUM.stands.forEach((r, i) => tex.add(`stand${i}`, 0, r[0], r[1], r[2], r[3]));
-    // The stands sit side by side on the track with a walkway between them, none overlapping and none taller than
-    // the strip: packed sections either side of the press box at midfield, bare bleachers out past the goal lines.
+    // The stands, seen square on: one long bleacher with the visitors thin at one end, the home crowd and the band in
+    // the middle, the press tower at midfield and the scoreboard at the far end. Tiles butt together; nothing overlaps.
     const room = FIELD_TOP - WALL_H - 6;
     const tallest = Math.max(...STADIUM.stands.map((r) => r[3]));
     const scale = Math.min(1 / ZOOM, room / tallest);
-    const order = [3, 0, 1, 0, 1, 2, 1, 0, 1, 0, 3];
+    const [SPARSE, PACKED_A, PACKED_B, BAND, TOWER, BOARD] = [1, 2, 3, 4, 5, 6];
+    const order = [SPARSE, PACKED_A, PACKED_B, BAND, PACKED_A, TOWER, PACKED_B, PACKED_A, PACKED_B, SPARSE, BOARD];
     const widths = order.map((k) => STADIUM.stands[k][2] * scale);
-    const gap = Math.max(4, (WORLD_W - 12 - widths.reduce((sum, w) => sum + w, 0)) / (order.length - 1));
-    let at = (WORLD_W - widths.reduce((sum, w) => sum + w, 0) - gap * (order.length - 1)) / 2;
+    let at = (WORLD_W - widths.reduce((sum, w) => sum + w, 0)) / 2;
     order.forEach((k, i) => {
       this.add.image(Math.round(at), FIELD_TOP - WALL_H - 4, 'stadium', `stand${k}`).setOrigin(0, 1).setScale(scale).setDepth(-95);
-      at += widths[i] + gap;
+      at += widths[i];
     });
     for (let i = 0, x = 26; x < WORLD_W - 20; i++, x += 58) {
       this.add.image(x, FIELD_TOP - WALL_H / 2 - 1, 'stadium', `ad${i % STADIUM.ads.length}`).setOrigin(0.5, 0.5).setScale(1 / ZOOM).setDepth(-90);
