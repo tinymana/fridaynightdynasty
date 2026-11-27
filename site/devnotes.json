@@ -2,6 +2,49 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.22.0",
+      "date": "2026-11-27",
+      "title": "Injuries, walk-ons, phenoms, and a new main menu",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Injuries. A few players in every program get hurt each season. Most miss a game or two, some are lost for the year, and once in a great while an injury ends a career. A player who is out does not dress, and the next man at his position moves up."
+        },
+        {
+          "tag": "new",
+          "text": "Grades and discipline. When report cards come out in mid-season a player can be ruled academically ineligible for two or three games, and now and then someone is suspended for a game or two."
+        },
+        {
+          "tag": "new",
+          "text": "Kids move. A family can move away during the season, and over the summer a player or two may transfer out or give the game up."
+        },
+        {
+          "tag": "new",
+          "text": "Walk-ons. One to three players turn up at fall camp every year from the soccer team, the track team, the band. Most are depth; about one in eight can really play."
+        },
+        {
+          "tag": "new",
+          "text": "Transfers in. Some years a player transfers into your school."
+        },
+        {
+          "tag": "new",
+          "text": "Phenoms. About one freshman class in eight has a player with senior-level talent on the day he arrives. He is flagged in your program so you can decide whether to call him up."
+        },
+        {
+          "tag": "new",
+          "text": "Team news on the dynasty page: the injury report and the comings and goings at your school, and anything big from around the league. Before each game you are told who is not dressing."
+        },
+        {
+          "tag": "new",
+          "text": "A new main menu on wide screens: the sunset kickoff picture with the six choices down the right side. Phones keep the stacked menu."
+        },
+        {
+          "tag": "note",
+          "text": "Injuries are decided between games for now; nobody is carried off during a game you are coaching. All of this applies to solo dynasties. In a league with friends, players can leave between seasons and walk-ons arrive, but nobody is sidelined in season yet."
+        }
+      ]
+    },
+    {
       "version": "0.21.0",
       "date": "2026-11-27",
       "title": "Closer to real Friday nights, and more of the art on the field",

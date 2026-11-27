@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.22.0 — 2026-11-27
+
+Injuries and roster events. Simulation change (rosters): redeploy the `fnd` function with the merge.
+
+### Added
+- `packages/league/src/program.ts`: `incidentsOf` (injuries, grades, suspensions, a family moving), `departuresOf`
+  (summer), walk-ons and transfers at fall camp, and a phenom in about one class in eight. Like the classes, none of
+  it is stored: everything comes from the league seed, the school and the season, so saves do not change shape.
+- `programFor(..., week)`: a player who is out keeps his place on the list but does not dress; players who are gone
+  are not in the program. `squadTeam` moves the weakest man of the deepest group out of position if a squad is short
+  (`MIN_DRESSED`), so no formation puts one player in two places.
+- `teamFor`, `jvTeamFor`, `matchTeams` take the week; `leagueNews(d)` and `programNews` put it all in words;
+  `programNames` keeps a name on the statistics of a player who has left.
+- Dynasty page: Team news, Around the league, "Not dressing" before a game; program page tags for out, walk-on,
+  transfer and phenom.
+- Main menu on screens 900 px and wider: `menu-wide.webp` with the live rows laid over the painted ones.
+- `tests/events.test.ts` (9 tests), `tools/events-shot.mjs`, `tools/menu-wide-shot.mjs`.
+
 ## 0.21.0 — 2026-11-27
 
 Realism retune (softened) against the Ohio results archive. Simulation change: the `fnd` function must be redeployed
