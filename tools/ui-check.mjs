@@ -33,7 +33,7 @@ await sleep(100);
 check('saved book is used', (await st()).book.includes('mesh') && !(await st()).book.includes('toss'));
 check('book survives a reload', await page.evaluate(() => JSON.parse(localStorage.getItem('fnd.book.v2')).includes('iso')));
 
-await page.click('[data-team="0"]');
+await page.click('#goExhibition').catch(() => {}); await page.click('[data-team=\"0\"]');
 const waitChoose = async () => { for (let i = 0; i < 600; i++) { const s = await st(); if (s.mode === 'choose' || s.mode === 'final') return s; await sleep(50); } throw new Error('stuck ' + JSON.stringify(await st())); };
 let s = await waitChoose();
 check('play clock is running', s.playClock !== null && s.playClock <= 20);

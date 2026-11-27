@@ -18,7 +18,7 @@ console.log('browser hash seed 2026:', await page.evaluate(() => window.__fnd.se
 await page.click('#title');
 await sleep(200);
 await page.screenshot({ path: `${out}/2-setup.png` });
-await page.click('[data-team="0"]');
+await page.click('#goExhibition').catch(() => {}); await page.click('[data-team=\"0\"]');
 const waitChoose = async () => { for (let i = 0; i < 400; i++) { const s = await page.evaluate(() => window.__fnd.state()); if (s.mode === 'choose' || s.mode === 'final') return s; await sleep(50); } throw new Error('stuck: ' + JSON.stringify(await page.evaluate(() => window.__fnd.state()))); };
 let s = await waitChoose();
 await page.screenshot({ path: `${out}/3-call.png` });

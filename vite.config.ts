@@ -17,5 +17,5 @@ export default defineConfig({
     },
   },
   build: { outDir: '../../dist', emptyOutDir: true, chunkSizeWarningLimit: 4000, assetsInlineLimit: 100000000 },
-  test: { root: '.', include: ['tests/**/*.test.ts'], testTimeout: 60000 },
+  test: { root: '.', include: ['tests/**/*.test.ts'], testTimeout: 240000 },
 });

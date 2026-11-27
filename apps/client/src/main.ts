@@ -7,14 +7,19 @@ import {
 import { fieldGoalDistance } from '@fnd/football-ai';
 import { AutoCoach, Game, gameHash, replayGame, simulateGame, summarize, type LoggedDecision, type MoveKind, type PlaySim, type ReturnSim } from '@fnd/match-sim';
 import { leagueTeams, type Career, type RoomView } from '@fnd/online';
+import { boxScore, occasionFor, type Occasion, type StatLine } from '@fnd/league';
+import { FIGHT_SONG_BEAT, chantFor, fightSong, halftimeShow, type CrowdInput, type Note } from './atmosphere';
 import { OnlineError, online } from './net/online';
 import { cutinFor } from './cutins';
+import menuArtUrl from './assets/menu-stadium.webp';
+import pressStartUrl from '@fontsource/press-start-2p/files/press-start-2p-latin-400-normal.woff2';
+import jerseyUrl from '@fontsource/jersey-15/files/jersey-15-latin-400-normal.woff2';
 import { DynastyScreen, type DynastyGame } from './dynasty';
 import { SharedLeagueScreen } from './shared-league';
 import { openDefenseDesigner, openOffenseDesigner, practiceTeams, type DesignerHost } from './designer';
 import { voice } from './net/voice';
 import { FieldScene, createGame, type FieldView, type ViewPlayer } from './scene';
-import { setMuted, sfx, unlockAudio } from './audio';
+import { announce, band, crowd, refreshAtmosphere, setMuted, setPa, sfx, unlockAudio } from './audio';
 import titleUrl from './assets/title.jpg';
 import logoUrl from './assets/logo.webp';
 import devnotes from '../../../site/devnotes.json';
@@ -51,6 +56,8 @@ interface KickAnim {
   e: PlayEvent;
   /** Where everyone stood at the kick, the kicking team, and the returner's index among them (-1 for none). */
   start: ViewPlayer[]; kicking: 0 | 1; returner: number;
+  /** When a return follows: where each drawn player has to be when the ball comes down, so the return starts without a jump. */
+  to: ({ x: number; y: number } | null)[] | null;
   /** Field yards the return covers, along x toward the kicking team's side. */
   run: number;
 }
@@ -98,6 +105,12 @@ let wantTimeout = false;
 /** Fourth down on defense: sell out for the block. */
 let wantBlock = false;
 let lastQuarter = 1;
+/** Atmosphere for the game being played: what night it is, the home school's fight song, and a snap counter for chants. */
+let occasion: Occasion = null;
+let fightTune: Note[] = [];
+let snapCount = 0;
+let chantUntil = 0;
+let firstDowns = 0;
 let keyHandler: ((k: string) => void) | null = null;
 /** Designs are kept in this browser. They are checked again every time they are loaded, and again by the engine and the server. */
 function loadDesigns<T>(key: string, max: number, check: (raw: unknown) => { ok: true; value: T } | { ok: false }): T[] {
@@ -155,18 +168,35 @@ createGame('phaser', scene);
 const libraryFront = (): string => (frontId === CUSTOM_FRONT ? DEFENSE_FRONTS[0].id : frontId);
 const abs = (team: 0 | 1, x: number, y: number): [number, number] => (team === 0 ? [x, y] : [100 - x, W_YD - y]);
 
-function scrimmageLineup(off: 0 | 1, los: number): ViewPlayer[] {
+/** Between plays both teams huddle: the offense seven yards behind the ball, the defense five yards off it. */
+function scrimmageLineup(off: 0 | 1, los: number, lined = false): ViewPlayer[] {
   const out: ViewPlayer[] = [];
-  const formation = formationOf(game.playOf(off, game.books[off][0]));
-  const front = frontById(off === user ? DEFENSE_FRONTS[0].id : libraryFront());
-  for (const slot of formation.slots) {
-    const [x, y] = abs(off, los + slot.at[0], CY_YD + slot.at[1]);
-    out.push({ team: off, x, y, moving: false, down: false, hasBall: false });
+  if (lined) {
+    // Lined up: used when the coach is trying fronts on the call sheet and wants to see them.
+    const formation = formationOf(game.playOf(off, game.books[off][0]));
+    const front = frontById(off === user ? DEFENSE_FRONTS[0].id : libraryFront());
+    for (const slot of formation.slots) {
+      const [x, y] = abs(off, los + slot.at[0], CY_YD + slot.at[1]);
+      out.push({ team: off, x, y, moving: false, down: false, hasBall: false });
+    }
+    for (const slot of front.slots) {
+      const [x, y] = abs(off, Math.min(los + slot.at[0], 108), CY_YD + slot.at[1]);
+      out.push({ team: other(off), x, y, moving: false, down: false, hasBall: false });
+    }
+    return out;
   }
-  for (const slot of front.slots) {
-    const [x, y] = abs(off, Math.min(los + slot.at[0], 108), CY_YD + slot.at[1]);
-    out.push({ team: other(off), x, y, moving: false, down: false, hasBall: false });
-  }
+  const ring = (team: 0 | 1, depth: number, rx: number, ry: number): void => {
+    for (let i = 0; i < 11; i++) {
+      // One man (the quarterback, or the middle linebacker) stands in the middle; the other ten close round him.
+      const a = (i / 10) * Math.PI * 2;
+      const dx = i === 10 ? 0 : Math.cos(a) * rx;
+      const dy = i === 10 ? 0 : Math.sin(a) * ry;
+      const [x, y] = abs(off, Math.max(-8, Math.min(los + depth + dx, 108)), CY_YD + dy);
+      out.push({ team, x, y, moving: false, down: false, hasBall: false });
+    }
+  };
+  ring(off, -7, 1.7, 2.6);
+  ring(other(off), 5, 1.7, 2.6);
   return out;
 }
 
@@ -184,7 +214,7 @@ function kickoffLineup(kicking: 0 | 1, from: number): ViewPlayer[] {
   return out;
 }
 
-function setStatic(): void {
+function setStatic(lined = false): void {
   const s = game.state;
   viewSim = null;
   viewReturn = null;
@@ -195,7 +225,7 @@ function setStatic(): void {
   } else if (s.phase !== 'final') {
     const los = s.phase === 'conversion' ? RULES.twoPointFrom : s.yardLine;
     const off = s.possession;
-    lineup = scrimmageLineup(off, los);
+    lineup = scrimmageLineup(off, los, lined);
     const a = abs(off, los, CY_YD)[0];
     marks = { los: a, toGain: s.phase === 'conversion' ? abs(off, 100, CY_YD)[0] : abs(off, Math.min(los + s.distance, 100), CY_YD)[0] };
     spot = { x: a, y: CY_YD };
@@ -274,6 +304,15 @@ function buildView(): FieldView {
     const rx = k.x1 + k.run * ease;
     const ry = k.y1 + Math.sin(g * 6) * 2.2 * (1 - g);
     const scored = !!k.e.flags.touchdown;
+    if (k.to) {
+      // Everyone runs to where the return will start: the coverage down the field, the blockers back to their man.
+      const ease = f * f * (3 - 2 * f);
+      const players: ViewPlayer[] = k.start.map((p, i) => {
+        const t = k.to![i];
+        return t ? { ...p, x: p.x + (t.x - p.x) * ease, y: p.y + (t.y - p.y) * ease, moving: f < 1 } : p;
+      });
+      return { players, ball: { x: ballX, y: ballY, z: Math.round(4 * 22 * f * (1 - f)), visible: true }, los: null, toGain: null, focusX: ballX, frame };
+    }
     const players: ViewPlayer[] = k.start.map((p, i) => {
       if (i === k.returner) {
         // He settles under the ball while it is in the air, then runs it back.
@@ -463,6 +502,7 @@ function next(): void {
   $('calls').classList.add('hidden');
   const s = game.state;
   if (s.phase === 'final') return showFinal();
+  atmosphereBeforeSnap();
   if (net) return onlineNext();
   updateBug();
   if (s.phase === 'kickoff') {
@@ -499,6 +539,7 @@ function runKickoff(off: OffDecision | null): void {
   clockOn = false;
   $('pclock').classList.add('hidden');
   setPanelWaiting('Kickoff');
+  if (!quiet()) crowd.rise(speed === 1 ? 1.2 : 0.5);
   game.begin(off, null);
   game.tick();
   const e = game.lastEvent!;
@@ -582,6 +623,7 @@ function commit(off: OffDecision, def: DefDecision): void {
   const e = game.lastEvent;
   if (!e || e.type === 'kneel' || e.type === 'penalty') return showResult(e);
   setPanelWaiting(e.type === 'punt' ? 'Punt' : e.type === 'fieldGoal' ? 'Field goal attempt' : 'Extra point');
+  lineup = scrimmageLineup(offTeam, los, true);
   if (e.type === 'punt') startKick(offTeam, los - 10, Math.min(los + e.yards, 104), CY_YD, e);
   else startKick(offTeam, los - 7, 110, e.flags.good ? CY_YD : CY_YD + 13, e);
 }
@@ -602,9 +644,45 @@ function startKick(team: 0 | 1, from: number, to: number, toY: number, e: PlayEv
   }
   const run = returner >= 0 ? Math.sign(x0 - x1) * yards : 0;
   const pace = speed === 1 ? 1 : 0.4;
+  // A real return follows: pair every man on the field with his place at the start of it, nearest lanes together,
+  // and bring the ball down on the returner.
+  let dest: ({ x: number; y: number } | null)[] | null = null;
+  let landX = x1;
+  let landY = y1;
+  const ret = (e.type === 'kickoff' || e.type === 'punt') && speed !== 0 ? game.lastReturn : null;
+  if (ret) {
+    const sim = ret.make();
+    const spots = sim.players.map((p) => {
+      const [x, y] = abs(ret.frame, p.x / U, p.y / U);
+      return { x, y, team: (p.side === 0 ? other(ret.frame) : ret.frame) as 0 | 1, idx: p.idx };
+    });
+    const places: ({ x: number; y: number } | null)[] = start.map(() => null);
+    dest = places;
+    for (const side of [0, 1] as const) {
+      const men = start.map((p, i) => ({ p, i })).filter((m) => m.p.team === side).sort((a, b) => a.p.y - b.p.y);
+      const want = spots.filter((sp) => sp.team === side && sp.idx !== 0).sort((a, b) => a.y - b.y);
+      const carrier = spots.find((sp) => sp.team === side && sp.idx === 0);
+      if (carrier) {
+        // The deepest man on the receiving side fields it.
+        const deep = men.reduce((best, m) => (Math.abs(m.p.x - carrier.x) < Math.abs(best.p.x - carrier.x) ? m : best), men[0]);
+        places[deep.i] = carrier;
+        men.splice(men.indexOf(deep), 1);
+        landX = carrier.x;
+        landY = carrier.y;
+      }
+      // Any man without a place in the return (the kicker) stays where he is.
+      const spare = men.length - want.length;
+      const skip = spare > 0 ? new Set(men.filter((m) => m.p.team === team).sort((a, b) => Math.abs(a.p.y - CY_YD) - Math.abs(b.p.y - CY_YD)).slice(0, spare).map((m) => m.i)) : new Set<number>();
+      let k = 0;
+      for (const m of men) {
+        if (skip.has(m.i) || k >= want.length) continue;
+        places[m.i] = want[k++];
+      }
+    }
+  }
   kick = {
-    x0, x1, y0, y1, t: 0, T: speed === 0 ? 0 : Math.round(1200 * pace), R: 0,
-    e, start, kicking: team, returner, run,
+    x0, x1: landX, y0, y1: landY, t: 0, T: speed === 0 ? 0 : Math.round(1200 * pace), R: 0,
+    e, start, kicking: team, returner, run, to: dest,
   };
   mode = 'kick';
   sfx.kick();
@@ -644,8 +722,68 @@ function ballOn(): string {
   return s.yardLine < 50 ? `${teams[s.possession].abbr} ${s.yardLine}` : `${teams[other(s.possession)].abbr} ${100 - s.yardLine}`;
 }
 
+/** Sets up the stands and the band for a new game. Team 0 is at home. */
+function startAtmosphere(): void {
+  const lg = net?.view.league;
+  occasion = dynastyGame ? occasionFor(dynastyGame.week, dynastyGame.home) : lg ? occasionFor(lg.week, lg.home) : null;
+  let h = 0;
+  for (const ch of `${teams[0].id}:${teams[0].name}`) h = (Math.imul(h, 31) + ch.charCodeAt(0)) >>> 0;
+  fightTune = fightSong(h);
+  snapCount = 0;
+  chantUntil = 0;
+  firstDowns = 0;
+}
+
+function crowdInput(): CrowdInput {
+  const s = game.state;
+  return { possession: s.phase === 'kickoff' ? other(s.kicking) : s.possession, down: s.phase === 'scrimmage' ? s.down : 1, yardLine: s.phase === 'scrimmage' ? s.yardLine : 50, quarter: s.quarter, homeLead: s.score[0] - s.score[1], occasion };
+}
+const quiet = (): boolean => speed === 0 || turbo;
+
+/** Before each snap: sometimes the stands start a chant. */
+function atmosphereBeforeSnap(): void {
+  const s = game.state;
+  if (s.phase === 'final') return;
+  if (quiet() || s.phase !== 'scrimmage') return;
+  const chant = chantFor(crowdInput(), snapCount++);
+  const now = performance.now();
+  if (chant && now >= chantUntil) {
+    crowd[chant]();
+    chantUntil = now + 9000;
+  }
+}
+
+/** After each play: the band answers a home score or first down, and the PA calls the big moments. */
+function atmosphereAfterPlay(e: PlayEvent | null, half: boolean): void {
+  if (quiet()) return;
+  const s = game.state;
+  const later = (ms: number, f: () => void): void => { window.setTimeout(() => { if (!quiet() && mode !== 'menu') f(); }, ms); };
+  if (e) {
+    const f = e.flags;
+    const scorer = f.defensiveTouchdown ? other(e.offense) : e.offense;
+    if (f.touchdown || f.defensiveTouchdown) {
+      if (scorer === 0) later(500, () => band.play(fightTune, FIGHT_SONG_BEAT));
+      announce(scorer === 0 ? `Touchdown, ${teams[0].mascot}!` : `Touchdown, ${teams[1].name}.`);
+    } else if ((e.type === 'fieldGoal' || e.type === 'pat' || e.type === 'twoPoint') && f.good && e.offense === 0) band.stab(fightTune);
+    else if ((f.interception || f.fumbleLost || f.turnoverOnDowns || f.blocked) && e.offense === 1) announce(`${teams[0].mascot} ball!`);
+    else if (f.firstDown && e.offense === 0 && e.type !== 'penalty') {
+      if (firstDowns++ % 2 === 0) band.stab(fightTune);
+      if (firstDowns % 3 === 1) announce(`First down, ${teams[0].mascot}.`);
+    }
+  }
+  if (s.phase === 'final') {
+    if (s.score[0] > s.score[1]) later(700, () => band.play(fightTune, FIGHT_SONG_BEAT, 2));
+    later(1500, () => announce(`Final score: ${teams[0].name} ${s.score[0]}, ${teams[1].name} ${s.score[1]}. Drive home safely.`));
+  } else if (half) {
+    later(900, () => band.play(fightTune, FIGHT_SONG_BEAT, 2));
+    later(300, () => announce(`At the half: ${teams[0].name} ${s.score[0]}, ${teams[1].name} ${s.score[1]}.`));
+  }
+}
+
 function showResult(e: PlayEvent | null): void {
   updateBug();
+  // A call sheet left up by a play that never ran (the clock ran out first) comes down.
+  if ($('panel').querySelector('[data-act]')) setPanelWaiting('');
   setStaticIfIdle();
   const s = game.state;
   const banner = $('banner');
@@ -663,10 +801,25 @@ function showResult(e: PlayEvent | null): void {
     void cutEl.offsetWidth;
     cutEl.style.animation = '';
   }
+  const lastQuarterWas = lastQuarter;
   lastQuarter = s.quarter;
   const big = !!e && (e.flags.touchdown || e.flags.blocked || e.flags.recovered || e.flags.interception || e.flags.fumbleLost || e.flags.safety || ((e.type === 'fieldGoal' || e.type === 'twoPoint') && !!e.flags.good));
   banner.className = big ? 'big' : e?.type === 'penalty' ? 'flag' : '';
-  banner.innerHTML = `${e ? e.text : 'Time runs out.'}<small>${period}${situationText()}</small>`;
+  const half = s.phase !== 'final' && s.quarter !== lastQuarterWas && lastQuarterWas === 2;
+  const show = half && speed !== 0 ? halftimeShow(game.seed, occasion, teams[0], teams[1]) : null;
+  banner.innerHTML = `${e ? e.text : 'Time runs out.'}<small>${period}${situationText()}</small>`
+    + (show ? `<div class="show"><b>${show.title}</b>${show.lines.map((l) => `<span>${l}</span>`).join('')}</div>` : '');
+  atmosphereAfterPlay(e, half);
+  // In a dynasty the record book is open on the bench: say so the moment a school record falls or comes within reach.
+  let recordCalls = 0;
+  if (dynastyGame && !turbo && e) {
+    const calls = dynasty.watch(dynastyGame, boxScore(game.events));
+    recordCalls = calls.length;
+    if (calls.length) {
+      banner.innerHTML += calls.map((c) => `<div class="rec">${c}</div>`).join('');
+      if (calls[0].startsWith('School record') && !quiet()) announce(calls[0]);
+    }
+  }
   if (e) {
     if (e.flags.touchdown || e.flags.defensiveTouchdown || ((e.type === 'fieldGoal' || e.type === 'pat' || e.type === 'twoPoint') && e.flags.good)) sfx.score();
     else if (e.flags.interception || e.flags.fumbleLost || e.flags.safety || e.flags.turnoverOnDowns) sfx.bad();
@@ -674,7 +827,7 @@ function showResult(e: PlayEvent | null): void {
     else if (e.flags.incomplete || e.type === 'punt' || e.type === 'kickoff' || e.type === 'kneel' || e.type === 'penalty') sfx.whistle();
     else sfx.tackle();
   }
-  const base = cut ? 3000 : big || period ? 2600 : e?.type === 'kneel' ? 1000 : 1700;
+  const base = show ? 7000 : recordCalls ? 4500 : cut ? 3000 : big || period ? 2600 : e?.type === 'kneel' ? 1000 : 1700;
   timer = turbo ? 40 : speed === 0 ? Math.min(base, 900) : speed === 1 ? base : Math.round(base * 0.5);
   mode = 'post';
 }
@@ -851,7 +1004,7 @@ function showDefensePanel(): void {
       + mine.map((d, i) => `<button class="card" data-act="m:${d.id}">${defenseDiagram(toFront(d), toScheme(d))}<span class="nm">${d.name} <span class="kind">${kindLabel[d.kind]}</span></span><span class="form">Your design</span><span class="ds">Designed defense <kbd>[${i + 1}]</kbd></span></button>`).join('')
       + (tb ? `<div class="wide">${tb}</div>` : '');
     const acts: Record<string, () => void> = { timeout: () => { wantTimeout = !wantTimeout; showDefensePanel(); }, block: () => { wantBlock = !wantBlock; showDefensePanel(); } };
-    for (const f of DEFENSE_FRONTS) acts[`f:${f.id}`] = () => { frontId = f.id; setStatic(); showDefensePanel(); };
+    for (const f of DEFENSE_FRONTS) acts[`f:${f.id}`] = () => { frontId = f.id; setStatic(true); showDefensePanel(); };
     for (const d of mine) acts[`m:${d.id}`] = () => submitDef(withExtras({ frontId: CUSTOM_FRONT, callId: d.id }));
     bind(acts, (k) => {
       const n = Number(k);
@@ -866,7 +1019,7 @@ function showDefensePanel(): void {
     + DEFENSE_SCHEMES.map((c, i) => `<button class="card" data-act="d:${c.id}">${defenseDiagram(front, c)}<span class="nm">${c.name} <span class="kind">${kindLabel[c.kind]}</span></span><span class="form">${front.name}: ${front.desc}</span><span class="ds">${c.desc} <kbd>[${i + 1}]</kbd></span></button>`).join('')
     + (tb ? `<div class="wide">${tb}</div>` : '');
   const acts: Record<string, () => void> = { timeout: () => { wantTimeout = !wantTimeout; showDefensePanel(); }, block: () => { wantBlock = !wantBlock; showDefensePanel(); } };
-  for (const f of DEFENSE_FRONTS) acts[`f:${f.id}`] = () => { frontId = f.id; setStatic(); showDefensePanel(); };
+  for (const f of DEFENSE_FRONTS) acts[`f:${f.id}`] = () => { frontId = f.id; setStatic(true); showDefensePanel(); };
   acts[`f:${CUSTOM_FRONT}`] = () => { frontId = CUSTOM_FRONT; showDefensePanel(); };
   for (const c of DEFENSE_SCHEMES) acts[`d:${c.id}`] = () => submitDef(withExtras({ frontId, callId: c.id }));
   bind(acts, (k) => {
@@ -1133,7 +1286,7 @@ function bookSummary(): void {
   const runs = book.filter((id) => myPlay(id).kind === 'run').length;
   const starter = book.length === DEFAULT_BOOK.length && DEFAULT_BOOK.every((id) => book.includes(id));
   const own = book.filter((id) => myPlays.some((p) => p.id === id)).length;
-  $('bookSummary').textContent = `${runs} runs, ${book.length - runs} passes${starter ? ' (starter book)' : ''}${own ? `, ${own} of your own` : ''}${myDefs.length ? ` \u00b7 ${myDefs.length} designed ${myDefs.length === 1 ? 'defense' : 'defenses'}` : ''}`;
+  $('bookSummary').textContent = `Choose your plays and draw up your own. ${runs} runs, ${book.length - runs} passes${starter ? ' (starter book)' : ''}${own ? `, ${own} of your own` : ''}${myDefs.length ? ` \u00b7 ${myDefs.length} designed ${myDefs.length === 1 ? 'defense' : 'defenses'}` : ''}`;
 }
 
 // --------------------------------------------------------------- screens
@@ -1188,7 +1341,19 @@ const dynasty = new DynastyScreen($('dyBody'), $('dyTitle'), {
   back: () => showSetup(),
 }, () => (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0);
 
-function showSetup(fresh = true): void {
+type SetupPage = 'menu' | 'exhibition' | 'online';
+let setupPage: SetupPage = 'menu';
+/** Shows one page of the front end: the main menu, the exhibition setup, or the online desk. */
+function setupGo(page: SetupPage): void {
+  setupPage = page;
+  $('setup').dataset.page = page;
+  // Quarter length and weather are shared by an exhibition and a hosted online game: show them wherever you are.
+  const slot = $('setup').querySelector(`.page[data-page="${page}"] .opts-slot`);
+  if (slot) slot.appendChild($('gameOpts'));
+  if (page === 'menu') $('onlineLine').textContent = session ? `Signed in as ${session.name}. Host or join a game, or open your league.` : 'Coach against a friend with a game PIN, or run a league together.';
+}
+
+function showSetup(fresh = true, page: SetupPage = setupPage): void {
   unlockAudio();
   mode = 'menu';
   closeSideline();
@@ -1199,13 +1364,14 @@ function showSetup(fresh = true): void {
     teams = exhibitionTeams(seed);
   }
   $('dynastyLine').textContent = dynasty.summary();
-  $('dynastyBtn').textContent = dynasty.active ? 'Continue dynasty' : 'Dynasty';
+  $('dynastyName').textContent = dynasty.active ? 'Continue dynasty' : 'Dynasty';
   const qb = (t: Team) => t.roster.find((p) => p.id === t.depth.QB[0])!;
   $('teams').innerHTML = teams.map((t, i) => `<button class="team-card" data-team="${i}"><div class="swatch" style="background:linear-gradient(90deg, ${css(t.colors.jersey)} 0 60%, ${css(t.colors.trim)} 60% 80%, ${css(t.colors.helmet)} 80%)"></div><div class="nm">${t.name} ${t.mascot}</div><div class="sub">${i === 0 ? 'Home' : 'Visitors'} · QB ${qb(t).name} #${qb(t).number}</div></button>`).join('');
   $('teams').querySelectorAll<HTMLElement>('[data-team]').forEach((el) => el.addEventListener('click', () => startGame(Number(el.dataset.team) as 0 | 1)));
   ($('clockToggle') as HTMLInputElement).checked = useClock;
   bookSummary();
   renderOnlineBox();
+  setupGo(page);
   show('setup');
 }
 
@@ -1222,6 +1388,7 @@ function startGame(team: 0 | 1, conditions: GameSetup = setup): void {
   game = new Game(seed, teams, { books, plays, defenses, setup: conditions });
   coach = new AutoCoach(seed);
   showWeather();
+  startAtmosphere();
   lastQuarter = 1;
   kick = null;
   viewSim = null;
@@ -1265,6 +1432,25 @@ function showFinal(): void {
   $('finalMeta').textContent = `Seed ${seed} · ${game.log.length} decisions · game fingerprint ${gameHash(game)}${official}`;
   if (net) window.clearInterval(net.timer);
   $('finalCareer').textContent = '';
+  $('finalRecords').innerHTML = '';
+  // The night's leaders for each team, from the box score.
+  const box = boxScore(game.events);
+  const leaders = ([0, 1] as const).map((t) => {
+    const lines = Object.entries(box.players[t]);
+    const name = (id: string): string => teams[t].roster.find((p) => p.id === id)?.name ?? '';
+    const best = (key: keyof StatLine): [string, StatLine] | null => lines.filter(([, l]) => l[key] > 0).sort((x, y) => y[1][key] - x[1][key])[0] ?? null;
+    const parts: string[] = [];
+    const p = best('passAtt');
+    if (p) parts.push(`${name(p[0])} ${p[1].passComp}/${p[1].passAtt} for ${p[1].passYds}${p[1].passTd ? `, ${p[1].passTd} TD` : ''}${p[1].passInt ? `, ${p[1].passInt} int` : ''}`);
+    const r = best('rushYds');
+    if (r) parts.push(`${name(r[0])} ${r[1].rushAtt} carries for ${r[1].rushYds}${r[1].rushTd ? `, ${r[1].rushTd} TD` : ''}`);
+    const c = best('recYds');
+    if (c) parts.push(`${name(c[0])} ${c[1].rec} catches for ${c[1].recYds}${c[1].recTd ? `, ${c[1].recTd} TD` : ''}`);
+    const d = best('tackles');
+    if (d) parts.push(`${name(d[0])} ${d[1].tackles} tackles${d[1].sacks ? `, ${d[1].sacks} ${d[1].sacks === 1 ? 'sack' : 'sacks'}` : ''}${d[1].ints ? `, ${d[1].ints} int` : ''}`);
+    return `<div><b>${teams[t].abbr}</b> ${parts.join(' · ')}</div>`;
+  });
+  $('finalLeaders').innerHTML = leaders.join('');
   $('again').textContent = dynastyGame ? 'Back to the dynasty' : net?.view.league ? 'Back to the league' : 'New game';
   leagueReturn = net?.view.league?.code ?? null;
   if (net) void loadCareer(true);
@@ -1276,7 +1462,10 @@ function showFinal(): void {
     ($('again') as HTMLButtonElement).disabled = true;
     // Let the final score paint before the other games are worked out.
     window.setTimeout(() => {
-      $('finalCareer').textContent = dynasty.finishGame(g, score).text;
+      const done = dynasty.finishGame(g, score, boxScore(game.events));
+      $('finalCareer').textContent = done.text;
+      $('finalRecords').innerHTML = done.records.map((r) => `<div>${r}</div>`).join('');
+      if (done.records.length && !quiet()) announce(`A new school record. ${done.records[0]}`);
       ($('again') as HTMLButtonElement).disabled = false;
     }, 60);
   }
@@ -1478,6 +1667,7 @@ function enterOnlineGame(): void {
   const catchUp = net.queue.length > 1 ? net.queue.splice(0, net.queue.length) : [];
   game = replayGame(seed, teams, catchUp, { books: v.books, plays: v.designs.plays, defenses: v.designs.defenses, setup: cleanSetup(v.setup) });
   showWeather();
+  startAtmosphere();
   lastQuarter = game.state.quarter;
   kick = null;
   viewSim = null;
@@ -1635,8 +1825,16 @@ voice.onChange(renderVoice);
 
 ($('titleArt') as HTMLImageElement).src = titleUrl;
 ($('setupLogo') as HTMLImageElement).src = logoUrl;
+($('menuArt') as HTMLImageElement).src = menuArtUrl;
+// Pixel faces for the menu, carried inside the page like everything else.
+for (const [family, url, weight] of [['Press Start 2P', pressStartUrl, '400'], ['Jersey 15', jerseyUrl, '400']] as const) {
+  try { void new FontFace(family, `url(${url}) format('woff2')`, { weight }).load().then((f) => document.fonts.add(f)); } catch { /* the fallback face is fine */ }
+}
 $('version').textContent = `v${devnotes.notes[0].version} · ${devnotes.notes[0].title}`;
-$('title').addEventListener('click', () => showSetup());
+$('title').addEventListener('click', () => showSetup(true, 'menu'));
+$('goExhibition').addEventListener('click', () => { sfx.select(); setupGo('exhibition'); });
+$('goOnline').addEventListener('click', () => { sfx.select(); setupGo('online'); });
+$('setup').querySelectorAll<HTMLElement>('[data-menu]').forEach((el) => el.addEventListener('click', () => setupGo('menu')));
 $('again').addEventListener('click', () => {
   if (leagueReturn && session) {
     const code = leagueReturn;
@@ -1728,7 +1926,21 @@ let muted = false;
 $('mute').addEventListener('click', () => {
   muted = !muted;
   setMuted(muted);
+  refreshAtmosphere();
   $('mute').textContent = muted ? 'Sound off' : 'Sound on';
+});
+let paOn = true;
+try { paOn = localStorage.getItem('fnd.pa') !== 'off'; } catch { /* private mode */ }
+const showPa = (): void => {
+  setPa(paOn);
+  $('pa').textContent = paOn ? 'Announcer on' : 'Announcer off';
+  $('pa').classList.toggle('on', paOn);
+};
+showPa();
+$('pa').addEventListener('click', () => {
+  paOn = !paOn;
+  try { localStorage.setItem('fnd.pa', paOn ? 'on' : 'off'); } catch { /* private mode */ }
+  showPa();
 });
 window.addEventListener('keydown', (ev) => {
   if (ev.repeat || ev.metaKey || ev.ctrlKey || ev.altKey) return;
@@ -1736,8 +1948,14 @@ window.addEventListener('keydown', (ev) => {
   if (!$('title').classList.contains('hidden')) {
     if (k === 'enter' || k === ' ') {
       ev.preventDefault();
-      showSetup();
+      showSetup(true, 'menu');
     }
+    return;
+  }
+  if (!$('setup').classList.contains('hidden')) {
+    const typing = ev.target instanceof HTMLInputElement || ev.target instanceof HTMLSelectElement;
+    if (k === 'escape' && setupPage !== 'menu') setupGo('menu');
+    else if (setupPage === 'menu' && !typing && k >= '1' && k <= '5') ($('mainMenu').querySelectorAll('.mi')[Number(k) - 1] as HTMLElement).click();
     return;
   }
   if ($('game').classList.contains('hidden')) return;
@@ -1748,6 +1966,8 @@ window.addEventListener('keydown', (ev) => {
 
 /** Debug hooks used by the browser checks. */
 (window as unknown as Record<string, unknown>).__fnd = {
+  /** Where every drawn player is right now, in field yards. For the automated checks. */
+  view: () => (game && mode !== 'menu' ? buildView().players.map((p) => ({ team: p.team, x: p.x, y: p.y })) : null),
   selftest: (s: number): string => gameHash(simulateGame(s, exhibitionTeams(s))),
   state: () => ({ mode, league: shared.current ? { code: shared.current.code, state: shared.current.state, year: shared.current.year, week: shared.current.week, you: shared.current.you, over: shared.current.over, played: shared.current.games.filter((g) => g.score).length } : null, dynasty: dynasty.active ? { year: dynasty.active.year, week: dynasty.active.week, user: dynasty.active.user, results: dynasty.active.results.length, history: dynasty.active.history.length } : null, cutin: $('cutin').classList.contains('hidden') ? null : ($('cutin') as HTMLImageElement).alt, setup: game?.setup ?? setup, myPlays: myPlays.length, myDefs: myDefs.length, career, practice: practiceRun ? { n: practiceRun.n, done: !!viewSim?.done } : null, phase: game?.state.phase, score: game?.state.score, quarter: game?.state.quarter, clock: game?.state.clock, sidelineOpen, playClock: clockOn ? Math.ceil(clockLeft / 1000) : null, book,
     online: net ? { pin: net.pin, state: net.view.state, turn: net.view.turn, you: net.view.you, sync: net.sync, serverHash: net.view.hash, localHash: game ? gameHash(game) : '', queued: net.queue.length, serverScore: net.view.score, mine: !!net.view.mine, voice: voice.state, peer: voice.peerState(String(net.view.you === 0 ? 1 : 0)), voiceSeen: net.view.voice } : null }),

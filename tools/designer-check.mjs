@@ -105,7 +105,7 @@ try {
   check('designs and the book survive a reload', s0.myPlays === 1 && s0.myDefs === 1 && s0.book.includes(id.slice(2)));
 
   // Call both in a game.
-  await page.click('[data-team="0"]');
+  await page.click('#goExhibition').catch(() => {}); await page.click('[data-team=\"0\"]');
   await page.evaluate(() => { window.__fnd.setSpeed(0); window.__fnd.setPlayClock(false); });
   let usedOff = false, usedDef = false;
   for (let i = 0; i < 4000 && !(usedOff && usedDef); i++) {
@@ -117,7 +117,8 @@ try {
     const pick = acts.includes('snap') ? 'snap' : acts.includes(`p:${id.slice(2)}`) ? `p:${id.slice(2)}` : acts.find((a) => a.startsWith('m:')) ?? (acts.includes('f:@custom') ? 'f:@custom' : acts.includes('pat') ? 'pat' : acts.find((a) => a.startsWith('d:')) ?? acts[0]);
     await page.click(`#panel [data-act="${pick}"]`).catch(() => {});
     if (pick.startsWith('p:c_')) { usedOff = true; await sleep(30); check('the designed play is named when called', (await text('#panel')).includes('Wildcat Special') || (await text('#calls')).includes('Wildcat Special')); }
-    if (pick.startsWith('m:')) { usedDef = true; await sleep(30); check('the designed defense is named when called', (await text('#calls')).includes('Stag Hunter') || (await text('#panel')).includes('Stag Hunter')); }
+    // A flag or the end of a quarter before the snap means the call was never run: wait for one that is.
+    if (pick.startsWith('m:') && !usedDef) { await sleep(30); if ((await text('#calls')).includes('Stag Hunter') || (await text('#panel')).includes('Stag Hunter')) { usedDef = true; check('the designed defense is named when called', true); } }
     await sleep(20);
   }
   check('designed play and defense were both called in a game', usedOff && usedDef);

@@ -2,6 +2,111 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.14.0",
+      "date": "2026-11-26",
+      "title": "Statistics, school records and a new look",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Statistics. Every game in a dynasty now keeps a box score for every player at all eight schools: passing, rushing, receiving, tackles, sacks, interceptions and kicking. The Statistics page shows your team's leaders and the league leaders."
+        },
+        {
+          "tag": "new",
+          "text": "School record books. Each school has records for a single game, a season and a career, and the book is already full when you arrive: fifty years of names and numbers. Beat one and your player's name goes in."
+        },
+        {
+          "tag": "new",
+          "text": "Record watch. During your own games the bench tells you when a player is closing in on a school record, and the moment one falls it is called on the field and by the announcer. Season and career records are settled when the season ends."
+        },
+        {
+          "tag": "new",
+          "text": "Records that fall anywhere in the league show up on the dynasty screen, and you can open any school's record book."
+        },
+        {
+          "tag": "new",
+          "text": "The final screen of every game names each team's leaders: passer, runner, receiver and tackler."
+        },
+        {
+          "tag": "improved",
+          "text": "A new look everywhere, taken from the scoreboard and start-screen art: pixel lettering, gold frames for the home side and blue for the visitors, and larger text on the call sheet, the dynasty pages and the menus."
+        },
+        {
+          "tag": "note",
+          "text": "Statistics and records are in solo dynasty. A dynasty saved before this update starts its statistics from its next game."
+        }
+      ]
+    },
+    {
+      "version": "0.13.0",
+      "date": "2026-11-26",
+      "title": "A real main menu, and schools that are hiring",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Main menu. Exhibition, Dynasty, Play online, Playbook and Hall of Fame each get their own row, built from the new start-screen art. Press 1 to 5 to pick one and Esc to come back."
+        },
+        {
+          "tag": "new",
+          "text": "Exhibition and Play online now have their own pages instead of sharing one crowded screen."
+        },
+        {
+          "tag": "new",
+          "text": "Starting a dynasty is a job hunt. Pick a state and five of its eight schools are looking for a head coach. Each posting tells you why the job is open, last season's record, how many seniors are back, the best player and what the school expects."
+        },
+        {
+          "tag": "new",
+          "text": "The huddle. Between plays both teams huddle up while you pick. Your offense breaks to the line when the call is made."
+        },
+        {
+          "tag": "improved",
+          "text": "The announcer now uses the most natural voice your browser has, at a normal pitch. How good it sounds still depends on your phone or computer."
+        },
+        {
+          "tag": "fixed",
+          "text": "Removed the crowd noise. It sounded like waves. The \"de-fense\" chant, the claps and the band stay."
+        },
+        {
+          "tag": "fixed",
+          "text": "The jump when a kick was caught. Players used to snap to new spots as the return began. Now everyone runs to where the return starts while the ball is in the air, and the ball comes down on the returner."
+        },
+        {
+          "tag": "fixed",
+          "text": "Punts and field goals are kicked from a formation, not from the huddle."
+        }
+      ]
+    },
+    {
+      "version": "0.12.0",
+      "date": "2026-11-26",
+      "title": "Friday night atmosphere",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Chants. \"De-fense\" with stomps when the visitors have to convert, and a clap-along when the home team is driving."
+        },
+        {
+          "tag": "new",
+          "text": "A pep band. Every school has its own fight song, made from the school itself so it is always the same tune. The band plays it after home touchdowns, at half time and after a home win, with a drum line underneath and a horn stab on first downs."
+        },
+        {
+          "tag": "new",
+          "text": "A public address announcer calls touchdowns, turnovers, some first downs, the half-time score and the final. It has its own on/off button next to Sound."
+        },
+        {
+          "tag": "new",
+          "text": "Half-time shows. Every game has one: a band set and something happening on the field. In a dynasty each school's home schedule has a home opener, homecoming and senior night. Homecoming crowns a king from your senior class and a queen; senior night honors your seniors by name. The title game has both bands."
+        },
+        {
+          "tag": "new",
+          "text": "The dynasty screen tells you when this week is homecoming, senior night or a home opener."
+        },
+        {
+          "tag": "note",
+          "text": "All of the sound is generated on the spot. There are no audio files."
+        }
+      ]
+    },
+    {
       "version": "0.11.0",
       "date": "2026-11-26",
       "title": "Freshmen, JV and varsity",
@@ -532,9 +637,9 @@
       "text": "Rain, wind, snow and heat. Playable now."
     },
     {
-      "status": "planned",
-      "title": "Complete statistics",
-      "text": "Full box scores for teams and players, checked so every number adds up."
+      "status": "testing",
+      "title": "Statistics and school records",
+      "text": "Box scores for every player, season and career numbers, league leaders, and a record book for every school with records that can be broken. Playable now in solo dynasty."
     },
     {
       "status": "testing",
@@ -582,14 +687,14 @@
       "text": "Players who age from freshman to senior, a JV squad that plays its own schedule, and call-ups to the varsity. Playable now in solo dynasty."
     },
     {
-      "status": "planned",
+      "status": "testing",
       "title": "Friday night atmosphere",
-      "text": "Crowd, band and chants, plus half-time moments through the season such as homecoming and senior night."
+      "text": "Chants, a pep band with a fight song for every school, a PA announcer, and half-time shows with homecoming and senior night. Playable now."
     },
     {
-      "status": "planned",
+      "status": "testing",
       "title": "A cleaner look",
-      "text": "A pass over every screen for spacing, type and touch targets."
+      "text": "One look across the menu, the game screen, the call sheet and the dynasty pages, taken from the supplied art. Playable now."
     },
     {
       "status": "planned",

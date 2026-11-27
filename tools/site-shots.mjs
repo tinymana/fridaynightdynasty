@@ -49,7 +49,7 @@ await page.click('#title');
 await sleep(150);
 
 // A game.
-await page.click('[data-team="0"]');
+await page.click('#goExhibition').catch(() => {}); await page.click('[data-team=\"0\"]');
 await page.evaluate(() => window.__fnd.setPlayClock(false));
 const done = { off: false, def: false, live: false, cut: false, kick: false };
 for (let n = 0; n < 9000; n++) {

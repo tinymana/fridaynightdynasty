@@ -1,5 +1,64 @@
 # Changelog
 
+## 0.14.0 — 2026-11-26
+
+Statistics, school records and the UI pass.
+
+### Added
+- `packages/league/src/stats.ts`: `boxScore(events)` gives a `StatLine` per player and team totals, counted the
+  way a high school scorer does. It reads the play-by-play only, so game results and fingerprints are unchanged.
+- `packages/league/src/records.ts`: `historicBook` (a school's records as fifty years left them, scaled to the
+  quarter length), `recordGame`, `closeSeason`, `newsText`, `cleanStatBook`.
+- `Dynasty.stats` (`StatBook`): season lines for every player in the league, career lines for returning players,
+  a record book per school and the records that have fallen. `playWeek` takes the coach's own box score;
+  `simulateWithBox`, `statsOf`, `schoolOfPlayer`.
+- Client: Statistics and Record book pages, record watch during a dynasty game (`DynastyScreen.watch`), leaders
+  and broken records on the final screen.
+- `tests/stats.test.ts`.
+
+### Changed
+- One visual style across every screen (the block marked "UI pass" in `apps/client/index.html`): Press Start 2P
+  for display, Jersey 15 for text (both OFL, carried in the page), gold and blue frames from the HUD sheet.
+
+## 0.13.0 — 2026-11-26
+
+Main menu, coaching jobs, and atmosphere changes after the first listen.
+
+### Added
+- Main menu (`#mainMenu`) with pages for Exhibition and Play online (`setupGo`). Keys 1 to 5 and Esc. Styled from
+  `art/source/png/friday_night_dynasty_start_screen.png`; the stadium header is cropped from it. Press Start 2P (OFL)
+  is carried in the page.
+- `openings(league)`: five of a league's eight schools are hiring, with last season's record, a reason and an
+  expectation. The dynasty start screen lists them as job postings.
+
+- Both teams are drawn in a huddle between plays (`scrimmageLineup`); trying a front on the call sheet still shows it lined up.
+
+### Changed
+- The announcer picks the most natural English voice available and speaks at normal pitch.
+- Quarter length and weather pickers move between the Exhibition and Play online pages.
+
+### Fixed
+- Kick to return: during the flight every drawn player moves to his starting place in the `ReturnSim` that follows, so nothing jumps when the return begins. `tools/kick-jump.mjs` measures it (0 yards).
+
+### Removed
+- The crowd noise bed, cheers and groans, and `crowdLevel`. The chants, band and announcer remain.
+
+## 0.12.0 — 2026-11-26
+
+Friday night atmosphere. Client only: no simulation or server change.
+
+### Added
+- `apps/client/src/atmosphere.ts` (pure, tested): `chantFor`, `fightSong` (a four-bar tune from the
+  school's seed), `halftimeShow`.
+- `apps/client/src/audio.ts`: "de-fense" and clap chants,
+  a brass section and drum line, and `announce` (browser speech synthesis). No audio files.
+- `occasionFor(week, home)` in the league package: home opener, homecoming, senior night, championship.
+- Half-time show card in the result banner; an Announcer button; the occasion on the dynasty screen.
+- `tests/atmosphere.test.ts`, `tools/halftime-shot.mjs`.
+
+### Fixed
+- A call sheet left on screen when the clock ran out before the snap is cleared.
+
 ## 0.11.0 — 2026-11-26
 
 Freshmen, JV and varsity.
