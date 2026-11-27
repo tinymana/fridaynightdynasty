@@ -396,6 +396,13 @@
   #shared table, #dynasty table, #hall table { font-size: 17px; }
   #shared th, #dynasty th, #hall th { font-size: 14px; }
   .colhead { font-size: 13px; }
+  .award { display: grid; grid-template-columns: 250px 1fr; gap: 12px; padding: 7px 8px; border-bottom: 1px solid var(--line); font-size: 17px; text-align: left; }
+  .award .lbl { color: var(--gold); }
+  .award small { color: var(--dim); margin-left: 6px; }
+  .award.me { background: var(--navy-2); }
+  .allteam { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+  .allteam .me { color: var(--gold); }
+  @media (max-width: 620px) { .award { grid-template-columns: 1fr; gap: 2px; } }
   #hall, #final { font-size: 17px; }
   .sl-row, #sideline { font-size: 16px; }
 </style>

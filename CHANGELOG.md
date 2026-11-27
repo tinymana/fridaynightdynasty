@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.15.0 — 2026-11-27
+
+Season awards.
+
+### Added
+- `packages/league/src/awards.ts`: `voteAwards` picks a player of the year, defensive player of the year, newcomer
+  of the year, a sixteen-man all-league team and the coach of the year (wins against wins expected from prestige).
+  `seasonAwards(d, stats)`, `cleanAwards`. `Dynasty.awards` holds every season's, written by `playWeek` after the
+  title game.
+- Client: awards on the season-over screen, an Awards page, and honors by school in the record book.
+
 ## 0.14.0 — 2026-11-26
 
 Statistics, school records and the UI pass.

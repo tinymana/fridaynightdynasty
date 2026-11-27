@@ -135,3 +135,51 @@ describe('statistics through a dynasty', () => {
     expect(back.stats!.news.length).toBe(d.stats!.news.length);
   });
 });
+
+describe('season awards', () => {
+  it('are voted once the title game is played, from players who really played, and survive a save', async () => {
+    const { programOf, standings } = await import('@fnd/league');
+    let d = createDynasty('OH', 31, 2);
+    while (d.week < REGULAR_WEEKS) d = playWeek(d);
+    expect(d.awards ?? []).toEqual([]);
+    d = playWeek(d);
+    expect(d.awards!.length).toBe(1);
+    const a = d.awards![0];
+    expect(a.year).toBe(1);
+    for (const h of [a.player!, a.defender!, a.newcomer!]) {
+      const p = programOf(d, h.school).find((x) => x.id === h.id)!;
+      expect(p.name).toBe(h.name);
+      expect(d.stats!.season[h.id].games).toBeGreaterThan(0);
+      expect(h.line.length).toBeGreaterThan(5);
+    }
+    expect(['QB', 'RB', 'WR', 'TE']).toContain(a.player!.pos);
+    expect(['DL', 'LB', 'CB', 'S']).toContain(a.defender!.pos);
+    expect(a.newcomer!.year).toBeLessThanOrEqual(2);
+    // One quarterback, two backs, three receivers, nine defenders and a kicker.
+    const count = (pos: string[]): number => a.allLeague.filter((h) => pos.includes(h.pos)).length;
+    expect([count(['QB']), count(['RB']), count(['WR', 'TE']), count(['DL']), count(['LB']), count(['CB', 'S']), count(['K'])]).toEqual([1, 2, 3, 3, 3, 3, 1]);
+    expect(new Set(a.allLeague.map((h) => h.id)).size).toBe(16);
+    // The coach of the year did not finish last.
+    const table = standings(d.results);
+    expect(table.findIndex((r) => r.school === a.coach)).toBeLessThan(7);
+    expect(loadDynasty(JSON.parse(JSON.stringify(d)))).toEqual(d);
+    // A second season adds a second set and leaves the first alone.
+    let e = nextSeason(d);
+    while (e.week <= REGULAR_WEEKS) e = playWeek(e);
+    expect(e.awards!.map((x) => x.year)).toEqual([1, 2]);
+    expect(e.awards![0]).toEqual(a);
+  });
+
+  it('drops anything in a save that is not a well-formed award', () => {
+    let d = createDynasty('OH', 31, 2);
+    while (d.week <= REGULAR_WEEKS) d = playWeek(d);
+    const bad = JSON.parse(JSON.stringify(d));
+    bad.awards.push({ year: 'x' }, null, { year: 3, coach: 99 });
+    bad.awards[0].player.name = '<img src=x>';
+    bad.awards[0].allLeague.push({ id: 5 });
+    const back = loadDynasty(bad)!;
+    expect(back.awards!.length).toBe(1);
+    expect(back.awards![0].player!.name).toBe('img src=x');
+    expect(back.awards![0].allLeague.length).toBe(16);
+  });
+});
