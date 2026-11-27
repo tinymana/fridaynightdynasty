@@ -6,11 +6,12 @@ import {
 } from '@fnd/core';
 import { fieldGoalDistance } from '@fnd/football-ai';
 import { AutoCoach, Game, gameHash, replayGame, simulateGame, summarize, type LoggedDecision, type MoveKind, type PlaySim, type ReturnSim } from '@fnd/match-sim';
-import { leagueTeams, type Career, type RoomView } from '@fnd/online';
+import { leagueTeams, type Career, type RoomView, type SaveMeta } from '@fnd/online';
 import { boxScore, occasionFor, type Occasion, type StatLine } from '@fnd/league';
 import { FIGHT_SONG_BEAT, chantFor, fightSong, halftimeShow, type CrowdInput, type Note } from './atmosphere';
 import { OnlineError, online } from './net/online';
 import { cutinFor } from './cutins';
+import { makeSave, readSave, saveFileName, saveLabel, type SaveContents } from './saves';
 import wxRainUrl from './assets/wx-rain.png';
 import wxSnowUrl from './assets/wx-snow.png';
 import wxFogUrl from './assets/wx-fog.png';
@@ -66,6 +67,12 @@ interface KickAnim {
   run: number;
 }
 
+/** What a save holds. A change to any of these is a change to the save. */
+const SAVED_KEYS = ['fnd.dynasty.v1', 'fnd.plays.v1', 'fnd.defs.v1', 'fnd.book.v2'];
+/** Set while a loaded save is being written into this browser, so that writing it does not count as a new change. */
+let applyingSave = false;
+let savedChanged: () => void = () => {};
+
 /** Small per-browser conveniences. Storage can be missing or throw, so every access is guarded. */
 const store = {
   get<T>(key: string, fallback: T): T {
@@ -80,6 +87,7 @@ const store = {
     try {
       localStorage.setItem(key, JSON.stringify(value));
     } catch { /* not available: the choice lasts for this visit only */ }
+    if (SAVED_KEYS.includes(key)) savedChanged();
   },
 };
 
@@ -187,11 +195,11 @@ function scrimmageLineup(off: 0 | 1, los: number, lined = false): ViewPlayer[] {
     const front = frontById(off === user ? DEFENSE_FRONTS[0].id : libraryFront());
     for (const slot of formation.slots) {
       const [x, y] = abs(off, los + slot.at[0], CY_YD + slot.at[1]);
-      out.push({ team: off, x, y, moving: false, down: false, hasBall: false });
+      out.push({ team: off, x, y, moving: false, down: false, hasBall: false, pose: slot.group === 'OL' ? 'line' : undefined });
     }
     for (const slot of front.slots) {
       const [x, y] = abs(off, Math.min(los + slot.at[0], 108), CY_YD + slot.at[1]);
-      out.push({ team: other(off), x, y, moving: false, down: false, hasBall: false });
+      out.push({ team: other(off), x, y, moving: false, down: false, hasBall: false, pose: slot.group === 'DL' ? 'line' : undefined });
     }
     return out;
   }
@@ -327,11 +335,15 @@ function buildView(): FieldView {
       const hasBall = b.state === 'held' && b.holder === p.idx;
       const down = sim.tick < p.stunUntil || (sim.done && sim.result !== null && !sim.result.touchdown && b.holder === p.idx && !sim.result.incomplete && sim.result.turnover !== 'interception');
       let pose: ViewPlayer['pose'];
+      const lineman = p.player.pos === 'OL' || p.player.pos === 'DL';
       if (mode === 'post' && cheerTeam === team) pose = 'cheer';
       else if (b.state === 'air' && b.t < 16 && p.idx === thrower) pose = 'throw1';
       else if (hasBall && !moving && mode === 'live' && sim.tick > 12) pose = 'throw0';
       else if (hasBall && (armUntil.get(p.player) ?? 0) > frame) pose = frame % 12 < 6 ? 'arm0' : 'arm1';
       // A man who is in the play and not running is blocking or being blocked: hands up, not down in a stance.
+      // Linemen get down in a three-point stance before the snap, and drive into their man after it.
+      else if (lineman && !hasBall && !down && sim.tick <= 8) pose = 'line';
+      else if (lineman && !hasBall && !down && mode === 'live' && (p.engaged >= 0 || !moving)) pose = 'drive';
       else if (!moving && !hasBall && !down && mode === 'live' && sim.tick > 8) pose = 'ready';
       return { team, x, y, moving, down, hasBall, pose, spin: hasBall && (spinUntil.get(p.player) ?? 0) > frame };
     });
@@ -847,14 +859,14 @@ function atmosphereBeforeSnap(): void {
 }
 
 /** Floats a small emoji up from a spot on the field view. `x` and `y` are fractions of the view. */
-function emote(face: string, x: number, y: number, delay = 0): void {
+function emote(face: string, x: number, y: number, delay = 0, top = 0.2): void {
   window.setTimeout(() => {
     const el = document.createElement('span');
     el.className = 'emote';
     el.textContent = face;
     el.setAttribute('aria-hidden', 'true');
     el.style.left = `${Math.round(Math.max(0.05, Math.min(0.95, x)) * 100)}%`;
-    el.style.top = `${Math.round(Math.max(0.2, Math.min(0.94, y)) * 100)}%`;
+    el.style.top = `${Math.round(Math.max(top, Math.min(0.94, y)) * 100)}%`;
     $('stage').appendChild(el);
     window.setTimeout(() => el.remove(), 1600);
   }, delay);
@@ -900,6 +912,37 @@ function feelings(e: PlayEvent): void {
     emote('😵', at.x, at.y - 0.08);
   } else if (f.incomplete && e.down >= 3 && sometimes(2)) {
     emote('😮‍💨', ...benchAt(def));
+  }
+  crowdFeels(e);
+}
+
+const CROWD_UP = ['🎉', '🙌', '👏', '📣', '🥳', '😆'];
+const CROWD_DOWN = ['😩', '😱', '🤦', '😬', '😤'];
+/**
+ * The stands are the home crowd. A handful of faces pop up out of the seats after the plays that matter: happy when
+ * the play helped the home team, unhappy when it hurt. Where and which come from the play's own number.
+ */
+function crowdFeels(e: PlayEvent): void {
+  const f = e.flags;
+  const def = other(e.offense);
+  let helped: 0 | 1 | null = null;
+  let n = 0;
+  if (f.touchdown || f.defensiveTouchdown) [helped, n] = [f.defensiveTouchdown ? def : e.offense, 6];
+  else if (f.interception || f.fumbleLost || f.safety) [helped, n] = [def, 4];
+  else if (f.blocked) [helped, n] = [def, 4];
+  else if (e.type === 'fieldGoal') [helped, n] = [f.good ? e.offense : def, 3];
+  else if (e.type === 'pat') [helped, n] = [f.good ? e.offense : def, f.good ? 1 : 2];
+  else if (f.turnoverOnDowns) [helped, n] = [def, 3];
+  else if (f.sack) [helped, n] = [def, 2];
+  else if ((e.type === 'run' || e.type === 'pass') && e.yards >= 15) [helped, n] = [e.offense, e.yards >= 30 ? 4 : 2];
+  else if (f.firstDown && e.down >= 3) [helped, n] = [e.offense, 1];
+  else if (f.incomplete && e.down >= 3 && e.seq % 2 === 0) [helped, n] = [def, 1];
+  if (helped === null) return;
+  const faces = helped === 0 ? CROWD_UP : CROWD_DOWN;
+  for (let i = 0; i < n; i++) {
+    const x = (5 + ((e.seq * 37 + i * 53) % 90)) / 100;
+    const y = (3 + ((e.seq * 13 + i * 29) % 10)) / 100;
+    emote(faces[(e.seq + i * 7) % faces.length], x, y, 150 + i * 130, 0.02);
   }
 }
 
@@ -1229,12 +1272,12 @@ function showLinePanel(playId: string, frontName: string, frontDesc: string, fro
   const shown: ViewPlayer[] = [];
   for (const slot of formationOf(called).slots) {
     const [x, y] = abs(off, los + slot.at[0], CY_YD + slot.at[1]);
-    shown.push({ team: off, x, y, moving: false, down: false, hasBall: false });
+    shown.push({ team: off, x, y, moving: false, down: false, hasBall: false, pose: slot.group === 'OL' ? 'line' : undefined });
   }
   if (front) {
     for (const slot of front.slots) {
       const [x, y] = abs(off, Math.min(los + slot.at[0], 108), CY_YD + slot.at[1]);
-      shown.push({ team: other(off), x, y, moving: false, down: false, hasBall: false });
+      shown.push({ team: other(off), x, y, moving: false, down: false, hasBall: false, pose: slot.group === 'DL' ? 'line' : undefined });
     }
     viewSim = null;
     viewReturn = null;
@@ -1504,7 +1547,7 @@ const dynasty = new DynastyScreen($('dyBody'), $('dyTitle'), {
   back: () => showSetup(),
 }, () => (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0);
 
-type SetupPage = 'menu' | 'exhibition' | 'online';
+type SetupPage = 'menu' | 'exhibition' | 'online' | 'saves';
 let setupPage: SetupPage = 'menu';
 /** Shows one page of the front end: the main menu, the exhibition setup, or the online desk. */
 function setupGo(page: SetupPage): void {
@@ -1513,6 +1556,8 @@ function setupGo(page: SetupPage): void {
   // Quarter length and weather are shared by an exhibition and a hosted online game: show them wherever you are.
   const slot = $('setup').querySelector(`.page[data-page="${page}"] .opts-slot`);
   if (slot) slot.appendChild($('gameOpts'));
+  if (page === 'saves') renderSaves();
+  if (page === 'menu') $('savesLine').textContent = savesLine();
   if (page === 'menu') $('onlineLine').textContent = session ? `Signed in as ${session.name}. Host or join a game, or open your league.` : 'Coach against a friend with a game PIN, or run a league together.';
 }
 
@@ -1533,6 +1578,8 @@ function showSetup(fresh = true, page: SetupPage = setupPage): void {
   $('teams').querySelectorAll<HTMLElement>('[data-team]').forEach((el) => el.addEventListener('click', () => startGame(Number(el.dataset.team) as 0 | 1)));
   ($('clockToggle') as HTMLInputElement).checked = useClock;
   bookSummary();
+  // Back at the menu with something not yet matched to the server: settle it now.
+  if (session && !cloudBusy && !cloudOther && !synced()) void syncSaves();
   renderOnlineBox();
   setupGo(page);
   show('setup');
@@ -1718,18 +1765,248 @@ function signedOutCheck(e: unknown): void {
   }
 }
 
-async function signIn(): Promise<void> {
-  const name = ($('oName') as HTMLInputElement).value;
-  const pin = ($('oPin') as HTMLInputElement).value;
+async function signIn(from: 'o' | 'sv' = 'o'): Promise<void> {
+  const name = ($(`${from}Name`) as HTMLInputElement).value;
+  const pin = ($(`${from}Pin`) as HTMLInputElement).value;
   try {
     const r = await online.enter(name, pin);
     career = null;
     session = { token: r.token, name: r.coach.name };
     store.set('fnd.session.v1', session);
     renderOnlineBox();
+    renderSaves();
+    void syncSaves();
   } catch (e) {
-    onlineMessage('oMsg', e);
+    if (from === 'sv') $('svMsg').textContent = e instanceof OnlineError ? e.message : 'Something went wrong.';
+    else onlineMessage('oMsg', e);
   }
+}
+
+// ---- Permanent saves: a copy on the server under the coach name, and a file to keep. ----
+
+/** The server save this browser last matched: whose it was and which revision. */
+let cloud = store.get<{ name: string; rev: number; at: number } | null>('fnd.cloud.v1', null);
+/** True when this browser holds changes the server has not been given. */
+let unsaved = store.get<boolean>('fnd.unsaved.v1', true);
+/** A save on the server that is not the one this browser last saw: the coach has to choose. */
+let cloudOther: SaveMeta | null = null;
+let cloudBusy = false;
+let cloudTimer = 0;
+let cloudError = '';
+let askYes: (() => void) | null = null;
+/** Counts changes, so one made while a save is on its way up is not mistaken for saved. */
+let changeSeq = 0;
+
+const contents = (): SaveContents => ({ dynasty: dynasty.active, plays: myPlays, defs: myDefs, book });
+const hasLocal = (): boolean => !!dynasty.active || myPlays.length + myDefs.length > 0;
+const whenText = (at: number): string => new Date(at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+const synced = (): boolean => !!session && !!cloud && cloud.name === session.name && !unsaved && !cloudOther;
+
+savedChanged = () => {
+  if (applyingSave) return;
+  changeSeq++;
+  unsaved = true;
+  try { localStorage.setItem('fnd.unsaved.v1', 'true'); } catch { /* this visit only */ }
+  if (!session || cloudOther) return;
+  // A few saves in a row (a week of games, a run of edits) go up as one.
+  window.clearTimeout(cloudTimer);
+  cloudTimer = window.setTimeout(() => void pushSave(), turbo ? 150 : 2500);
+};
+
+function setCloud(meta: SaveMeta): void {
+  cloud = { name: session!.name, rev: meta.rev, at: meta.at };
+  unsaved = false;
+  cloudOther = null;
+  cloudError = '';
+  store.set('fnd.cloud.v1', cloud);
+  store.set('fnd.unsaved.v1', false);
+}
+
+function saveProblem(e: unknown): void {
+  signedOutCheck(e);
+  cloudError = e instanceof OnlineError ? e.message : 'Something went wrong.';
+}
+
+/** Sends this browser's save up. An older copy never overwrites a newer one unless the coach says so (`force`). */
+async function pushSave(force = false): Promise<void> {
+  if (!session || cloudBusy) return;
+  cloudBusy = true;
+  try {
+    const file = makeSave(contents(), Date.now());
+    const base = cloud && cloud.name === session.name ? cloud.rev : null;
+    const seq = changeSeq;
+    const r = await online.saveStore(session.token, file, file.label, base, force);
+    if (r.conflict) cloudOther = r.save;
+    else if (session) {
+      setCloud(r.save);
+      if (seq !== changeSeq) {
+        // Something changed while that one was on its way: it goes up next.
+        unsaved = true;
+        store.set('fnd.unsaved.v1', true);
+        window.clearTimeout(cloudTimer);
+        cloudTimer = window.setTimeout(() => void pushSave(), 1200);
+      }
+    }
+  } catch (e) {
+    saveProblem(e);
+  }
+  cloudBusy = false;
+  refreshSaves();
+}
+
+/** Writes a save into this browser and into the running game. */
+function applySave(c: SaveContents): void {
+  applyingSave = true;
+  store.set('fnd.dynasty.v1', c.dynasty);
+  store.set('fnd.plays.v1', c.plays);
+  store.set('fnd.defs.v1', c.defs);
+  store.set('fnd.book.v2', c.book);
+  applyingSave = false;
+  myPlays = c.plays;
+  myDefs = c.defs;
+  book = c.book;
+  dynasty.reload();
+  if (!$('setup').classList.contains('hidden')) {
+    $('dynastyLine').textContent = dynasty.summary();
+    $('dynastyName').textContent = dynasty.active ? 'Continue dynasty' : 'Dynasty';
+    bookSummary();
+  }
+}
+
+/** True on the title screen and the menus: the only places a save may be swapped in under the coach. */
+const atFront = (): boolean => !net && (!$('title').classList.contains('hidden') || !$('setup').classList.contains('hidden'));
+
+/** Brings the server save down over what is in this browser. */
+async function pullSave(): Promise<void> {
+  if (!session || cloudBusy || !atFront()) return;
+  cloudBusy = true;
+  try {
+    const r = await online.saveLoad(session.token);
+    const c = r.save ? readSave(r.data) : null;
+    if (!r.save) cloudError = 'There is no save on the server yet.';
+    else if (!c) cloudError = 'The save on the server could not be read by this version of the game.';
+    else if (!atFront()) { /* The coach went into a game while it was on its way: it is fetched the next time he is at the menu. */ }
+    else {
+      applySave(c);
+      setCloud(r.save);
+    }
+  } catch (e) {
+    saveProblem(e);
+  }
+  cloudBusy = false;
+  refreshSaves();
+}
+
+/** After signing in, or on opening the game signed in: works out whether to send, fetch, or ask. */
+async function syncSaves(): Promise<void> {
+  if (!session || cloudBusy) return;
+  let meta: SaveMeta | null;
+  try {
+    meta = (await online.saveInfo(session.token)).save;
+  } catch (e) {
+    saveProblem(e);
+    return refreshSaves();
+  }
+  if (!session) return;
+  cloudError = '';
+  const mine = !!cloud && cloud.name === session.name;
+  if (!meta) {
+    cloudOther = null;
+    if (hasLocal()) await pushSave();
+  } else if (mine && cloud!.rev === meta.rev) {
+    cloudOther = null;
+    if (unsaved) await pushSave();
+  } else if (!hasLocal() || (mine && !unsaved)) {
+    // Nothing here to lose: this browser is empty, or holds an untouched older copy of the same save.
+    await pullSave();
+  } else cloudOther = meta;
+  refreshSaves();
+}
+
+function savesLine(): string {
+  if (cloudOther) return 'The server has a different save from this browser. Open to choose which to keep.';
+  if (!session) return hasLocal() ? 'Saved in this browser only. Sign in to keep it on the server too.' : 'Keep your dynasty and playbook safe, and take them to another device.';
+  if (synced()) return `Saved to the server as ${session.name}, ${whenText(cloud!.at)}.`;
+  return cloudError ? `Not saved to the server: ${cloudError}` : hasLocal() ? `Signed in as ${session.name}. Saving to the server.` : `Signed in as ${session.name}. Nothing to save yet.`;
+}
+
+function ask(text: string, yes: string, no: string, onYes: () => void): void {
+  $('svAskText').textContent = text;
+  $('svYes').textContent = yes;
+  $('svNo').textContent = no;
+  askYes = onYes;
+  delete $('svNo').dataset.keep;
+  $('svAsk').classList.remove('hidden');
+}
+
+function renderSaves(): void {
+  $('svLocal').textContent = hasLocal() ? `${saveLabel(contents())}.` : 'Nothing yet. Start a dynasty or design a play and it is kept here as you go.';
+  $('svOut').classList.toggle('hidden', !!session);
+  $('svIn').classList.toggle('hidden', !session);
+  $('svCloud').textContent = !session
+    ? 'Sign in with a coach name and a four-digit PIN and your save is kept on the server every time it changes. Sign in with the same name on another device and it is there. The same name and PIN you use to play online.'
+    : cloudOther ? `Signed in as ${session.name}. The server holds a different save: ${cloudOther.label}, saved ${whenText(cloudOther.at)}.`
+      : synced() ? `Signed in as ${session.name}. Saved ${whenText(cloud!.at)}. It saves again by itself whenever something changes.`
+        : cloudError ? `Signed in as ${session.name}. Not saved: ${cloudError}`
+          : `Signed in as ${session.name}. ${hasLocal() ? 'Not saved to the server yet.' : 'Nothing to save yet.'}`;
+  // While a choice is waiting, the two buttons in the question are the only way to send or fetch.
+  ($('svPush') as HTMLButtonElement).disabled = !!cloudOther;
+  ($('svPull') as HTMLButtonElement).disabled = !!cloudOther || !cloud;
+  ($('svDown') as HTMLButtonElement).disabled = !hasLocal();
+  if (cloudOther && !askYes) {
+    ask(`Which one do you want to keep? The server: ${cloudOther.label}. This browser: ${saveLabel(contents())}. The other one is replaced.`, 'Use the server save', 'Keep this browser\u2019s', () => void pullSave());
+    $('svNo').dataset.keep = '1';
+  }
+}
+
+/** Redraws whatever is showing a save status. */
+function refreshSaves(): void {
+  if ($('setup').classList.contains('hidden')) return;
+  if (setupPage === 'saves') renderSaves();
+  if (setupPage === 'menu') $('savesLine').textContent = savesLine();
+}
+
+function closeAsk(): void {
+  askYes = null;
+  delete $('svNo').dataset.keep;
+  $('svAsk').classList.add('hidden');
+}
+
+function downloadSave(): void {
+  const file = makeSave(contents(), Date.now());
+  const url = URL.createObjectURL(new Blob([JSON.stringify(file)], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = saveFileName(file.label);
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  $('svMsg').textContent = `Downloaded ${a.download}. Keep it somewhere safe.`;
+}
+
+async function loadSaveFile(f: File): Promise<void> {
+  let c: SaveContents | null = null;
+  try {
+    if (f.size <= 3_000_000) c = readSave(JSON.parse(await f.text()));
+  } catch { /* not a save */ }
+  if (!c) {
+    $('svMsg').textContent = 'That file is not a Friday Night Dynasty save.';
+    return;
+  }
+  const loaded = c;
+  const use = (): void => {
+    applySave(loaded);
+    // The file is now the save: it goes up over whatever the server had.
+    unsaved = true;
+    store.set('fnd.unsaved.v1', true);
+    cloudOther = null;
+    $('svMsg').textContent = `Loaded: ${saveLabel(loaded)}.`;
+    if (session) void pushSave(true);
+    renderSaves();
+  };
+  if (hasLocal()) ask(`The file holds: ${saveLabel(loaded)}. Loading it replaces what is in this browser${session ? ' and on the server' : ''}: ${saveLabel(contents())}.`, 'Load the file', 'Cancel', use);
+  else use();
 }
 
 async function joinByPin(): Promise<void> {
@@ -2043,6 +2320,32 @@ $('clockToggle').addEventListener('change', (ev) => {
   store.set('fnd.clock.v1', useClock);
 });
 $('oEnter').addEventListener('click', () => void signIn());
+$('goSaves').addEventListener('click', () => { sfx.select(); $('svMsg').textContent = ''; setupGo('saves'); });
+$('svEnter').addEventListener('click', () => void signIn('sv'));
+$('svPin').addEventListener('keydown', (ev) => { if ((ev as KeyboardEvent).key === 'Enter') void signIn('sv'); });
+$('svPush').addEventListener('click', () => { $('svMsg').textContent = ''; void pushSave(); });
+$('svPull').addEventListener('click', () => {
+  $('svMsg').textContent = '';
+  if (hasLocal() && unsaved) ask(`Loading the server save replaces what is in this browser: ${saveLabel(contents())}.`, 'Load the server save', 'Cancel', () => void pullSave());
+  else void pullSave();
+});
+$('svYes').addEventListener('click', () => { const go = askYes; closeAsk(); go?.(); });
+$('svNo').addEventListener('click', () => {
+  // Turning down the server's save in a conflict means this browser's goes up over it.
+  const keepMine = $('svNo').dataset.keep === '1';
+  closeAsk();
+  if (keepMine) { cloudOther = null; void pushSave(true); }
+});
+$('svSignOut').addEventListener('click', () => { closeAsk(); $('oOut').click(); renderSaves(); });
+$('svDown').addEventListener('click', downloadSave);
+$('svUp').addEventListener('click', () => ($('svFile') as HTMLInputElement).click());
+$('svFile').addEventListener('change', () => {
+  const input = $('svFile') as HTMLInputElement;
+  const f = input.files?.[0];
+  input.value = '';
+  if (f) void loadSaveFile(f);
+});
+if (session) void syncSaves();
 $('oPin').addEventListener('keydown', (ev) => { if ((ev as KeyboardEvent).key === 'Enter') void signIn(); });
 const quarterPick = $('quarterPick') as HTMLSelectElement;
 const weatherPick = $('weatherPick') as HTMLSelectElement;
@@ -2080,7 +2383,7 @@ $('lgMine').addEventListener('click', () => openLeague(store.get<string | null>(
 renderLeagueRow();
 for (const id of ['hallBtn', 'hallBtn2']) $(id).addEventListener('click', () => void showHall());
 $('hallBack').addEventListener('click', () => showSetup(false));
-$('oOut').addEventListener('click', () => { session = null; career = null; store.set('fnd.session.v1', null); renderOnlineBox(); });
+$('oOut').addEventListener('click', () => { session = null; career = null; cloudOther = null; cloudError = ''; store.set('fnd.session.v1', null); renderOnlineBox(); });
 $('oJoin').addEventListener('click', () => void joinByPin());
 $('oJoinPin').addEventListener('keydown', (ev) => { if ((ev as KeyboardEvent).key === 'Enter') void joinByPin(); });
 $('lobbyStart').addEventListener('click', () => { if (net) void netRequest(() => online.start(net!.token, net!.pin)); });
@@ -2129,7 +2432,7 @@ window.addEventListener('keydown', (ev) => {
   if (!$('setup').classList.contains('hidden')) {
     const typing = ev.target instanceof HTMLInputElement || ev.target instanceof HTMLSelectElement;
     if (k === 'escape' && setupPage !== 'menu') setupGo('menu');
-    else if (setupPage === 'menu' && !typing && k >= '1' && k <= '5') ($('mainMenu').querySelectorAll('.mi')[Number(k) - 1] as HTMLElement).click();
+    else if (setupPage === 'menu' && !typing && k >= '1' && k <= '6') ($('mainMenu').querySelectorAll('.mi')[Number(k) - 1] as HTMLElement).click();
     return;
   }
   if ($('game').classList.contains('hidden')) return;
@@ -2142,6 +2445,8 @@ window.addEventListener('keydown', (ev) => {
 (window as unknown as Record<string, unknown>).__fnd = {
   /** Sends the band out or brings it off. For the automated checks. */
   band: (on: boolean, court = false) => scene.showBand(on, court),
+  /** Shows the crowd's reaction to a made-up play. For the automated checks. */
+  crowd: (e: Partial<PlayEvent>) => crowdFeels({ seq: 7, offense: 0, down: 1, yards: 0, type: 'run', flags: {}, ...e } as PlayEvent),
   /** Where every drawn player is right now, in field yards. For the automated checks. */
   view: () => (game && mode !== 'menu' ? buildView().players.map((p) => ({ team: p.team, x: p.x, y: p.y })) : null),
   selftest: (s: number): string => gameHash(simulateGame(s, exhibitionTeams(s))),

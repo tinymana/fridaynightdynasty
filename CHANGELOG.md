@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.20.0 — 2026-11-27
+
+Permanent saves. Needs migration `0004_fnd_saves.sql` and a redeploy of the `fnd` function.
+
+### Added
+- `fnd.saves`: one save per coach (`rev`, `label`, `bytes`, `data`), row level security on, written only by the function.
+- API actions `saveInfo`, `saveLoad`, `saveStore` (`packages/online/src/save.ts`, `Store.getSave` / `putSave`). A write
+  names the revision the browser last saw; if the server holds another, nothing is written and `conflict` comes back
+  with the save that is there. `force` overwrites. Saves are capped at 1.5 MB; a 30-season dynasty is about 160 KB.
+- Client `saves.ts` (`makeSave`, `readSave`, `saveLabel`): one shape for the server copy and the downloadable file,
+  holding the dynasty, designed plays and defenses, and the playbook. Everything read back goes through `loadDynasty`,
+  `validateOffPlay`, `validateDefPlay` and `validateBook` again.
+- Saves page on the main menu: sign in, save now, load, choose between two differing saves, download and load a file.
+  Changes are sent up automatically a moment after they are made; on opening the game signed in, a newer server save
+  is fetched when this browser has nothing unsaved.
+- `DynastyScreen.reload()`.
+- Player frames `line` and `drive` from the linemen pack (`LINE_FRAMES` in `tools/cut-sprites.py`). Offensive and
+  defensive linemen show `line` before the snap (line panel, lined-up view, first ticks of a play) and `drive` while
+  engaged or set after it; the scene draws both a little back from the spot so hands, not hips, are at the ball.
+- `crowdFeels(event)`: emoji out of the stands for the home crowd, placed from the play's own number.
+  `tools/crowd-shot.mjs`.
+- `tests/saves.test.ts` (7 tests) and `tools/saves-check.mjs` (19 browser checks across five devices).
+
 ## 0.19.0 — 2026-11-27
 
 Weather overlays and the homecoming court. Client only.

@@ -5,7 +5,7 @@
  * call; the server runs the play and both browsers replay it from the shared log.
  */
 import type { DefDecision, DefPlay, GamePlan, GameSetup, OffDecision, OffPlay } from '@fnd/core';
-import type { Career, LeagueView, RoomView } from '@fnd/online';
+import type { Career, LeagueView, RoomView, SaveMeta } from '@fnd/online';
 
 const DEFAULT_URL = 'https://epvpekylasvxoipxyvku.supabase.co/functions/v1/fnd';
 /** Tests point the game at a local mock server by setting window.__fndOnlineUrl before the page loads. */
@@ -53,6 +53,11 @@ export const online = {
   join: (token: string, pin: string, book: string[], plays: OffPlay[] = [], defenses: DefPlay[] = [], have = 0) => post<{ room: RoomView }>({ action: 'join', token, pin, book, plays, defenses, have }),
   profile: (token: string) => post<{ career: Career | null }>({ action: 'profile', token }),
   hall: () => post<{ hall: Career[] }>({ action: 'hall' }),
+  // Permanent saves: one per coach, kept on the server.
+  saveInfo: (token: string) => post<{ save: SaveMeta | null }>({ action: 'saveInfo', token }),
+  saveLoad: (token: string) => post<{ save: SaveMeta | null; data: unknown }>({ action: 'saveLoad', token }),
+  /** `base` is the revision this browser last saw. If the server holds another, nothing is written and `conflict` is true. */
+  saveStore: (token: string, data: unknown, label: string, base: number | null, force = false) => post<{ save: SaveMeta; conflict: boolean }>({ action: 'saveStore', token, data, label, base, force }),
   // Dynasty with friends.
   leagueCreate: (token: string, state: string, setup: GameSetup) => post<{ league: LeagueView }>({ action: 'leagueCreate', token, state, setup }),
   league: (token: string, code: string) => post<{ league: LeagueView }>({ action: 'league', token, code }),

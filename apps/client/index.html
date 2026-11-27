@@ -39,7 +39,7 @@
   .note { color: var(--dim); font-size: 11px; text-align: center; margin-top: 14px; }
   /* main menu: one row per place to go, numbered like the yard lines (the numbers are the keys) */
   #setup .page, #setup > #gameOpts { display: none; }
-  #setup[data-page="menu"] .page[data-page="menu"], #setup[data-page="exhibition"] .page[data-page="exhibition"], #setup[data-page="online"] .page[data-page="online"] { display: block; }
+  #setup[data-page="menu"] .page[data-page="menu"], #setup[data-page="exhibition"] .page[data-page="exhibition"], #setup[data-page="online"] .page[data-page="online"], #setup[data-page="saves"] .page[data-page="saves"] { display: block; }
   #setup .opts-slot #gameOpts { display: flex; }
   /* The menu follows the creative director's start-screen art: stadium up top, gold-framed rows on a yard-ruler board. */
   #setup[data-page="menu"] #setupLogo { display: none; }
@@ -206,6 +206,12 @@
 
   /* online */
   #onlineBox { margin-top: 18px; background: var(--panel); border: 3px solid var(--line); border-radius: 6px; padding: 12px 14px; }
+  #savesBox { margin-top: 18px; background: var(--navy, var(--panel)); border: 2px solid var(--edge, var(--line)); border-radius: 3px; box-shadow: 0 0 0 2px #060819; padding: 12px 16px 16px; max-width: 640px; margin-left: auto; margin-right: auto; }
+  #savesBox h3 { margin: 16px 0 6px; font-size: 17px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); }
+  #savesBox h3:first-child { margin-top: 2px; }
+  #savesBox p { margin: 0 0 8px; }
+  #svAsk { margin-top: 14px; padding: 10px 12px; border: 2px solid var(--accent); border-radius: 3px; background: rgba(0, 0, 0, 0.25); }
+  #svMsg { min-height: 1.2em; margin-top: 10px; color: var(--accent); }
   #onlineBox h3 { margin: 0 0 10px; font-size: 14px; letter-spacing: 2px; text-transform: uppercase; text-align: center; }
   .orow { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; margin: 8px 0; font-size: 13px; }
   .orow input { font-family: inherit; font-size: 14px; background: #000; color: var(--ink); border: 2px solid var(--line); border-radius: 4px; padding: 6px 8px; width: 150px; text-transform: uppercase; }
@@ -443,6 +449,7 @@
       <button class="mi" id="goOnline"><span class="in"><span class="yd" aria-hidden="true">3</span><span class="mt"><b>Play online</b><small id="onlineLine">Coach against a friend with a game PIN, or run a league together.</small></span></span></button>
       <button class="mi" id="editBook"><span class="in"><span class="yd" aria-hidden="true">4</span><span class="mt"><b>Playbook</b><small id="bookSummary"></small></span></span></button>
       <button class="mi" id="hallBtn"><span class="in"><span class="yd" aria-hidden="true">5</span><span class="mt"><b>Hall of Fame</b><small>The ten best coaching records online.</small></span></span></button>
+      <button class="mi" id="goSaves"><span class="in"><span class="yd" aria-hidden="true">6</span><span class="mt"><b>Saves</b><small id="savesLine">Keep your dynasty and playbook safe, and take them to another device.</small></span></span></button>
       </div>
     </nav>
     <div class="page" data-page="exhibition">
@@ -456,6 +463,37 @@
       <label class="pick">Quarters <select id="quarterPick" aria-label="Quarter length"></select></label>
       <label class="pick">Weather <select id="weatherPick" aria-label="Weather"></select></label>
       <span id="weatherNote"></span>
+    </div>
+    <div class="page" data-page="saves">
+      <div class="crumb"><button class="seg" data-menu>Main menu <kbd>[Esc]</kbd></button><h2>Saves</h2></div>
+      <div id="savesBox">
+        <h3>In this browser</h3>
+        <p id="svLocal"></p>
+        <h3>On the server</h3>
+        <p id="svCloud" aria-live="polite"></p>
+        <div id="svOut" class="orow">
+          <input id="svName" maxlength="12" placeholder="Coach name" autocomplete="nickname" aria-label="Coach name">
+          <input id="svPin" maxlength="4" inputmode="numeric" placeholder="4-digit PIN" autocomplete="off" aria-label="Your four-digit PIN">
+          <button class="seg on" id="svEnter">Sign in</button>
+        </div>
+        <div id="svIn" class="orow hidden">
+          <button class="seg on" id="svPush">Save to the server now</button>
+          <button class="seg" id="svPull">Load the server save</button>
+          <button class="seg" id="svSignOut">Sign out</button>
+        </div>
+        <h3>As a file</h3>
+        <p>A save file is a copy you keep yourself. It holds your dynasty, your designed plays and your playbook.</p>
+        <div class="orow">
+          <button class="seg" id="svDown">Download a save file</button>
+          <button class="seg" id="svUp">Load a save file</button>
+          <input type="file" id="svFile" accept=".json,application/json" class="hidden" aria-label="Save file to load">
+        </div>
+        <div id="svAsk" class="hidden" role="alertdialog" aria-labelledby="svAskText">
+          <p id="svAskText"></p>
+          <div class="orow"><button class="seg on" id="svYes"></button><button class="seg" id="svNo"></button></div>
+        </div>
+        <p id="svMsg" aria-live="polite"></p>
+      </div>
     </div>
     <div class="page" data-page="online">
     <div class="crumb"><button class="seg" data-menu>Main menu <kbd>[Esc]</kbd></button><h2>Play online</h2></div>

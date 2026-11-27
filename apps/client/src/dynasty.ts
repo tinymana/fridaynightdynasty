@@ -55,6 +55,15 @@ export class DynastyScreen {
   }
   private readonly newSeed: () => number;
 
+  /** Reads the dynasty again from where it is kept, after a save has been loaded over it. */
+  reload(): void {
+    this.d = loadDynasty(this.host.load());
+    this.view = 'season';
+    this.bookOf = -1;
+    this.editing = -1;
+    this.called.clear();
+  }
+
   get active(): Dynasty | null {
     return this.d;
   }

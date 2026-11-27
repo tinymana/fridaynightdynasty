@@ -30,6 +30,11 @@ ST_ROW = (113, 190)
 ST_SCALE = 0.45
 ST_FRAMES = [('snap', 103, 173), ('hold', 356, 435), ('punt0', 615, 668), ('punt1', 669, 723)]
 
+# Linemen from the linemen pack's red-and-silver row: down in a three-point stance, and driving off the snap.
+LINE_ROW = (115, 190)
+LINE_SCALE = 0.38
+LINE_FRAMES = [('line', 268, 339), ('drive', 348, 440)]
+
 def classify(px, upper):
     """Returns (material, shade): 0 keep the sheet's colour, 1 jersey, 2 helmet, 3 pants."""
     r, g, b, a = [int(v) for v in px]
@@ -44,7 +49,8 @@ def classify(px, upper):
 def cut_players():
     sheet = Image.open(SRC + '01_tecmo_players_spritesheet.png').convert('RGBA')
     st = Image.open(SRC + '14_special_teams_pack_spritesheet.png').convert('RGBA')
-    every = [(n, x0, x1, sheet, ROW, SCALE) for n, x0, x1 in FRAMES] + [(n, x0, x1, st, ST_ROW, ST_SCALE) for n, x0, x1 in ST_FRAMES]
+    line = Image.open(SRC + '13_linemen_pack_spritesheet.png').convert('RGBA')
+    every = [(n, x0, x1, sheet, ROW, SCALE) for n, x0, x1 in FRAMES] + [(n, x0, x1, st, ST_ROW, ST_SCALE) for n, x0, x1 in ST_FRAMES] + [(n, x0, x1, line, LINE_ROW, LINE_SCALE) for n, x0, x1 in LINE_FRAMES]
     base = Image.new('RGBA', (CELL_W * len(every), CELL_H), (0, 0, 0, 0))
     mask = Image.new('RGBA', (CELL_W * len(every), CELL_H), (0, 0, 0, 0))
     for i, (name, x0, x1, src, row, scale) in enumerate(every):
