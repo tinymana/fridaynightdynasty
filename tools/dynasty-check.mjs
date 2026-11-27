@@ -132,6 +132,26 @@ try {
   await page.screenshot({ path: `${out}/dynasty-awards.png`, fullPage: true });
   await page.click('#pgBack');
   await sleep(100);
+  // The off-season: banquet, signing day, the carousel, spring practice, fall camp.
+  await page.click('#dyOff');
+  await sleep(120);
+  check('the off-season opens at the banquet with the team awards', (await text('#dyTitle')).includes('Awards banquet') && (await text('#dyBody')).includes('Most valuable on offense'));
+  await page.screenshot({ path: `${out}/off-banquet.png`, fullPage: true });
+  await page.click('#offNext'); await sleep(100);
+  check('signing day says where the seniors are going', (await text('#dyTitle')).includes('Signing day') && /play in college/.test(await text('#dyBody')));
+  await page.screenshot({ path: `${out}/off-signing.png`, fullPage: true });
+  await page.click('#offNext'); await sleep(100);
+  check('the carousel either has calls or says why not', (await text('#dyTitle')).includes('Coaching carousel') && ((await page.$$('#dyBody [data-job]')).length > 0 || (await text('#dyBody')).includes('No other school called')));
+  await page.click('#offNext'); await sleep(100);
+  check('spring practice offers four things to work on', (await page.$$('#dyBody input[name="offFocus"]')).length === 4);
+  await page.click('#dyBody input[value="speed"]'); await sleep(100);
+  await page.screenshot({ path: `${out}/off-spring.png`, fullPage: true });
+  await page.click('#offNext'); await sleep(100);
+  check('fall camp reports the spring work, the comings and goings and the freshmen', (await text('#dyBody')).includes('Speed and agility') && (await text('#dyBody')).includes('Freshmen to watch') && (await text('#dyBody')).includes('walked on'));
+  await page.screenshot({ path: `${out}/off-camp.png`, fullPage: true });
+  await page.click('#offBack'); await sleep(80);
+  check('back goes to the stop before', (await text('#dyTitle')).includes('Spring practice') && (await page.$eval('#dyBody input[value="speed"]', (e) => e.checked)));
+  await page.click('#offNext'); await sleep(80);
   await page.click('#dyNext');
   await sleep(150);
   s = await st();

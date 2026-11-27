@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.25.0 — 2026-11-27
+
+The off-season. League change (rosters carry a spring focus): redeploy the `fnd` function with the merge.
+
+### Added
+- `FOCUSES`, `seededFocus`, `ProgramTune` in `program.ts`: +1 on the focus's ratings for returning players. The
+  coach's school uses `Dynasty.focus`; every other school's focus comes from the seed (from season 2 on).
+- `nextSeason(d, focus)`; `Dynasty.dev` (per-player rating points, -1 a season for a player still on the call-up
+  list at season's end, at most `CALL_UP_COST_MAX`); both cleaned by `loadDynasty` and absent in old saves.
+- `packages/league/src/offseason.ts`: `teamHonors`, `signings` (made-up colleges, deterministic), `jobOffers`,
+  `takeJob`, `campNews`. `SeasonRecord.school` so a title won at a former school still counts in `career`.
+- Dynasty page: the off-season in five stops in place of the single Start-next-year button.
+- `tests/offseason.test.ts` (4 tests); six more checks in `tools/dynasty-check.mjs`.
+
 ## 0.24.0 — 2026-11-27
 
 Rivalries and the weekly paper. League change (`nextSeason`): redeploy the `fnd` function with the merge.

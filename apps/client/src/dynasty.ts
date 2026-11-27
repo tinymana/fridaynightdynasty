@@ -1,7 +1,7 @@
 import { GROUPS, WEATHER, overall, type GameSetup, type Team } from '@fnd/core';
 import {
-  CLASS_NAMES, CLASS_SHORT, MAX_CALL_UPS, RECORD_DEFS, OUT_FOR_SEASON, REGULAR_WEEKS, RIVALRY_WEEK, STATES, isRivalryGame, rivalries, weeklyPaper, replayResult, leagueNews, career, emptyLine, incomingOf, newsText, occasionFor, openings, programOf, schoolOfPlayer, seasonYear, statsOf, recordOf, setCallUp, createDynasty, createLeague, editSchool, gameSeed, gameSetup, loadDynasty, nextSeason, playWeek, standings, stateByCode, matchTeams, userGame, weekGames, winnerOf,
-  type BoxScore, type Paper, type Incident, type LeagueNews, type Dynasty, type GameResult, type Honoree, type ProgramPlayer, type RecordNews, type SeasonAwards, type StatLine,
+  CLASS_NAMES, CLASS_SHORT, MAX_CALL_UPS, RECORD_DEFS, FOCUSES, OUT_FOR_SEASON, REGULAR_WEEKS, RIVALRY_WEEK, STATES, campNews, jobOffers, signings, takeJob, teamHonors, isRivalryGame, rivalries, weeklyPaper, replayResult, leagueNews, career, emptyLine, incomingOf, newsText, occasionFor, openings, programOf, schoolOfPlayer, seasonYear, statsOf, recordOf, setCallUp, createDynasty, createLeague, editSchool, gameSeed, gameSetup, loadDynasty, nextSeason, playWeek, standings, stateByCode, matchTeams, userGame, weekGames, winnerOf,
+  type BoxScore, type FocusId, type Paper, type Incident, type LeagueNews, type Dynasty, type GameResult, type Honoree, type ProgramPlayer, type RecordNews, type SeasonAwards, type StatLine,
 } from '@fnd/league';
 import { bindSchoolForm, schoolFormHtml } from './school-form';
 import { renderGamebook } from './gamebook';
@@ -50,7 +50,10 @@ export class DynastyScreen {
   private busy = false;
   private editing = -1;
   /** Which page of the dynasty is showing: the season, or the program (varsity, junior varsity, classes). */
-  private view: 'season' | 'program' | 'stats' | 'records' | 'awards' | 'book' | 'paper' = 'season';
+  private view: 'season' | 'program' | 'stats' | 'records' | 'awards' | 'book' | 'paper' | 'off' = 'season';
+  /** Where the coach is in the off-season, and what he has picked for spring practice. Not saved: reopening starts at the banquet. */
+  private offStep = 0;
+  private offFocus: FocusId = FOCUSES[0].id;
   /** The paper already written for a week, so opening it twice does not replay the games twice. */
   private paperFor: { key: string; paper: Paper } | null = null;
   /** The finished game whose book is open. */
@@ -96,6 +99,7 @@ export class DynastyScreen {
     else if (this.d && this.view === 'awards') this.renderAwards(this.d);
     else if (this.d && this.view === 'book' && this.bookGame) this.renderBook(this.d, this.bookGame);
     else if (this.d && this.view === 'paper' && this.d.week > 0) this.renderPaper(this.d);
+    else if (this.d && this.view === 'off' && this.d.week > REGULAR_WEEKS) this.renderOff(this.d);
     else if (this.d) this.renderSeason(this.d);
     else this.renderNew();
   }
@@ -213,6 +217,74 @@ export class DynastyScreen {
   }
 
   /** The latest records to fall around the league, newest first. */
+  /** The off-season, one stop at a time: banquet, signing day, the carousel, spring practice, fall camp. */
+  private renderOff(d: Dynasty): void {
+    const schools = d.league.schools;
+    const me = schools[d.user];
+    const STEPS = ['Awards banquet', 'Signing day', 'Coaching carousel', 'Spring practice', 'Fall camp'];
+    const step = Math.max(0, Math.min(STEPS.length - 1, this.offStep));
+    this.title.textContent = `${seasonYear(d.year)} off-season · ${STEPS[step]}`;
+    const h = d.history[d.history.length - 1];
+    const who = (x: Honoree | null): string => (x ? `<b>${esc(x.name)}</b>, ${CLASS_NAMES[x.year - 1].toLowerCase()} ${x.pos} <small>${esc(x.line)}</small>` : 'Not awarded');
+    const row = (label: string, body: string): string => `<div class="award"><span class="lbl">${label}</span><span>${body}</span></div>`;
+    let body = '';
+    if (step === 0) {
+      const t = teamHonors(d);
+      const a = d.awards?.find((x) => x.year === d.year);
+      body = `<p>The season is over. ${esc(me.name)} finished ${h.record[0]}-${h.record[1]}${h.record[2] ? `-${h.record[2]}` : ''}, in place ${h.place}${h.champion === d.user ? ', and won the state championship' : ''}. Tonight the team hands out its own awards and says goodbye to ${t.seniors} seniors.</p>
+        <h3>${esc(me.name)} team awards</h3>${row('Most valuable on offense', who(t.offense))}${row('Most valuable on defense', who(t.defense))}${row('Best young player', who(t.newcomer))}
+        ${a ? `<h3>League awards</h3>${this.awardsHtml(d, a, false)}` : ''}`;
+    } else if (step === 1) {
+      const list = signings(d);
+      body = `<p>Most high school players have played their last game. ${list.length ? `${list.length === 1 ? 'One senior is' : `${list.length} seniors are`} going on to play in college.` : 'Nobody from this class is going on to play in college.'}</p>
+        ${list.map((x) => row(`${esc(x.name)} <small>${x.pos}, ${x.overall}</small>`, `<b>${esc(x.college)}</b> <small>${x.level}</small>`)).join('')}`;
+    } else if (step === 2) {
+      const offers = jobOffers(d);
+      body = offers.length
+        ? `<p>The phone rang. You can stay at ${esc(me.name)} as long as you like, or take a new job. Your career record goes with you; your players stay.</p>
+          ${offers.map((o) => `<div class="dy-next"><div class="big">${esc(schools[o.school].name)} ${esc(schools[o.school].mascot)}</div><div>${esc(o.pitch)}</div><div class="orow"><button class="seg" data-job="${o.school}">Take the ${esc(schools[o.school].name)} job</button></div></div>`).join('')}`
+        : `<p>No other school called this year. Schools that have had a losing season go looking for a coach who has just had a winning one.</p>`;
+    } else if (step === 3) {
+      body = `<p>Pick what the team works on this spring. Every returning player comes back a point better in what you choose. Next year's freshmen were not there for it.</p>
+        ${FOCUSES.map((f) => `<label class="dy-focus${f.id === this.offFocus ? ' on' : ''}"><input type="radio" name="offFocus" value="${f.id}"${f.id === this.offFocus ? ' checked' : ''}> <b>${f.name}</b><span>${f.desc}</span></label>`).join('')}`;
+    } else {
+      const camp = campNews(d);
+      const frosh = incomingOf(d, d.user).sort((a, b) => b.ceiling - a.ceiling).slice(0, 5);
+      const cost = (d.callUps ?? []).length;
+      body = `<p>Summer is over and fall camp opens. ${FOCUSES.find((f) => f.id === this.offFocus)!.name} was the work of the spring.</p>
+        ${camp.length ? `<h3>Comings and goings</h3>${camp.map((n) => `<div class="dy-game"><span>${esc(n.text)}</span></div>`).join('')}` : ''}
+        <h3>Freshmen to watch</h3><div class="dy-game"><span>${frosh.map((p) => `${esc(p.name)} (${p.pos}${p.phenom ? ', phenom' : ''}, ${p.ceiling} as a senior)`).join(', ')}</span></div>
+        ${cost ? `<p class="dy-out">${cost === 1 ? 'One player is' : `${cost} players are`} still on the varsity only because you called ${cost === 1 ? 'him' : 'them'} up. A year on the sideline instead of playing junior varsity costs ${cost === 1 ? 'him' : 'each of them'} a rating point for good.</p>` : ''}`;
+    }
+    this.root.innerHTML = `<div class="off-steps">${STEPS.map((s, i) => `<span class="${i === step ? 'on' : i < step ? 'done' : ''}">${i + 1}. ${s}</span>`).join('')}</div>
+      <div class="off-body">${body}</div>
+      <div class="orow center" style="margin-top:14px">
+        <button class="seg" id="offBack">${step === 0 ? 'Back to the season' : 'Back'}</button>
+        ${step < STEPS.length - 1 ? `<button class="seg on" id="offNext">Next: ${STEPS[step + 1].toLowerCase()}</button>` : `<button class="seg on" id="dyNext">Start year ${d.year + 1}</button>`}
+      </div>`;
+    const q = (id: string): HTMLElement | null => this.root.querySelector(`#${id}`);
+    q('offBack')!.addEventListener('click', () => {
+      if (step === 0) this.view = 'season';
+      else this.offStep = step - 1;
+      this.render();
+    });
+    q('offNext')?.addEventListener('click', () => { this.offStep = step + 1; this.render(); });
+    q('dyNext')?.addEventListener('click', () => {
+      this.d = nextSeason(d, this.offFocus);
+      this.host.save(this.d);
+      this.view = 'season';
+      this.offStep = 0;
+      this.render();
+    });
+    this.root.querySelectorAll<HTMLInputElement>('input[name="offFocus"]').forEach((el) => el.addEventListener('change', () => { this.offFocus = el.value as FocusId; this.render(); }));
+    this.root.querySelectorAll<HTMLElement>('[data-job]').forEach((el) => el.addEventListener('click', () => {
+      this.d = takeJob(d, Number(el.dataset.job));
+      this.host.save(this.d);
+      this.offStep = step + 1;
+      this.render();
+    }));
+  }
+
   /** Saturday morning's sports page for the week just played. */
   private renderPaper(d: Dynasty): void {
     const key = `${d.league.seed}:${d.year}:${d.week}`;
@@ -372,7 +444,7 @@ export class DynastyScreen {
         <div><b>Leaving:</b> ${names(seniors, overall)}.</div><div><b>Freshmen to watch:</b> ${names(frosh, (p) => p.ceiling)} as seniors.</div></div>`;
     }
     this.root.innerHTML = `<p>You coach the varsity on Friday night. Everyone else plays junior varsity on Thursday. Players move up a class every year and seniors graduate.
-      Call a junior varsity player up and the weakest varsity player at his position goes down in his place.</p>
+      Call a junior varsity player up and the weakest varsity player at his position goes down in his place. A call-up has a price: a player who still needs your call at the end of the season spent it on the sideline instead of playing every Thursday, and comes back a rating point short of where he would have been.</p>
       ${turnover}
       <div class="orow center"><button class="seg on" id="pgBack">Back to the season</button></div>
       <div class="dy-cols prog"><div><h3>Varsity <small>${varsity.length} players · ${count(varsity)}</small></h3>
@@ -423,7 +495,7 @@ export class DynastyScreen {
       const h = d.history[d.history.length - 1];
       next = `<div class="dy-next"><div class="big">${h.champion === d.user ? `State champions! ${esc(me.name)} ${esc(me.mascot)} win it all.` : `${esc(schools[h.champion].name)} ${esc(schools[h.champion].mascot)} are ${state.name} champions.`}</div>
         <div>You finished the regular season in place ${h.place} at ${h.record[0]}-${h.record[1]}${h.record[2] ? `-${h.record[2]}` : ''} overall.</div>
-        <div class="orow"><button class="seg on" id="dyNext">Start year ${d.year + 1}</button></div></div>`;
+        <div class="orow"><button class="seg on" id="dyOff">Go to the off-season</button></div></div>`;
     } else if (own) {
       const [hm, aw] = own;
       const opp = hm === d.user ? aw : hm;
@@ -496,11 +568,7 @@ export class DynastyScreen {
       this.pickSeed = this.newSeed();
       this.render();
     });
-    q('dyNext')?.addEventListener('click', () => {
-      this.d = nextSeason(d);
-      this.host.save(this.d);
-      this.render();
-    });
+    q('dyOff')?.addEventListener('click', () => { this.view = 'off'; this.offStep = 0; this.render(); });
     q('dyPlay')?.addEventListener('click', () => {
       const [hm, aw] = own!;
       this.host.play({
