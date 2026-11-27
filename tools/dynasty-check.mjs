@@ -16,7 +16,7 @@ const check = (name, ok) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`); i
 const text = (sel) => page.$eval(sel, (e) => e.textContent);
 const waitFor = async (f, ms = 60000) => { for (let t = 0; t < ms; t += 100) { if (await f()) return true; await sleep(100); } return false; };
 try {
-  await page.goto(pathToFileURL('site/play/index.html').href);
+  await page.goto(`${pathToFileURL('site/play/index.html').href}?lowres`);
   await sleep(400);
   await page.click('#title');
   await sleep(150);

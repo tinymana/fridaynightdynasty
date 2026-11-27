@@ -9,7 +9,8 @@ import stadiumUrl from './assets/stadium.png';
 import { PLAYER_CELL, PLAYER_FRAMES, STADIUM } from './art-atlas';
 
 /** The scene is laid out in world units and drawn at two screen pixels to the unit, so sprites carry twice the detail. */
-const ZOOM = 2;
+// `?lowres` draws at one pixel to the unit: the automated checks use it, because a headless browser paints in software.
+const ZOOM = typeof location !== 'undefined' && /[?&]lowres\b/.test(location.search) ? 1 : 2;
 export const VIEW_W = 480;
 export const VIEW_H = 310;
 const WORLD_W = 960;

@@ -10,7 +10,7 @@ await page.setViewport({ width: 1000, height: 1100 });
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(pathToFileURL('site/play/index.html').href);
+await page.goto(`${pathToFileURL('site/play/index.html').href}?lowres`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const st = () => page.evaluate(() => window.__fnd.state());
 const check = (name, ok) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`); if (!ok) errors.push(`check failed: ${name}`); };

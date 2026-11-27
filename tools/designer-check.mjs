@@ -16,7 +16,7 @@ const check = (name, ok) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`); i
 const text = (sel) => page.$eval(sel, (e) => e.textContent);
 const centre = async (sel) => { const b = await (await page.$(sel)).boundingBox(); return [b.x + b.width / 2, b.y + b.height / 2]; };
 try {
-  await page.goto(pathToFileURL('site/play/index.html').href);
+  await page.goto(`${pathToFileURL('site/play/index.html').href}?lowres`);
   await sleep(400);
   await page.click('#title');
   await sleep(150);

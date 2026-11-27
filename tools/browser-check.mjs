@@ -10,7 +10,7 @@ await page.setViewport({ width: 1000, height: 900 });
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(pathToFileURL('site/play/index.html').href);
+await page.goto(`${pathToFileURL('site/play/index.html').href}?lowres`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 await sleep(500);
 await page.screenshot({ path: `${out}/1-title.png` });
