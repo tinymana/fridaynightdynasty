@@ -302,6 +302,18 @@
   .prog h3 small { font-weight: 400; color: var(--dim); font-size: 11px; margin-left: 6px; }
   .cls { display: inline-block; min-width: 22px; text-align: center; padding: 0 4px; border-radius: 3px; font-size: 10px; font-weight: 700; background: #33405e; color: #dfe7ff; }
   .cls.c1 { background: #2f6b3a; } .cls.c2 { background: #2b5f86; } .cls.c3 { background: #6a4b99; } .cls.c4 { background: #9a5a1c; }
+  /* The off-season: a row of stops, the one you are at lit. */
+  .off-steps { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 10px 0 14px; }
+  .off-steps span { padding: 3px 9px; border: 2px solid var(--line); border-radius: 3px; color: var(--dim); }
+  .off-steps span.on { border-color: var(--accent); color: var(--accent); }
+  .off-steps span.done { color: var(--ink); }
+  .off-body { max-width: 860px; margin: 0 auto; }
+  .off-body .award { grid-template-columns: 300px 1fr; }
+  @media (max-width: 700px) { .off-body .award { grid-template-columns: 1fr; gap: 2px; } }
+  .dy-focus { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; align-items: baseline; padding: 9px 12px; margin: 0 0 8px; border: 2px solid var(--line); border-radius: 3px; cursor: pointer; text-align: left; }
+  .dy-focus.on { border-color: var(--accent); background: rgba(242, 207, 94, 0.08); }
+  .dy-focus span { grid-column: 2; color: var(--dim); }
+  .dy-focus b { color: var(--ink); }
   /* The weekly paper: newsprint, a masthead, a lead story and columns. */
   #dyBody .paper { max-width: 880px; margin: 14px auto; padding: 18px 22px 22px; background: #efe6cf; color: #1d1a14; border: 2px solid #1d1a14; box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.5); text-align: left; }
   #dyBody .np-mast { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; border-bottom: 4px double #1d1a14; padding-bottom: 8px; margin-bottom: 12px; }

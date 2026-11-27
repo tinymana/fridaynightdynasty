@@ -2,6 +2,45 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.25.0",
+      "date": "2026-11-27",
+      "title": "The off-season",
+      "items": [
+        {
+          "tag": "new",
+          "text": "A full off-season between seasons, one stop at a time: awards banquet, signing day, the coaching carousel, spring practice and fall camp."
+        },
+        {
+          "tag": "new",
+          "text": "Awards banquet: your team's most valuable players on offense and defense and its best young player, alongside the league awards."
+        },
+        {
+          "tag": "new",
+          "text": "Signing day: where your seniors are going to play in college. Most are done with football; a program sends two or three on in a typical year, and a Division I signing is rare."
+        },
+        {
+          "tag": "new",
+          "text": "Coaching carousel: after a winning season or a title, schools that had a losing year may call with a job. Your career record goes with you. Nobody is ever fired."
+        },
+        {
+          "tag": "new",
+          "text": "Spring practice: choose what the team works on. Strength, speed, the passing game or fundamentals. Every returning player comes back a point better in it."
+        },
+        {
+          "tag": "new",
+          "text": "Fall camp: who left over the summer, who walked on, who transferred in, and the freshmen to watch."
+        },
+        {
+          "tag": "new",
+          "text": "Call-ups now have a price. A player who still needs your call at the end of the season spent the year on the sideline instead of playing junior varsity, and comes back a rating point short for good."
+        },
+        {
+          "tag": "note",
+          "text": "Other schools hold spring practice too; what each works on is decided by the league, not by you."
+        }
+      ]
+    },
+    {
       "version": "0.24.0",
       "date": "2026-11-27",
       "title": "Rivalries and the Saturday paper",

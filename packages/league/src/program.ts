@@ -65,6 +65,27 @@ export interface ProgramPlayer extends Player {
   from?: string;
 }
 
+/** What a program works on in spring practice. Every returning player gets a point on each of its ratings in the autumn. */
+export const FOCUSES = [
+  { id: 'strength', name: 'Strength and conditioning', desc: 'A winter in the weight room. Stronger runners, blockers and tacklers.', keys: ['power', 'runBlock', 'tackling'] },
+  { id: 'speed', name: 'Speed and agility', desc: 'Track work and footwork. A step quicker at every position.', keys: ['speed', 'agility'] },
+  { id: 'passing', name: 'The passing game', desc: 'Seven-on-seven all spring. Better throwing, catching and coverage.', keys: ['throwAccuracy', 'hands', 'coverage'] },
+  { id: 'fundamentals', name: 'Film and fundamentals', desc: 'Assignments, technique and pass protection. Fewer mistakes.', keys: ['awareness', 'passBlock', 'kicking'] },
+] as const satisfies readonly { id: string; name: string; desc: string; keys: readonly RatingKey[] }[];
+export type FocusId = (typeof FOCUSES)[number]['id'];
+export const isFocus = (x: unknown): x is FocusId => FOCUSES.some((f) => f.id === x);
+/** What a school with no coach at this screen works on: the same for a given school and spring every time. Nobody had a spring before the first season. */
+export function seededFocus(leagueSeed: number, schoolId: string, season: number): FocusId | undefined {
+  if (season < 2) return undefined;
+  return FOCUSES[Rng.stream(hashString(`${leagueSeed}:${schoolId}`), `focus:${season}`).int(0, FOCUSES.length - 1)]!.id;
+}
+/** What changes a program's ratings beyond its classes: the spring's work, and what individual players have lost or gained. */
+export interface ProgramTune {
+  focus?: FocusId;
+  /** Rating points by player id. A boy called up before he had earned it stood on the sideline and fell behind. */
+  dev?: Readonly<Record<string, number>>;
+}
+
 /** The fewest players a squad can dress at each position: the most any formation or front asks for. */
 const MIN_DRESSED: Record<Group, number> = { QB: 1, RB: 2, WR: 4, TE: 2, OL: 5, DL: 5, LB: 4, CB: 3, S: 2, K: 1, P: 1 };
 /** Regular-season weeks. The title game is the week after. */
@@ -280,12 +301,20 @@ export function enrolledIn(id: string): number | null {
  * The varsity is the best at each position, with upperclassmen given the edge; `callUps` puts a younger
  * player on the varsity anyway, and the weakest varsity player at his position goes down in his place.
  */
-export function programFor(leagueSeed: number, school: SchoolLike, season: number, callUps: readonly string[] = [], week?: number): ProgramPlayer[] {
+export function programFor(leagueSeed: number, school: SchoolLike, season: number, callUps: readonly string[] = [], week?: number, tune: ProgramTune = {}): ProgramPlayer[] {
   const lift = Math.round((school.prestige - MID) * LEAGUE_TUNING.gap);
   const all: ProgramPlayer[] = [];
+  const worked = FOCUSES.find((f) => f.id === tune.focus)?.keys as readonly RatingKey[] | undefined;
+  // Spring practice helps the boys who were there for it; a player's own gains and losses go with him every year.
+  const tuned = (r: Recruit, year: number): Ratings => {
+    const out = ratingsAt(r, year, lift);
+    const own = tune.dev?.[r.id] ?? 0;
+    for (const key of Object.keys(r.senior) as RatingKey[]) out[key] = clamp(out[key] + own + (year >= 2 && worked?.includes(key) ? 1 : 0), 15, 99);
+    return out;
+  };
   const add = (r: Recruit, year: number, out?: Incident): void => {
-    const p: Player = { id: r.id, name: r.name, number: r.number, pos: r.pos, ratings: ratingsAt(r, year, lift), year };
-    const top: Player = { ...p, ratings: ratingsAt(r, 4, lift) };
+    const p: Player = { id: r.id, name: r.name, number: r.number, pos: r.pos, ratings: tuned(r, year), year };
+    const top: Player = { ...p, ratings: tuned(r, 4) };
     all.push({ ...p, year, squad: 'jv', calledUp: false, ceiling: overall(top), ...(out ? { out } : {}), ...(r.phenom ? { phenom: true } : {}), ...(r.origin ? { origin: r.origin, from: r.from } : {}) });
   };
   for (let year = 4; year >= 1; year--) {
@@ -416,13 +445,13 @@ function squadTeam(school: SchoolLike, fit: readonly ProgramPlayer[], jv: boolea
 }
 
 /** Friday's team. */
-export function varsityTeam(leagueSeed: number, school: SchoolLike, season: number, callUps: readonly string[] = [], week?: number): Team {
-  return squadTeam(school, programFor(leagueSeed, school, season, callUps, week).filter((p) => p.squad === 'varsity' && !p.out), false);
+export function varsityTeam(leagueSeed: number, school: SchoolLike, season: number, callUps: readonly string[] = [], week?: number, tune?: ProgramTune): Team {
+  return squadTeam(school, programFor(leagueSeed, school, season, callUps, week, tune).filter((p) => p.squad === 'varsity' && !p.out), false);
 }
 
 /** Thursday's team: everyone who is not on the varsity. */
-export function jvTeam(leagueSeed: number, school: SchoolLike, season: number, callUps: readonly string[] = [], week?: number): Team {
-  return squadTeam(school, programFor(leagueSeed, school, season, callUps, week).filter((p) => p.squad === 'jv' && !p.out), true);
+export function jvTeam(leagueSeed: number, school: SchoolLike, season: number, callUps: readonly string[] = [], week?: number, tune?: ProgramTune): Team {
+  return squadTeam(school, programFor(leagueSeed, school, season, callUps, week, tune).filter((p) => p.squad === 'jv' && !p.out), true);
 }
 
 /** Next season's freshmen, as they will arrive. */
@@ -431,9 +460,9 @@ export function incomingClass(leagueSeed: number, school: SchoolLike, season: nu
 }
 
 /** Call-ups worth keeping: real players of this school who are still in the program and still need the call. */
-export function cleanCallUps(leagueSeed: number, school: SchoolLike, season: number, raw: unknown): string[] {
+export function cleanCallUps(leagueSeed: number, school: SchoolLike, season: number, raw: unknown, tune?: ProgramTune): string[] {
   if (!Array.isArray(raw)) return [];
-  const merit = programFor(leagueSeed, school, season);
+  const merit = programFor(leagueSeed, school, season, [], undefined, tune);
   const out: string[] = [];
   for (const id of raw) {
     if (typeof id !== 'string' || out.includes(id) || out.length >= MAX_CALL_UPS) continue;
