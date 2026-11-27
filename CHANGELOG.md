@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.18.0 — 2026-11-27
+
+A field that wears. Client only.
+
+### Added
+- `turf.png` (mud, puddles, snow, frost) cut by `tools/cut-sprites.py` from the weather sheet.
+- `FieldScene.resetTurf` and `addWear`: two render textures over the grass, one for lying snow or frost (erased where
+  players have been) and one for mud, scuffs and puddles. `wearFrom(event)` in the client places marks from the
+  play's own number, so the field is the same after a reload or a rejoin.
+- `tools/turf-shot.mjs`.
+
 ## 0.17.0 — 2026-11-27
 
 Look-and-feel polish from the supplied art. Client only.

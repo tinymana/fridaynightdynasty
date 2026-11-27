@@ -2,6 +2,29 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.18.0",
+      "date": "2026-11-27",
+      "title": "A field that wears",
+      "items": [
+        {
+          "tag": "new",
+          "text": "The field wears as the game goes on. Turf scuffs along the line of scrimmage and where runners go down, so the fourth quarter looks different from the kickoff."
+        },
+        {
+          "tag": "new",
+          "text": "In the rain the field churns to mud and puddles form. In snow the field starts white and gets trampled back to green where the plays go."
+        },
+        {
+          "tag": "note",
+          "text": "The marks come from the plays themselves, so a game you rejoin shows the same field."
+        },
+        {
+          "tag": "fixed",
+          "text": "Yard lines that looked uneven. The sharper field was being squeezed to fit the screen with hard edges, which made some lines fat, some thin and some crooked. It is now scaled smoothly, so every line is the same."
+        }
+      ]
+    },
+    {
       "version": "0.17.0",
       "date": "2026-11-27",
       "title": "Big-moment panels and paint on the grass",

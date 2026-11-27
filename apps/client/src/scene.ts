@@ -8,7 +8,8 @@ import playersMaskUrl from './assets/players-mask.png';
 import stadiumUrl from './assets/stadium.png';
 import sidelineBaseUrl from './assets/sideline-base.png';
 import sidelineMaskUrl from './assets/sideline-mask.png';
-import { PLAYER_CELL, PLAYER_FRAMES, SIDELINE, STADIUM } from './art-atlas';
+import turfUrl from './assets/turf.png';
+import { PLAYER_CELL, PLAYER_FRAMES, SIDELINE, STADIUM, TURF } from './art-atlas';
 
 /** The scene is laid out in world units and drawn at two screen pixels to the unit, so sprites carry twice the detail. */
 // `?lowres` draws at one pixel to the unit: the automated checks use it, because a headless browser paints in software.
@@ -77,6 +78,12 @@ export class FieldScene extends Phaser.Scene {
   private crew: Phaser.GameObjects.Image[] = [];
   private bench: Phaser.GameObjects.Image[] = [];
   private paint: Phaser.GameObjects.Text[] = [];
+  /** Mud, torn turf and puddles, stamped where the plays go. */
+  private wear!: Phaser.GameObjects.RenderTexture;
+  /** Snow or frost lying on the field, trampled away where the players have been. */
+  private cover!: Phaser.GameObjects.RenderTexture;
+  private stamp!: Phaser.GameObjects.Image;
+  private ground: 'grass' | 'snow' | 'frost' = 'grass';
 
   constructor() {
     super('field');
@@ -88,6 +95,7 @@ export class FieldScene extends Phaser.Scene {
     this.load.image('stadium', stadiumUrl);
     this.load.image('sideline-base', sidelineBaseUrl);
     this.load.image('sideline-mask', sidelineMaskUrl);
+    this.load.image('turf', turfUrl);
   }
 
   create(): void {
@@ -114,6 +122,12 @@ export class FieldScene extends Phaser.Scene {
       this.add.image(x, FIELD_TOP - WALL_H / 2 - 1, 'stadium', `ad${i % STADIUM.ads.length}`).setOrigin(0.5, 0.5).setScale(1 / ZOOM).setDepth(-90);
     }
     this.field = this.add.graphics().setDepth(-100);
+    const turf = this.textures.get('turf');
+    for (const [name, r] of Object.entries(TURF)) turf.add(name, 0, r[0], r[1], r[2], r[3]);
+    // Both layers cover the playing field and the end zones, a world unit to the pixel.
+    this.cover = this.add.renderTexture(0, FIELD_TOP, WORLD_W, FIELD_H).setOrigin(0, 0).setDepth(-98);
+    this.wear = this.add.renderTexture(0, FIELD_TOP, WORLD_W, FIELD_H).setOrigin(0, 0).setDepth(-97);
+    this.stamp = this.make.image({ key: 'turf', frame: 'mud0', add: false }).setOrigin(0.5, 0.5);
     this.fx = this.add.graphics().setDepth(-50);
     const b = this.textures.createCanvas('ball', 5, 3)!;
     const c = b.getContext();
@@ -317,6 +331,38 @@ export class FieldScene extends Phaser.Scene {
     this.camX += (target - this.camX) * Math.min(1, delta / 180);
     // With the camera zoomed, scroll is measured from the centre of the view.
     this.cameras.main.scrollX = Math.round(this.camX * ZOOM) / ZOOM - (VIEW_W * ZOOM - VIEW_W) / 2;
+  }
+
+  /** A fresh field for a new game: clean grass, or lying snow, or a morning frost. */
+  resetTurf(ground: 'grass' | 'snow' | 'frost'): void {
+    if (!this.ready) {
+      this.events.once('ready', () => this.resetTurf(ground));
+      return;
+    }
+    this.ground = ground;
+    this.wear.clear();
+    this.cover.clear();
+    if (ground === 'grass') return;
+    this.stamp.setFrame(ground).setScale(1).setAngle(0).setAlpha(ground === 'snow' ? 0.82 : 0.6);
+    for (let x = 16; x < WORLD_W + 16; x += 32) for (let y = 16; y < FIELD_H + 16; y += 32) this.cover.draw(this.stamp, x, y);
+  }
+
+  /**
+   * Marks the field where a play went. `x` is in yards from the left goal line and `y` in yards from the far
+   * sideline; `kind` is what the weather leaves there; `n` picks the mark so the same play always leaves the same one.
+   */
+  addWear(x: number, y: number, kind: 'scuff' | 'mud' | 'puddle', n: number): void {
+    if (!this.ready) return;
+    const px = Math.round(wx(x));
+    const py = Math.round(y * PX_Y);
+    if (this.ground !== 'grass') {
+      // Boots take the snow or frost off before they take the grass off.
+      this.stamp.setFrame('blob').setScale(0.7 + (n % 3) * 0.2).setAngle(0).setAlpha(0.55);
+      this.cover.erase(this.stamp, px, py);
+    }
+    if (kind === 'puddle') this.stamp.setFrame(`puddle${n % 3}`).setScale(0.5).setAngle(0).setAlpha(0.85);
+    else this.stamp.setFrame(`mud${n % 5}`).setScale(kind === 'mud' ? 0.42 : 0.36).setAngle((n % 4) * 90).setAlpha(kind === 'mud' ? 0.72 : 0.34);
+    this.wear.draw(this.stamp, px, py);
   }
 
   snapCamera(focusX: number): void {

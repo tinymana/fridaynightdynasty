@@ -188,14 +188,53 @@ def cut_sideline():
     mask.save(OUT + 'sideline-mask.png', optimize=True)
     return meta
 
+# Turf wear, from the weather sheet: (name, box). Grass in the tile is keyed out so the mark can be stamped on any field.
+TURF = [('mud0', (92, 52, 167, 126)), ('mud1', (8, 132, 82, 205)), ('mud2', (187, 132, 262, 205)), ('mud3', (272, 132, 347, 205)), ('mud4', (92, 132, 167, 205)),
+        ('puddle0', (1218, 52, 1290, 126)), ('puddle1', (1297, 52, 1370, 126)), ('puddle2', (1218, 132, 1370, 205))]
+COVER = [('snow', (403, 55, 467, 100)), ('frost', (750, 52, 822, 126))]
+
+def cut_turf():
+    sheet = Image.open(SRC + '15_dynamic_weather_turf_fog_spritesheet.png').convert('RGBA')
+    parts = []
+    for name, box in TURF:
+        a = np.array(sheet.crop(box)).astype(int)
+        r, g, b = a[:, :, 0], a[:, :, 1], a[:, :, 2]
+        grass = (g > r * 1.12) & (g > b * 1.12) & (g > 70)
+        a[:, :, 3] = np.where(grass, 0, a[:, :, 3])
+        t = Image.fromarray(a.astype(np.uint8))
+        t = t.crop(t.getbbox())
+        parts.append((name, t.resize((max(1, round(t.width * 0.5)), max(1, round(t.height * 0.5))), Image.LANCZOS)))
+    for name, box in COVER:
+        t = sheet.crop((box[0] + 3, box[1] + 3, box[2] - 3, box[3] - 3))
+        parts.append((name, t.resize((32, 32), Image.LANCZOS)))
+    # A soft round blob, used to trample snow back to grass.
+    blob = Image.new('RGBA', (24, 24), (0, 0, 0, 0))
+    bd = np.zeros((24, 24, 4), dtype=np.uint8)
+    for y in range(24):
+        for x in range(24):
+            d = ((x - 11.5) ** 2 + (y - 11.5) ** 2) ** 0.5
+            if d < 11: bd[y, x] = (255, 255, 255, 255 if d < 8 else int(255 * (11 - d) / 3))
+    parts.append(('blob', Image.fromarray(bd)))
+    H = max(t.height for _, t in parts)
+    W = sum(t.width + 1 for _, t in parts)
+    strip = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    meta = {}
+    x = 0
+    for name, t in parts:
+        strip.paste(t, (x, 0)); meta[name] = [x, 0, t.width, t.height]; x += t.width + 1
+    strip.save(OUT + 'turf.png', optimize=True)
+    return meta
+
 if __name__ == '__main__':
     names = cut_players()
     meta = cut_stadium()
     side = cut_sideline()
+    turf = cut_turf()
     with open('apps/client/src/art-atlas.ts', 'w') as f:
         f.write('// Written by tools/cut-sprites.py. Do not edit by hand.\n')
         f.write(f'export const PLAYER_CELL = {{ w: {CELL_W}, h: {CELL_H} }};\n')
         f.write(f'export const PLAYER_FRAMES = {json.dumps(names)} as const;\n')
         f.write(f'export const STADIUM = {json.dumps(meta)};\n')
         f.write(f'export const SIDELINE: Record<string, number[]> = {json.dumps(side)};\n')
+        f.write(f'export const TURF: Record<string, number[]> = {json.dumps(turf)};\n')
     print(len(names), 'player frames;', len(meta['ads']), 'sponsor boards;', len(meta['stands']), 'stands')

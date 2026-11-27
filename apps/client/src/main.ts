@@ -495,6 +495,7 @@ function startPractice(make: (seed: number) => PlaySim, label: string): void {
   practiceRun = { make, n: 0, pause: 0, told: false };
   mode = 'menu';
   scene.setTeams(practiceTeams);
+  scene.resetTurf('grass');
   $('game').classList.add('practice');
   show('game');
   $('panel').innerHTML = `<div class="wide"><button class="act" id="prAgain">Run it again</button><button class="act" id="prBack">Back to the designer</button></div><div class="waiting">${label.replace(/[&<>]/g, '')} on the practice field</div>`;
@@ -748,8 +749,41 @@ function ballOn(): string {
   return s.yardLine < 50 ? `${teams[s.possession].abbr} ${s.yardLine}` : `${teams[other(s.possession)].abbr} ${100 - s.yardLine}`;
 }
 
+/**
+ * What a play leaves on the field. On a dry night the turf scuffs along the line and where the runner went down;
+ * in the rain it turns to mud and puddles; in snow the cover is trampled off. Worked out from the play alone, so
+ * a rejoined or reloaded game shows the same field.
+ */
+let wornTo = -1;
+function wearFrom(e: PlayEvent): void {
+  if ((e.type !== 'run' && e.type !== 'pass') || e.seq <= wornTo) return;
+  wornTo = e.seq;
+  const w = game.setup.weather;
+  const kind = w === 'rain' ? 'mud' : 'scuff';
+  // A cheap, steady scatter from the play's own number.
+  const r = (k: number): number => (((e.seq * 2654435761 + k * 40503) >>> 0) % 1000) / 1000;
+  const [lx] = abs(e.offense, e.yardLine, CY_YD);
+  const lateral = CY_YD + (r(1) - 0.5) * 14;
+  const marks = w === 'rain' ? 3 : w === 'snow' ? 4 : 2;
+  for (let i = 0; i < marks; i++) scene.addWear(lx + (r(10 + i) - 0.5) * 1.6, lateral + (i - (marks - 1) / 2) * 2.4 + (r(20 + i) - 0.5), kind, e.seq + i);
+  if (!e.flags.incomplete) {
+    const [ex] = abs(e.offense, Math.max(1, Math.min(99, e.yardLine + e.yards)), CY_YD);
+    scene.addWear(ex, lateral + (r(2) - 0.5) * 20, kind, e.seq + 7);
+  }
+  if (w === 'rain' && e.seq % 5 === 0) scene.addWear(lx + (r(3) - 0.5) * 12, CY_YD + (r(4) - 0.5) * 34, 'puddle', e.seq);
+}
+
+/** Lays the field for this game's weather and marks it with every play already run. */
+function startTurf(): void {
+  const w = game.setup.weather;
+  scene.resetTurf(w === 'snow' ? 'snow' : 'grass');
+  wornTo = -1;
+  for (const e of game.events) wearFrom(e);
+}
+
 /** Sets up the stands and the band for a new game. Team 0 is at home. */
 function startAtmosphere(): void {
+  startTurf();
   const lg = net?.view.league;
   occasion = dynastyGame ? occasionFor(dynastyGame.week, dynastyGame.home) : lg ? occasionFor(lg.week, lg.home) : null;
   let h = 0;
@@ -838,6 +872,7 @@ function showResult(e: PlayEvent | null): void {
   banner.innerHTML = `${e ? e.text : 'Time runs out.'}<small>${period}${situationText()}</small>`
     + (show ? `<div class="show"><b>${show.title}</b>${show.lines.map((l) => `<span>${l}</span>`).join('')}</div>` : '');
   atmosphereAfterPlay(e, half);
+  if (e) wearFrom(e);
   // In a dynasty the record book is open on the bench: say so the moment a school record falls or comes within reach.
   let recordCalls = 0;
   if (dynastyGame && !turbo && e) {
