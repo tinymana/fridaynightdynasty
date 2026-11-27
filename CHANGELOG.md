@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.16.0 — 2026-11-27
+
+Players and stadium from the supplied sheets (`art/source/sheets2`).
+
+### Added
+- `tools/cut-sprites.py` cuts the sheets into `players-base.png`, `players-mask.png` (which pixels are jersey,
+  helmet or pants, and how light) and `stadium.png`, and writes `apps/client/src/art-atlas.ts`.
+- `FieldScene` draws at two screen pixels per world unit (960 x 620), repaints the player frames per school from
+  the mask, and adds stands and sponsors' boards above the field. Client only; the simulation is untouched.
+- `tools/field-shot.mjs`.
+- Sideline and chain crew (`sideline-base.png`, `sideline-mask.png`, `SIDELINE`), repainted per school; the box shows the down.
+- `ViewPlayer.pose`: throw, stiff arm, kick and celebration frames chosen by the client from the simulation's state.
+
+## 0.15.0 — 2026-11-27
+
+Season awards.
+
+### Added
+- `packages/league/src/awards.ts`: `voteAwards` picks a player of the year, defensive player of the year, newcomer
+  of the year, a sixteen-man all-league team and the coach of the year (wins against wins expected from prestige).
+  `seasonAwards(d, stats)`, `cleanAwards`. `Dynasty.awards` holds every season's, written by `playWeek` after the
+  title game.
+- Client: awards on the season-over screen, an Awards page, and honors by school in the record book.
+
 ## 0.14.0 — 2026-11-26
 
 Statistics, school records and the UI pass.

@@ -3,6 +3,7 @@ import { simulateGame } from '@fnd/match-sim';
 import { MAX_CALL_UPS, cleanCallUps, enrolledIn, incomingClass, jvTeam, programFor, varsityTeam, type ProgramPlayer } from './program';
 import { cleanStatBook, closeSeason, historicBook, recordGame, type RecordNews, type StatBook } from './records';
 import { boxScore, type BoxScore } from './stats';
+import { cleanAwards, voteAwards, type Candidate, type SeasonAwards } from './awards';
 
 /**
  * A high school league and its seasons. Pure data and pure functions: the same league seed always gives the
@@ -257,6 +258,8 @@ export interface Dynasty {
   jv?: GameResult[];
   /** Player statistics and every school's record book. Kept by a solo dynasty from its first game. */
   stats?: StatBook;
+  /** The awards voted at the end of each season, oldest first. */
+  awards?: SeasonAwards[];
 }
 
 export interface SeasonRecord {
@@ -390,6 +393,24 @@ const returning = (d: Dynasty, id: string): boolean => {
   return enrolled !== null && d.year - enrolled + 1 < 4;
 };
 
+/**
+ * The season's awards, voted from the statistics once the title game is played. Coach of the year goes to
+ * the school that most outplayed its strength: a rebuilding school that wins five beats a powerhouse that wins six.
+ */
+export function seasonAwards(d: Dynasty, stats: StatBook): SeasonAwards {
+  const players: Candidate[] = [];
+  for (let i = 0; i < LEAGUE_SIZE; i++) {
+    for (const p of programOf(d, i)) {
+      const line = stats.season[p.id];
+      if (line) players.push({ id: p.id, name: p.name, school: i, pos: p.pos, year: p.year, line });
+    }
+  }
+  const table = standings(d.results);
+  const wins = d.league.schools.map((_, i) => table.find((r) => r.school === i)!.wins);
+  const expected = d.league.schools.map((s) => REGULAR_WEEKS / 2 + (s.prestige - PRESTIGE_MID) * 0.8);
+  return voteAwards(d.year, players, wins, expected);
+}
+
 /** Plays a game between two schools and keeps its box score. */
 export function simulateWithBox(d: Dynasty, week: number, home: number, away: number): { result: GameResult; box: BoxScore } {
   const g = simulateGame(gameSeed(d, week, home, away), [teamFor(d, home), teamFor(d, away)], { setup: gameSetup(d, week, home, away) });
@@ -466,6 +487,7 @@ export function playWeek(d: Dynasty, mine?: GameResult, mineBox?: BoxScore): Dyn
   if (d.week === REGULAR_WEEKS) {
     const settled = closeSeason(stats, (id) => schoolOfPlayer(d, id), names, (id) => returning(d, id), d.year).stats;
     stats = { ...stats, books: settled.books, news: settled.news };
+    next = { ...next, awards: [...(d.awards ?? []).filter((a) => a.year !== d.year), seasonAwards(d, stats)] };
   }
   next = { ...next, stats };
   // The junior varsity plays the same schedule through the regular season.
@@ -534,6 +556,7 @@ export function loadDynasty(raw: unknown): Dynasty | null {
     return {
       v: 1, league: { seed: base.seed, state: base.state, schools }, user: d.user, year: d.year, week: d.week, results, setup: cleanSetup(d.setup), history: d.history.filter((h) => h && Number.isInteger(h.year) && Array.isArray(h.record)),
       callUps: cleanCallUps(base.seed, schools[d.user], d.year, d.callUps), jv,
+      ...(d.awards ? { awards: cleanAwards(d.awards, LEAGUE_SIZE) } : {}),
       ...(d.stats ? { stats: cleanStatBook(d.stats, schools.map((s) => historicBook(base.seed, s.id, s.prestige, cleanSetup(d.setup).quarterMinutes))) } : {}),
     };
   } catch {
@@ -544,3 +567,4 @@ export function loadDynasty(raw: unknown): Dynasty | null {
 export { CLASS_NAMES, CLASS_SHORT, MAX_CALL_UPS, enrolledIn, type ProgramPlayer } from './program';
 export * from './stats';
 export * from './records';
+export * from './awards';

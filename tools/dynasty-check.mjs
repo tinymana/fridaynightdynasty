@@ -16,7 +16,7 @@ const check = (name, ok) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`); i
 const text = (sel) => page.$eval(sel, (e) => e.textContent);
 const waitFor = async (f, ms = 60000) => { for (let t = 0; t < ms; t += 100) { if (await f()) return true; await sleep(100); } return false; };
 try {
-  await page.goto(pathToFileURL('site/play/index.html').href);
+  await page.goto(`${pathToFileURL('site/play/index.html').href}?lowres`);
   await sleep(400);
   await page.click('#title');
   await sleep(150);
@@ -121,7 +121,14 @@ try {
   }
   s = await st();
   check('the season ends with 29 games and one champion', s.dynasty.results === 29 && s.dynasty.history === 1 && /champions/.test(await text('#dyBody')));
-  await page.screenshot({ path: `${out}/dynasty-champion.png` });
+  check('the season\'s awards are announced', /Player of the year/.test(await text('#dyBody')) && /Coach of the year/.test(await text('#dyBody')));
+  await page.screenshot({ path: `${out}/dynasty-champion.png`, fullPage: true });
+  await page.click('#dyAwards');
+  await sleep(100);
+  check('the awards page names the all-league team', (await page.$$('#dyBody .allteam span')).length === 16 && /2026 season/.test(await text('#dyBody')));
+  await page.screenshot({ path: `${out}/dynasty-awards.png`, fullPage: true });
+  await page.click('#pgBack');
+  await sleep(100);
   await page.click('#dyNext');
   await sleep(150);
   s = await st();

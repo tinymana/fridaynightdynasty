@@ -21,7 +21,7 @@ async function open(tag) {
   // A call that arrives after the final whistle is refused; that is expected. Any other refusal is reported.
   page.on('response', async (r) => { if (r.status() !== 400) return; const body = await r.text().catch(() => ''); if (!body.includes('not_playing')) errors.push(`${tag}: refused ${r.request().postData()} ${body}`); });
   page.on('console', (m) => { if (m.type() === 'error' && !/40[049]/.test(m.text())) errors.push(`${tag}: ${m.text()}`); });
-  await page.goto(pathToFileURL('site/play/index.html').href);
+  await page.goto(`${pathToFileURL('site/play/index.html').href}?lowres`);
   await sleep(300);
   await page.evaluate(() => window.__fnd.setTurbo(true));
   await page.click('#title');
@@ -78,6 +78,7 @@ try {
   for (let i = 0; i < 6000; i++) {
     const states = await Promise.all(pages.map(st));
     if (states.every((s) => s.mode === 'final')) break;
+    if (process.env.FND_DEBUG && i % 150 === 0) console.log('dbg', i, Date.now() % 1000000, plays, states.map((x) => `${x.mode}/${x.online?.turn}/${x.online?.sync}`).join(' '));
     for (let k = 0; k < 2; k++) {
       const s = states[k];
       if (s.mode !== 'choose') continue;

@@ -94,6 +94,10 @@ let viewOffense: 0 | 1 = 0;
 let lineup: ViewPlayer[] = [];
 let spot = { x: 50, y: CY_YD };
 let marks: { los: number; toGain: number } | null = null;
+/** Poses for the drawing: who threw the ball and when, who is fending a tackler off, and which team is celebrating. */
+let thrower = -1;
+let armUntil = new Map<unknown, number>();
+let cheerTeam: 0 | 1 | null = null;
 let kick: KickAnim | null = null;
 /** A kick, punt or turnover being run back: the real return, replayed from the game. */
 let viewReturn: { sim: ReturnSim; frame: 0 | 1; then: (() => void) | null; hold: number } | null = null;
@@ -256,6 +260,8 @@ function showMoves(dt: number): void {
   if (sim.moves.length <= seen) return;
   movesShown.set(sim, sim.moves.length);
   const m = sim.moves[sim.moves.length - 1];
+  // A stiff arm or a truck is drawn as one for the next half second.
+  if (m.kind === 'stiffArm' || m.kind === 'truck') armUntil.set(m.carrier, frame + 30);
   el.textContent = `${MOVE_WORDS[m.kind]} #${m.carrier.number}`;
   el.classList.remove('hidden');
   // Restart the pop.
@@ -266,12 +272,25 @@ function showMoves(dt: number): void {
   sfx.tackle();
 }
 
+/** The man nearest the ball when it is kicked swings his leg through it. */
+function kickPose(players: ViewPlayer[], k: KickAnim, f: number): void {
+  if (f > 0.35) return;
+  let best = -1;
+  let dist = 1e9;
+  k.start.forEach((p, i) => {
+    const d = Math.abs(p.x - k.x0) + Math.abs(p.y - k.y0);
+    if (p.team === k.kicking && d < dist) { dist = d; best = i; }
+  });
+  if (best >= 0 && players[best]) players[best] = { ...players[best], pose: f < 0.12 ? 'kick0' : 'kick1', moving: false };
+}
+
 function buildView(): FieldView {
   if (viewReturn) {
     const { sim, frame: side } = viewReturn;
     const players: ViewPlayer[] = sim.players.map((p) => {
       const [x, y] = abs(side, p.x / U, p.y / U);
-      return { team: p.side === 0 ? other(side) : side, x, y, moving: p.x !== p.px || p.y !== p.py, down: p.idx === 0 && sim.done && !sim.result?.touchdown, hasBall: p.idx === 0 };
+      const fending = p.idx === 0 && (armUntil.get(p.player) ?? 0) > frame;
+      return { team: p.side === 0 ? other(side) : side, x, y, moving: p.x !== p.px || p.y !== p.py, down: p.idx === 0 && sim.done && !sim.result?.touchdown, hasBall: p.idx === 0, pose: fending ? (frame % 12 < 6 ? 'arm0' : 'arm1') : undefined };
     });
     const c = players[0];
     return { players, ball: { x: c.x, y: c.y, z: 0, visible: false }, los: null, toGain: null, focusX: c.x, frame };
@@ -279,19 +298,24 @@ function buildView(): FieldView {
   if (viewSim) {
     const sim = viewSim;
     const off = viewOffense;
+    const b = sim.ball;
+    if (b.state === 'held') thrower = b.holder;
     const players: ViewPlayer[] = sim.players.map((p) => {
       const [x, y] = abs(off, p.x / U, p.y / U);
-      return {
-        team: p.side === 0 ? off : other(off), x, y,
-        moving: p.x !== p.px || p.y !== p.py,
-        down: sim.tick < p.stunUntil || (sim.done && sim.result !== null && !sim.result.touchdown && sim.ball.holder === p.idx && !sim.result.incomplete && sim.result.turnover !== 'interception'),
-        hasBall: sim.ball.state === 'held' && sim.ball.holder === p.idx,
-      };
+      const team = p.side === 0 ? off : other(off);
+      const moving = p.x !== p.px || p.y !== p.py;
+      const hasBall = b.state === 'held' && b.holder === p.idx;
+      const down = sim.tick < p.stunUntil || (sim.done && sim.result !== null && !sim.result.touchdown && b.holder === p.idx && !sim.result.incomplete && sim.result.turnover !== 'interception');
+      let pose: ViewPlayer['pose'];
+      if (mode === 'post' && cheerTeam === team) pose = 'cheer';
+      else if (b.state === 'air' && b.t < 16 && p.idx === thrower) pose = 'throw1';
+      else if (hasBall && !moving && mode === 'live' && sim.tick > 12) pose = 'throw0';
+      else if (hasBall && (armUntil.get(p.player) ?? 0) > frame) pose = frame % 12 < 6 ? 'arm0' : 'arm1';
+      return { team, x, y, moving, down, hasBall, pose };
     });
-    const b = sim.ball;
     const [bx, by] = abs(off, b.x / U, b.y / U);
     const z = b.state === 'air' && b.T > 0 ? Math.round(4 * Math.min(16, b.T * 0.3) * (b.t / b.T) * (1 - b.t / b.T)) : 0;
-    return { players, ball: { x: bx, y: by, z, visible: b.state !== 'held' || mode === 'presnap' }, los: marks?.los ?? null, toGain: marks?.toGain ?? null, focusX: bx, frame };
+    return { players, ball: { x: bx, y: by, z, visible: b.state !== 'held' || mode === 'presnap' }, los: marks?.los ?? null, toGain: marks?.toGain ?? null, focusX: bx, frame, down: (game as Game | undefined)?.state.phase === 'scrimmage' ? game.state.down : 1 };
   }
   if (kick) {
     const k = kick;
@@ -311,6 +335,7 @@ function buildView(): FieldView {
         const t = k.to![i];
         return t ? { ...p, x: p.x + (t.x - p.x) * ease, y: p.y + (t.y - p.y) * ease, moving: f < 1 } : p;
       });
+      kickPose(players, k, f);
       return { players, ball: { x: ballX, y: ballY, z: Math.round(4 * 22 * f * (1 - f)), visible: true }, los: null, toGain: null, focusX: ballX, frame };
     }
     const players: ViewPlayer[] = k.start.map((p, i) => {
@@ -335,6 +360,7 @@ function buildView(): FieldView {
       return { ...p, x: p.x + (tx - p.x) * Math.max(f * 0.5, g), y: p.y + ((k.y1 + ((i % 5) - 2) * 4) - p.y) * Math.max(f * 0.3, g * 0.7), moving: g < 1, down: false };
     });
     const flying = f < 1 || k.returner < 0;
+    kickPose(players, k, f);
     return {
       players, ball: { x: flying ? ballX : rx, y: flying ? ballY : ry, z: flying ? Math.round(4 * 22 * f * (1 - f)) : 0, visible: flying },
       los: null, toGain: null, focusX: flying ? ballX : rx, frame,
@@ -782,6 +808,8 @@ function atmosphereAfterPlay(e: PlayEvent | null, half: boolean): void {
 
 function showResult(e: PlayEvent | null): void {
   updateBug();
+  // The team that just scored a touchdown throws its arms up.
+  cheerTeam = e && (e.flags.touchdown || e.flags.defensiveTouchdown) ? (e.flags.defensiveTouchdown ? other(e.offense) : e.offense) : null;
   // A call sheet left up by a play that never ran (the clock ran out first) comes down.
   if ($('panel').querySelector('[data-act]')) setPanelWaiting('');
   setStaticIfIdle();

@@ -19,7 +19,7 @@ async function open(tag) {
   await page.evaluateOnNewDocument((url) => { window.__fndOnlineUrl = url; }, `http://localhost:${PORT}`);
   page.on('pageerror', (e) => errors.push(`${tag}: ${e}`));
   page.on('console', (m) => { if (m.type() === 'error' && !/40[0349]/.test(m.text())) errors.push(`${tag}: ${m.text()}`); });
-  await page.goto(pathToFileURL('site/play/index.html').href);
+  await page.goto(`${pathToFileURL('site/play/index.html').href}?lowres`);
   await sleep(300);
   await page.evaluate(() => window.__fnd.setTurbo(true));
   await page.click('#title');

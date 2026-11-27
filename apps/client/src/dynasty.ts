@@ -1,7 +1,7 @@
 import { GROUPS, WEATHER, overall, type GameSetup, type Team } from '@fnd/core';
 import {
   CLASS_NAMES, CLASS_SHORT, MAX_CALL_UPS, RECORD_DEFS, REGULAR_WEEKS, STATES, career, emptyLine, incomingOf, newsText, occasionFor, openings, programOf, schoolOfPlayer, seasonYear, statsOf, recordOf, setCallUp, createDynasty, createLeague, editSchool, gameSeed, gameSetup, loadDynasty, nextSeason, playWeek, standings, stateByCode, teamFor, userGame, weekGames, winnerOf,
-  type BoxScore, type Dynasty, type GameResult, type ProgramPlayer, type RecordNews, type StatLine,
+  type BoxScore, type Dynasty, type GameResult, type Honoree, type ProgramPlayer, type RecordNews, type SeasonAwards, type StatLine,
 } from '@fnd/league';
 import { bindSchoolForm, schoolFormHtml } from './school-form';
 
@@ -42,7 +42,7 @@ export class DynastyScreen {
   private busy = false;
   private editing = -1;
   /** Which page of the dynasty is showing: the season, or the program (varsity, junior varsity, classes). */
-  private view: 'season' | 'program' | 'stats' | 'records' = 'season';
+  private view: 'season' | 'program' | 'stats' | 'records' | 'awards' = 'season';
   /** Which school's record book is open. */
   private bookOf = -1;
   /** Record calls already made in the game being played, so each is made once. */
@@ -72,6 +72,7 @@ export class DynastyScreen {
     if (this.d && this.view === 'program') this.renderProgram(this.d);
     else if (this.d && this.view === 'stats') this.renderStats(this.d);
     else if (this.d && this.view === 'records') this.renderRecords(this.d);
+    else if (this.d && this.view === 'awards') this.renderAwards(this.d);
     else if (this.d) this.renderSeason(this.d);
     else this.renderNew();
   }
@@ -164,6 +165,30 @@ export class DynastyScreen {
     }));
   }
 
+  /** One season's awards as a block: the three player awards, coach of the year and the all-league team. */
+  private awardsHtml(d: Dynasty, a: SeasonAwards, full: boolean): string {
+    const schools = d.league.schools;
+    const who = (h: Honoree | null): string => (h ? `<b>${esc(h.name)}</b>, ${CLASS_NAMES[h.year - 1].toLowerCase()} ${h.pos}, ${esc(schools[h.school].name)} <small>${esc(h.line)}</small>` : 'Not awarded');
+    const row = (label: string, body: string, mine: boolean): string => `<div class="award${mine ? ' me' : ''}"><span class="lbl">${label}</span><span>${body}</span></div>`;
+    const team = full ? `<div class="allteam">${a.allLeague.map((h) => `<span class="${h.school === d.user ? 'me' : ''}">${h.pos} ${esc(h.name)} <small>${esc(schools[h.school].abbr)}</small></span>`).join('')}</div>` : '';
+    const mineOnTeam = a.allLeague.filter((h) => h.school === d.user).length;
+    return row('Player of the year', who(a.player), a.player?.school === d.user)
+      + row('Defensive player of the year', who(a.defender), a.defender?.school === d.user)
+      + row('Newcomer of the year', who(a.newcomer), a.newcomer?.school === d.user)
+      + row('Coach of the year', a.coach === d.user ? '<b>You.</b> Your school won more than anyone expected.' : `The coach at ${esc(schools[a.coach].name)}`, a.coach === d.user)
+      + row('All-league team', full ? team : `${a.allLeague.length} players named, ${mineOnTeam} of them yours.`, mineOnTeam > 0);
+  }
+
+  /** Every season's awards, newest first. */
+  private renderAwards(d: Dynasty): void {
+    this.title.textContent = `${stateByCode(d.league.state).name} awards`;
+    const all = [...(d.awards ?? [])].reverse();
+    this.root.innerHTML = `<div class="orow center"><button class="seg on" id="pgBack">Back to the season</button><button class="seg" id="awRecords">Record book</button></div>
+      ${all.length ? all.map((a) => `<h3>${seasonYear(a.year)} season</h3>${this.awardsHtml(d, a, true)}`).join('') : '<p>The awards are voted when the title game has been played. Finish a season and they will be here.</p>'}`;
+    (this.root.querySelector('#pgBack') as HTMLElement).addEventListener('click', () => { this.view = 'season'; this.render(); });
+    (this.root.querySelector('#awRecords') as HTMLElement).addEventListener('click', () => { this.view = 'records'; this.bookOf = d.user; this.render(); });
+  }
+
   /** The latest records to fall around the league, newest first. */
   private newsHtml(d: Dynasty): string {
     const news = (d.stats?.news ?? []).slice(0, 4);
@@ -233,6 +258,19 @@ export class DynastyScreen {
         <label class="pick">School <select id="rcSchool">${schools.map((x, i) => `<option value="${i}"${i === at ? ' selected' : ''}>${esc(x.name)} ${esc(x.mascot)}${i === d.user ? ' (yours)' : ''}</option>`).join('')}</select></label></div>
       <div class="prog recbook"><table><tr><th>Record</th><th>Game</th><th>Season</th><th>Career</th></tr>${rows}
         <tr><td>Points by the team</td><td class="${pts.year >= mineEra ? 'fresh' : ''}"><b>${pts.value}</b> ${pts.name ? `against ${esc(pts.name)} ` : ''}<small>${pts.year}</small></td><td></td><td></td></tr></table></div>
+      ${(() => {
+        // The school's honours: everyone it has put on the all-league team, and its award winners.
+        const lines: string[] = [];
+        for (const a of [...(d.awards ?? [])].reverse()) {
+          const tag = (h: Honoree | null, what: string): void => { if (h && h.school === at) lines.push(`<div class="dy-game me"><span>${what}: ${esc(h.name)}, ${h.pos}. ${esc(h.line)}</span><span>${seasonYear(a.year)}</span></div>`); };
+          tag(a.player, 'Player of the year');
+          tag(a.defender, 'Defensive player of the year');
+          tag(a.newcomer, 'Newcomer of the year');
+          const team = a.allLeague.filter((h) => h.school === at);
+          if (team.length) lines.push(`<div class="dy-game"><span>All-league: ${team.map((h) => `${h.pos} ${esc(h.name)}`).join(', ')}</span><span>${seasonYear(a.year)}</span></div>`);
+        }
+        return lines.length ? `<h3>Honors at ${esc(s.name)}</h3>${lines.slice(0, 16).join('')}` : '';
+      })()}
       ${fallen.length ? `<h3>Records broken at ${esc(s.name)}</h3>${fallen.map((n) => `<div class="dy-game me"><span>${esc(newsText(n, s.name))}</span><span>${n.year}</span></div>`).join('')}` : `<p class="sl-note" style="text-align:center">Nobody has broken a ${esc(s.name)} record since ${mineEra - 1}.</p>`}`;
     (this.root.querySelector('#pgBack') as HTMLElement).addEventListener('click', () => { this.view = 'season'; this.render(); });
     (this.root.querySelector('#rcStats') as HTMLElement).addEventListener('click', () => { this.view = 'stats'; this.render(); });
@@ -332,17 +370,19 @@ export class DynastyScreen {
 
     this.root.innerHTML = `<p>${dot(d.user)}Coach of the ${esc(me.name)} ${esc(me.mascot)}${c.seasons ? ` · career ${c.wins}-${c.losses}${c.ties ? `-${c.ties}` : ''} · ${c.championships} ${c.championships === 1 ? 'championship' : 'championships'}` : ''}</p>
       ${next}
+      ${over && d.awards?.length && d.awards[d.awards.length - 1].year === d.year ? `<h3>${seasonYear(d.year)} awards</h3>${this.awardsHtml(d, d.awards[d.awards.length - 1], false)}` : ''}
       <div class="dy-cols"><div><h3>Standings</h3><table><tr><th>#</th><th>School</th><th>Record</th><th>PF</th><th>PA</th></tr>${rows}</table></div>
       <div>${upcoming}${last.length ? `<h3>${weekName(lastWeek)} results</h3>${last.map(line).join('')}` : ''}${past}</div></div>
       ${this.editing >= 0 ? schoolFormHtml(schools[this.editing]) : `<div class="orow center" style="margin-top:12px"><label class="pick">Rename a school <select id="dyEdit"><option value="">Choose\u2026</option>${schools.map((s, i) => `<option value="${i}">${esc(s.name)} ${esc(s.mascot)}</option>`).join('')}</select></label></div>`}
       ${this.newsHtml(d)}
-      <div class="orow center" style="margin-top:14px"><button class="seg on" id="dyProgram">Your program: varsity and JV</button><button class="seg on" id="dyStats">Statistics</button><button class="seg on" id="dyRecords">Record book</button><button class="seg" id="dyBack">Main menu</button><button class="seg" id="dyQuit">Abandon this dynasty</button></div>
+      <div class="orow center" style="margin-top:14px"><button class="seg on" id="dyProgram">Your program: varsity and JV</button><button class="seg on" id="dyStats">Statistics</button><button class="seg on" id="dyRecords">Record book</button><button class="seg on" id="dyAwards">Awards</button><button class="seg" id="dyBack">Main menu</button><button class="seg" id="dyQuit">Abandon this dynasty</button></div>
       <div id="dyMsg" class="sl-note" role="status" aria-live="polite" style="text-align:center"></div>`;
     const q = (id: string): HTMLElement | null => this.root.querySelector(`#${id}`);
     q('dyBack')!.addEventListener('click', () => this.host.back());
     q('dyProgram')!.addEventListener('click', () => { this.view = 'program'; this.render(); });
     q('dyStats')!.addEventListener('click', () => { this.view = 'stats'; this.render(); });
     q('dyRecords')!.addEventListener('click', () => { this.view = 'records'; this.bookOf = d.user; this.render(); });
+    q('dyAwards')!.addEventListener('click', () => { this.view = 'awards'; this.render(); });
     q('dyEdit')?.addEventListener('change', (e) => {
       const i = (e.target as HTMLSelectElement).value;
       if (i === '') return;

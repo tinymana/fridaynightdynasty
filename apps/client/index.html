@@ -89,7 +89,7 @@
   #mid .dd { font-size: 12px; color: var(--accent); margin-top: 2px; white-space: nowrap; }
 
   /* stage */
-  #stage { position: relative; border: 3px solid var(--line); border-radius: 6px; overflow: hidden; background: #000; aspect-ratio: 16 / 9; }
+  #stage { position: relative; border: 3px solid var(--line); border-radius: 6px; overflow: hidden; background: #000; aspect-ratio: 480 / 328; }
   #phaser, #phaser canvas { width: 100% !important; height: 100% !important; display: block; image-rendering: pixelated; }
   #banner { position: absolute; left: 50%; bottom: 6%; transform: translateX(-50%); max-width: 92%; background: rgba(8, 9, 20, 0.9); border: 2px solid var(--accent); border-radius: 4px; padding: 8px 14px; font-size: 14px; text-align: center; line-height: 1.35; }
   #wx { position: absolute; inset: 0; pointer-events: none; }
@@ -396,6 +396,13 @@
   #shared table, #dynasty table, #hall table { font-size: 17px; }
   #shared th, #dynasty th, #hall th { font-size: 14px; }
   .colhead { font-size: 13px; }
+  .award { display: grid; grid-template-columns: 250px 1fr; gap: 12px; padding: 7px 8px; border-bottom: 1px solid var(--line); font-size: 17px; text-align: left; }
+  .award .lbl { color: var(--gold); }
+  .award small { color: var(--dim); margin-left: 6px; }
+  .award.me { background: var(--navy-2); }
+  .allteam { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+  .allteam .me { color: var(--gold); }
+  @media (max-width: 620px) { .award { grid-template-columns: 1fr; gap: 2px; } }
   #hall, #final { font-size: 17px; }
   .sl-row, #sideline { font-size: 16px; }
 </style>

@@ -2,6 +2,64 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.16.0",
+      "date": "2026-11-27",
+      "title": "New players, a real stadium and a sideline",
+      "items": [
+        {
+          "tag": "new",
+          "text": "New players on the field, cut from the new sprite sheets and repainted in each school's jersey, helmet and pants colours. They run with a four-frame stride, set in a stance before the snap and go to ground when tackled."
+        },
+        {
+          "tag": "new",
+          "text": "Poses. The quarterback sets and throws, a runner who stiff-arms or trucks a tackler shows it, the kicker swings his leg, and the team that scores a touchdown throws its arms up."
+        },
+        {
+          "tag": "new",
+          "text": "A stadium behind the field: bleachers full of fans, a press box at midfield, and a wall of local sponsors' boards."
+        },
+        {
+          "tag": "new",
+          "text": "A sideline in front of it: each team's bench, players standing, and coaches, all in the school's colours."
+        },
+        {
+          "tag": "new",
+          "text": "The chain crew. Two sticks mark the ten yards and the down box follows the ball, showing the down."
+        },
+        {
+          "tag": "improved",
+          "text": "The field is drawn at twice the resolution, so sprites and boards are sharp on big screens."
+        },
+        {
+          "tag": "note",
+          "text": "Still to come from the new art: catching poses, line play, juke and spin animations, field goal units, injuries, referees, cheerleaders, the band and the homecoming court."
+        }
+      ]
+    },
+    {
+      "version": "0.15.0",
+      "date": "2026-11-27",
+      "title": "Season awards",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Awards. When the title game is over the league votes a player of the year, a defensive player of the year, a newcomer of the year (the best freshman or sophomore) and an all-league team of sixteen."
+        },
+        {
+          "tag": "new",
+          "text": "Coach of the year goes to the school that most beat expectations, so winning five games at a rebuilding school counts for more than winning six at a powerhouse."
+        },
+        {
+          "tag": "new",
+          "text": "An Awards page keeps every season's winners, and each school's record book now lists its honors: award winners and all-league players by year."
+        },
+        {
+          "tag": "note",
+          "text": "Awards are voted from the season's statistics, so they are in solo dynasty for now."
+        }
+      ]
+    },
+    {
       "version": "0.14.0",
       "date": "2026-11-26",
       "title": "Statistics, school records and a new look",
@@ -640,6 +698,21 @@
       "status": "testing",
       "title": "Statistics and school records",
       "text": "Box scores for every player, season and career numbers, league leaders, and a record book for every school with records that can be broken. Playable now in solo dynasty."
+    },
+    {
+      "status": "next",
+      "title": "Playoffs",
+      "text": "A bracket for the state title instead of first place hosting second."
+    },
+    {
+      "status": "next",
+      "title": "Coaching career",
+      "text": "Job offers from other schools after good seasons, the sack after bad ones, and a coaching record that follows you."
+    },
+    {
+      "status": "next",
+      "title": "Friends' leagues catch up",
+      "text": "Statistics, record books, awards and call-ups in a dynasty with friends."
     },
     {
       "status": "testing",
