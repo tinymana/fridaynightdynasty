@@ -1,6 +1,6 @@
-import { DEFAULT_SETUP, Rng, clamp, cleanSetup, hashString, type GameSetup, type Team, type TeamColors, type Weather } from '@fnd/core';
+import { DEFAULT_SETUP, Rng, clamp, cleanSetup, hashString, type GameSetup, type PlayEvent, type Ratings, type Team, type TeamColors, type Weather } from '@fnd/core';
 import { simulateGame } from '@fnd/match-sim';
-import { MAX_CALL_UPS, cleanCallUps, enrolledIn, incomingClass, jvTeam, programFor, varsityTeam, type ProgramPlayer } from './program';
+import { LEAGUE_TUNING, MAX_CALL_UPS, cleanCallUps, enrolledIn, incomingClass, jvTeam, programFor, programNames, programNews, varsityTeam, type ProgramNews, type ProgramPlayer } from './program';
 import { cleanStatBook, closeSeason, historicBook, recordGame, type RecordNews, type StatBook } from './records';
 import { boxScore, type BoxScore } from './stats';
 import { cleanAwards, voteAwards, type Candidate, type SeasonAwards } from './awards';
@@ -276,24 +276,55 @@ export function createDynasty(stateCode: string, seed: number, user: number, set
   return { v: 1, league: createLeague(stateCode, seed), user: clamp(Math.trunc(user), 0, LEAGUE_SIZE - 1), year: 1, week: 0, results: [], setup: cleanSetup({ ...DEFAULT_SETUP, ...setup }), history: [], callUps: [], jv: [] };
 }
 
-type Rosters = Pick<Dynasty, 'league' | 'year'> & { user?: number; callUps?: string[] };
+/** `week` is the game about to be played. Without it (a league with friends, for now) nobody is sidelined in season. */
+type Rosters = Pick<Dynasty, 'league' | 'year'> & { user?: number; callUps?: string[]; week?: number };
 const callUpsOf = (d: Rosters, school: number): readonly string[] => (d.user === school ? d.callUps ?? [] : []);
 
 /** This year's varsity. Players age a class every season and graduate; a school's prestige lifts or drags the whole program. */
-export function teamFor(d: Rosters, school: number): Team {
-  return varsityTeam(d.league.seed, d.league.schools[school], d.year, callUpsOf(d, school));
+export function teamFor(d: Rosters, school: number, week: number | undefined = d.week): Team {
+  return varsityTeam(d.league.seed, d.league.schools[school], d.year, callUpsOf(d, school), week);
+}
+/** The home side on the night: the crowd, the bus ride they did not take and their own field are worth a little to every player. */
+function atHome(t: Team): Team {
+  const edge = LEAGUE_TUNING.homeEdge;
+  if (!edge) return t;
+  const lift = (r: Ratings): Ratings => {
+    const out = { ...r };
+    for (const k of Object.keys(out) as (keyof Ratings)[]) if (k !== 'stamina') out[k] = Math.min(99, out[k] + edge);
+    return out;
+  };
+  return { ...t, roster: t.roster.map((p, i) => (i % LEAGUE_TUNING.homeEvery === 0 ? { ...p, ratings: lift(p.ratings) } : p)) };
+}
+/** The two varsities for a game, home side first, as they play on the night. */
+export function matchTeams(d: Rosters, home: number, away: number, week: number | undefined = d.week): [Team, Team] {
+  return [atHome(teamFor(d, home, week)), teamFor(d, away, week)];
 }
 /** This year's junior varsity: everyone in the program who is not on the varsity. */
-export function jvTeamFor(d: Rosters, school: number): Team {
-  return jvTeam(d.league.seed, d.league.schools[school], d.year, callUpsOf(d, school));
+export function jvTeamFor(d: Rosters, school: number, week: number | undefined = d.week): Team {
+  return jvTeam(d.league.seed, d.league.schools[school], d.year, callUpsOf(d, school), week);
 }
 /** Everyone in a school's program this season, marked varsity or junior varsity. */
 export function programOf(d: Rosters, school: number): ProgramPlayer[] {
-  return programFor(d.league.seed, d.league.schools[school], d.year, callUpsOf(d, school));
+  return programFor(d.league.seed, d.league.schools[school], d.year, callUpsOf(d, school), d.week);
 }
 /** Next season's freshman class at a school. */
 export function incomingOf(d: Rosters, school: number): ProgramPlayer[] {
   return incomingClass(d.league.seed, d.league.schools[school], d.year);
+}
+
+export interface LeagueNews extends ProgramNews {
+  school: number;
+}
+/**
+ * What has happened around the league's programs so far this season, newest first: fall camp (who walked on, who
+ * transferred, who left), then injuries, ineligibility and suspensions after each week's games.
+ */
+export function leagueNews(d: Pick<Dynasty, 'league' | 'year' | 'week'>): LeagueNews[] {
+  const out: LeagueNews[] = [];
+  d.league.schools.forEach((s, school) => {
+    for (const n of programNews(d.league.seed, s, d.year)) if (n.week < d.week) out.push({ ...n, school });
+  });
+  return out.sort((a, b) => b.week - a.week || a.school - b.school);
 }
 
 /** Calls a junior varsity player up to the varsity, or sends a called-up player back down. */
@@ -308,7 +339,7 @@ export function setCallUp(d: Dynasty, playerId: string, up: boolean): Dynasty {
 
 /** The junior varsity game between two schools in a week. They play the same opponent the varsity does. */
 export function simulateJv(d: Dynasty, week: number, home: number, away: number): GameResult {
-  const g = simulateGame(hashString(`${gameSeed(d, week, home, away)}:jv`), [jvTeamFor(d, home), jvTeamFor(d, away)], { setup: gameSetup(d, week, home, away) });
+  const g = simulateGame(hashString(`${gameSeed(d, week, home, away)}:jv`), [jvTeamFor(d, home, week), jvTeamFor(d, away, week)], { setup: gameSetup(d, week, home, away) });
   return { week, home, away, score: [g.state.score[0], g.state.score[1]] };
 }
 
@@ -384,7 +415,8 @@ export function schoolOfPlayer(d: Pick<Dynasty, 'league'>, id: string): number {
 /** Every program player's name in the league this season, by id. */
 function nameBook(d: Dynasty): (id: string) => string {
   const names = new Map<string, string>();
-  for (let i = 0; i < LEAGUE_SIZE; i++) for (const p of programOf(d, i)) names.set(p.id, p.name);
+  // Everyone who has been in a program this season, so a player who was hurt or left keeps his name on his numbers.
+  for (let i = 0; i < LEAGUE_SIZE; i++) for (const [id, name] of programNames(d.league.seed, d.league.schools[i], d.year)) names.set(id, name);
   return (id) => names.get(id) ?? 'Unknown';
 }
 /** True for a player who will be back next season (anyone but a senior). */
@@ -413,12 +445,25 @@ export function seasonAwards(d: Dynasty, stats: StatBook): SeasonAwards {
 
 /** Plays a game between two schools and keeps its box score. */
 export function simulateWithBox(d: Dynasty, week: number, home: number, away: number): { result: GameResult; box: BoxScore } {
-  const g = simulateGame(gameSeed(d, week, home, away), [teamFor(d, home), teamFor(d, away)], { setup: gameSetup(d, week, home, away) });
+  const g = simulateGame(gameSeed(d, week, home, away), matchTeams(d, home, away, week), { setup: gameSetup(d, week, home, away) });
   return { result: { week, home, away, score: [g.state.score[0], g.state.score[1]] }, box: boxScore(g.events) };
 }
 
+/**
+ * Plays a finished game between two other schools again to get its play-by-play, for the game book. A league game is
+ * its seed and its two rosters, so the replay is the game. Returns null for a game of the coach's own school (his
+ * calls are not kept) or if the replay does not end on the recorded score.
+ */
+export function replayResult(d: Dynasty, g: GameResult): { events: PlayEvent[]; teams: [Team, Team] } | null {
+  if (g.home === d.user || g.away === d.user) return null;
+  const teams = matchTeams(d, g.home, g.away, g.week);
+  const game = simulateGame(gameSeed(d, g.week, g.home, g.away), teams, { setup: gameSetup(d, g.week, g.home, g.away) });
+  if (game.state.score[0] !== g.score[0] || game.state.score[1] !== g.score[1]) return null;
+  return { events: [...game.events], teams };
+}
+
 export function simulate(d: Dynasty, week: number, home: number, away: number): GameResult {
-  const g = simulateGame(gameSeed(d, week, home, away), [teamFor(d, home), teamFor(d, away)], { setup: gameSetup(d, week, home, away) });
+  const g = simulateGame(gameSeed(d, week, home, away), matchTeams(d, home, away, week), { setup: gameSetup(d, week, home, away) });
   return { week, home, away, score: [g.state.score[0], g.state.score[1]] };
 }
 
@@ -504,8 +549,8 @@ export function nextSeason(d: Dynasty): Dynasty {
   const schools = d.league.schools.map((s, i) => {
     const row = table.find((r) => r.school === i)!;
     const earned = (row.wins - row.losses) * 0.15 + (i === champion ? 0.5 : 0);
-    const drift = (PRESTIGE_MID - s.prestige) * 0.4;
-    return { ...s, prestige: clamp(Math.round((s.prestige + earned + drift + rng.range(-2, 2)) * 10) / 10, PRESTIGE_MIN, PRESTIGE_MAX) };
+    const drift = (PRESTIGE_MID - s.prestige) * 0.5;
+    return { ...s, prestige: clamp(Math.round((s.prestige + earned + drift + rng.range(-2.5, 2.5)) * 10) / 10, PRESTIGE_MIN, PRESTIGE_MAX) };
   });
   // Seniors graduate, everyone moves up a class and a new freshman class arrives. Call-ups who earned a place no longer need the call.
   const moved: Dynasty = { ...d, league: { ...d.league, schools }, year: d.year + 1, week: 0, results: [], jv: [] };
@@ -564,7 +609,8 @@ export function loadDynasty(raw: unknown): Dynasty | null {
   }
 }
 
-export { CLASS_NAMES, CLASS_SHORT, MAX_CALL_UPS, enrolledIn, type ProgramPlayer } from './program';
+export { CLASS_NAMES, CLASS_SHORT, LEAGUE_TUNING, MAX_CALL_UPS, OUT_FOR_GOOD, OUT_FOR_SEASON, enrolledIn, incidentsOf, type Incident, type ProgramNews, type ProgramPlayer } from './program';
 export * from './stats';
 export * from './records';
 export * from './awards';
+export * from './gamebook';

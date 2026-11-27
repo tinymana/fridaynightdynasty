@@ -16,22 +16,34 @@ describe('the program: four classes', () => {
     expect(JSON.stringify(jvTeamFor(d, 5))).toBe(JSON.stringify(jvTeamFor(fresh(), 5)));
   });
 
-  it('has 88 players in four classes of 22, a full varsity, and a junior varsity that can field a team', () => {
+  it('has four classes of 22 plus a few walk-ons, a full varsity, and a junior varsity that can field a team', () => {
     const d = fresh();
     for (let school = 0; school < 8; school++) {
       const all = programOf(d, school);
-      expect(all.length).toBe(88);
-      for (const y of [1, 2, 3, 4]) expect(all.filter((p) => p.year === y).length).toBe(22);
-      expect(new Set(all.map((p) => p.id)).size).toBe(88);
+      const classes = all.filter((p) => !p.origin);
+      const extras = all.filter((p) => p.origin);
+      // A class is 22 as it enrols. In a first season nobody has left yet, bar the very rare career-ending injury at camp.
+      expect(classes.length).toBeGreaterThanOrEqual(87);
+      expect(classes.length).toBeLessThanOrEqual(88);
+      for (const y of [1, 2, 3, 4]) expect(classes.filter((p) => p.year === y).length).toBeLessThanOrEqual(22);
+      expect(extras.length).toBeGreaterThanOrEqual(1);
+      expect(extras.length).toBeLessThanOrEqual(4);
+      expect(new Set(all.map((p) => p.id)).size).toBe(all.length);
       const v = teamFor(d, school);
       const jv = jvTeamFor(d, school);
+      const need: Record<string, number> = { QB: 1, RB: 2, WR: 4, TE: 2, OL: 5, DL: 5, LB: 4, CB: 3, S: 2, K: 1, P: 1 };
       for (const g of GROUPS) {
-        expect(v.depth[g].length).toBe(ROSTER_SIZE[g]);
-        expect(jv.depth[g].length).toBeGreaterThanOrEqual(g === 'K' || g === 'P' ? 1 : 2);
+        expect(v.depth[g].length).toBeLessThanOrEqual(ROSTER_SIZE[g]);
+        expect(v.depth[g].length).toBeGreaterThanOrEqual(need[g]);
+        expect(jv.depth[g].length).toBeGreaterThanOrEqual(need[g]);
       }
+      expect(v.roster.length).toBeGreaterThanOrEqual(38);
       expect(new Set(v.roster.map((p) => p.number)).size).toBe(v.roster.length);
       expect(new Set(jv.roster.map((p) => p.number)).size).toBe(jv.roster.length);
-      expect(v.roster.length + jv.roster.length).toBe(88);
+      // Everyone fit dresses for one squad or the other; nobody who is out dresses at all.
+      const fit = all.filter((p) => !p.out);
+      expect(v.roster.length + jv.roster.length).toBe(fit.length);
+      for (const p of all.filter((x) => x.out)) expect([...v.roster, ...jv.roster].some((x) => x.id === p.id)).toBe(false);
     }
   });
 

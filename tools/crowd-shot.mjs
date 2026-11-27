@@ -1,0 +1,26 @@
+// Screenshot of the crowd's faces after a home touchdown. Run: node tools/crowd-shot.mjs
+import puppeteer from 'puppeteer-core';
+import { pathToFileURL } from 'node:url';
+import { mkdirSync } from 'node:fs';
+const out = '/tmp/fnd-shots';
+mkdirSync(out, { recursive: true });
+const browser = await puppeteer.launch({ executablePath: process.env.CHROME ?? '/usr/bin/google-chrome', headless: 'new', args: ['--no-sandbox', '--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+const page = await browser.newPage();
+await page.setViewport({ width: 1000, height: 900 });
+const errors = [];
+page.on('pageerror', (e) => errors.push(String(e)));
+await page.goto(pathToFileURL('site/play/index.html').href);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+await sleep(500); await page.click('#title'); await sleep(150); await page.click('#goExhibition'); await page.click('[data-team="0"]');
+await sleep(4200);
+await page.evaluate(() => window.__fnd.crowd({ flags: { touchdown: true } }));
+await sleep(1050);
+const up = await page.$$eval('.emote', (els) => els.map((e) => e.textContent).join(''));
+await (await page.$('#stage')).screenshot({ path: `${out}/crowd-up.png` });
+await sleep(900);
+await page.evaluate(() => window.__fnd.crowd({ offense: 1, seq: 12, flags: { touchdown: true } }));
+await sleep(1050);
+const down = await page.$$eval('.emote', (els) => els.map((e) => e.textContent).join(''));
+await (await page.$('#stage')).screenshot({ path: `${out}/crowd-down.png` });
+console.log(JSON.stringify({ up, down, errors }));
+await browser.close();

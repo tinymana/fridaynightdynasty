@@ -43,6 +43,8 @@ export interface ViewPlayer {
   hasBall: boolean;
   /** A pose to show in place of the usual stance, stride or fall: a throw, a stiff arm, a kick, a celebration. */
   pose?: FrameName;
+  /** Facing his own goal line for a moment: a quarterback turned to hand the ball off. */
+  back?: boolean;
   /** Spinning out of a tackle: the sprite turns round and round. */
   spin?: boolean;
 }
@@ -349,7 +351,9 @@ export class FieldScene extends Phaser.Scene {
       // Every man runs on his own beat, so a line of players is not a chorus line.
       const frame: FrameName = p.down ? 'down' : p.pose ?? (p.moving ? RUN[(step + i) % RUN.length] : 'stance0');
       const turned = p.spin ? Math.floor(view.frame / 4) % 2 === 1 : false;
-      s.setVisible(true).setTexture(`p${p.team}_${frame}`).setFlipX((p.team === 1) !== turned).setDepth(y).setPosition(x, y + 2);
+      // A lineman's sprite is long: he is drawn back from his spot so his hands, not his middle, are at the line.
+      const back = frame === 'line' || frame === 'drive' ? (p.team === 1 ? 4 : -4) : 0;
+      s.setVisible(true).setTexture(`p${p.team}_${frame}`).setFlipX(((p.team === 1) !== turned) !== !!p.back).setDepth(y).setPosition(x + back, y + 2);
       if (p.hasBall) this.carrier = { x: (x - this.camX) / VIEW_W, y: y / VIEW_H };
       if (p.hasBall) g.fillStyle(0xf2c14e).fillTriangle(x - 3, y - 26, x + 3, y - 26, x, y - 22);
     });

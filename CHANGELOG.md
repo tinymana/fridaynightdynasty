@@ -1,5 +1,88 @@
 # Changelog
 
+## 0.23.0 — 2026-11-27
+
+The game book. Client and league package; no change to how a game plays, so no server redeploy for this one alone.
+
+### Added
+- `packages/league/src/gamebook.ts`: `periodScores`, `scoringPlays`, `gameTotals` (third and fourth downs, penalties,
+  punts, time of possession from the game clock), `driveChart`, `situation`, `elapsed`.
+- `replayResult(d, game)`: a finished league game between two other schools played again from its seed and rosters
+  for its play-by-play; null for the coach's own games or if the replay does not end on the recorded score.
+- Client `gamebook.ts`: `renderGamebook(root, events, teams)` with Summary, Box score, Drives and Play-by-play tabs.
+  On the final screen in place of the old totals table and scoring log; in a dynasty from last week's results.
+- `tests/gamebook.test.ts` (6 tests over 40 games), `tools/book-shot.mjs`.
+
+## 0.22.0 — 2026-11-27
+
+Injuries and roster events. Simulation change (rosters): redeploy the `fnd` function with the merge.
+
+### Added
+- `packages/league/src/program.ts`: `incidentsOf` (injuries, grades, suspensions, a family moving), `departuresOf`
+  (summer), walk-ons and transfers at fall camp, and a phenom in about one class in eight. Like the classes, none of
+  it is stored: everything comes from the league seed, the school and the season, so saves do not change shape.
+- `programFor(..., week)`: a player who is out keeps his place on the list but does not dress; players who are gone
+  are not in the program. `squadTeam` moves the weakest man of the deepest group out of position if a squad is short
+  (`MIN_DRESSED`), so no formation puts one player in two places.
+- `teamFor`, `jvTeamFor`, `matchTeams` take the week; `leagueNews(d)` and `programNews` put it all in words;
+  `programNames` keeps a name on the statistics of a player who has left.
+- Dynasty page: Team news, Around the league, "Not dressing" before a game; program page tags for out, walk-on,
+  transfer and phenom.
+- Main menu on screens 900 px and wider: `menu-wide.webp` with the live rows laid over the painted ones.
+- `tests/events.test.ts` (9 tests), `tools/events-shot.mjs`, `tools/menu-wide-shot.mjs`.
+
+## 0.21.0 — 2026-11-27
+
+Realism retune (softened) against the Ohio results archive. Simulation change: the `fnd` function must be redeployed
+with the merge, and a game replays differently from 0.20.0.
+
+### Changed
+- `RULES.runoffSeconds` 32 to 29 (the coach AI's kneel arithmetic reads the same constant). Even teams: 19.7 points and
+  64 plays a team (was 18.8 and 59).
+- `LEAGUE_TUNING` in `packages/league/src/program.ts`: `gap` 2 (rating points per point of prestige, was 1),
+  `homeEdge` 1 for every second man on the home roster (`matchTeams`, used by solo and shared leagues).
+  Over 348 league games: 21.1 points a team (was 17.7), home side wins 55% (real 54 to 55), decided by 21 or more 40%
+  (was 16; real 55 to 58), shutouts 10% (real 8 to 9), within 8 points 32%.
+- `nextSeason`: drift toward the middle 0.5 (was 0.4) and luck plus or minus 2.5 (was 2), so the wider gap does not
+  let one school run a league for 30 years.
+- `tools/league-realism.ts` measures the above and takes the tuning values as arguments.
+
+### Added
+- Player frames `truck`, `juke`, `pylon` (running back sheet), `dive`, `spike` (receiver sheet), `field` (special
+  teams sheet). Moves set `moveUntil`; an incomplete pass lays the nearest receiver out; the scorer spikes it; the
+  returner settles under a kick.
+- Handoffs: the client knows the call was a run (`viewRun`), so the quarterback faces his backfield (`ViewPlayer.back`)
+  and shows the handing-off arm for a third of a second after the ball changes hands, in place of the throwing pose.
+  `tools/handoff-check.mjs` samples every drawn frame of live runs.
+- Player frames `handoff` (quarterback sheet) and `crouch`, `tackle`, `swat`, `pick` (linebacker and safety sheet),
+  both new in `art/source/sheets3`.
+- Eleven panels `a-*.webp` from `17_action_cutscenes.png`; `cutinFor` now also answers runs and completions of 20
+  yards or more.
+- `flagDrop(event)`: three drawn penalty flags tumble in and land, placed from the play's number. `tools/flag-shot.mjs`.
+
+## 0.20.0 — 2026-11-27
+
+Permanent saves. Needs migration `0004_fnd_saves.sql` and a redeploy of the `fnd` function.
+
+### Added
+- `fnd.saves`: one save per coach (`rev`, `label`, `bytes`, `data`), row level security on, written only by the function.
+- API actions `saveInfo`, `saveLoad`, `saveStore` (`packages/online/src/save.ts`, `Store.getSave` / `putSave`). A write
+  names the revision the browser last saw; if the server holds another, nothing is written and `conflict` comes back
+  with the save that is there. `force` overwrites. Saves are capped at 1.5 MB; a 30-season dynasty is about 160 KB.
+- Client `saves.ts` (`makeSave`, `readSave`, `saveLabel`): one shape for the server copy and the downloadable file,
+  holding the dynasty, designed plays and defenses, and the playbook. Everything read back goes through `loadDynasty`,
+  `validateOffPlay`, `validateDefPlay` and `validateBook` again.
+- Saves page on the main menu: sign in, save now, load, choose between two differing saves, download and load a file.
+  Changes are sent up automatically a moment after they are made; on opening the game signed in, a newer server save
+  is fetched when this browser has nothing unsaved.
+- `DynastyScreen.reload()`.
+- Player frames `line` and `drive` from the linemen pack (`LINE_FRAMES` in `tools/cut-sprites.py`). Offensive and
+  defensive linemen show `line` before the snap (line panel, lined-up view, first ticks of a play) and `drive` while
+  engaged or set after it; the scene draws both a little back from the spot so hands, not hips, are at the ball.
+- `crowdFeels(event)`: emoji out of the stands for the home crowd, placed from the play's own number.
+  `tools/crowd-shot.mjs`.
+- `tests/saves.test.ts` (7 tests) and `tools/saves-check.mjs` (19 browser checks across five devices).
+
 ## 0.19.0 — 2026-11-27
 
 Weather overlays and the homecoming court. Client only.

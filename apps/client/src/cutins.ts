@@ -23,6 +23,17 @@ import mNoGood from './assets/cutins/m-no-good.webp';
 import mPicked from './assets/cutins/m-picked.webp';
 import mTdPylon from './assets/cutins/m-td-pylon.webp';
 import mTdSpike from './assets/cutins/m-td-spike.webp';
+import aBurst from './assets/cutins/a-burst.webp';
+import aCheer from './assets/cutins/a-cheer.webp';
+import aFumble from './assets/cutins/a-fumble.webp';
+import aIntercepted from './assets/cutins/a-intercepted.webp';
+import aLeap from './assets/cutins/a-leap.webp';
+import aPile from './assets/cutins/a-pile.webp';
+import aRef from './assets/cutins/a-ref.webp';
+import aSack from './assets/cutins/a-sack.webp';
+import aStiff from './assets/cutins/a-stiff.webp';
+import aThrow from './assets/cutins/a-throw.webp';
+import aTouchdown from './assets/cutins/a-touchdown.webp';
 import nBus from './assets/cutins/n-bus.webp';
 import nChalk from './assets/cutins/n-chalk.webp';
 import nCointoss from './assets/cutins/n-cointoss.webp';
@@ -39,7 +50,9 @@ export interface Cutin {
   alt: string;
 }
 
-const TOUCHDOWNS = [mTdSpike, tdDive, mTdPylon, tdBurst, tdBanner, scoreboardTd, crowd];
+const TOUCHDOWNS = [mTdSpike, aRef, tdDive, aTouchdown, mTdPylon, tdBurst, tdBanner, scoreboardTd, crowd];
+/** A gain this long gets a picture of its own. */
+const BIG_PLAY = 20;
 
 /** What the night is, for the panels that depend on it. */
 export interface CutinContext {
@@ -61,12 +74,15 @@ export function cutinFor(e: PlayEvent | null, period: CutinPeriod, n: number, ct
   if (e) {
     if (e.flags.touchdown || e.flags.defensiveTouchdown) return { url: TOUCHDOWNS[n % TOUCHDOWNS.length], alt: 'Touchdown' };
     if (e.flags.safety) return { url: safety, alt: 'Safety' };
-    if (e.flags.interception) return { url: n % 2 ? intercepted : mPicked, alt: 'Intercepted' };
+    if (e.flags.interception) return { url: [mPicked, intercepted, aIntercepted][n % 3], alt: 'Intercepted' };
     if (e.flags.blocked) return { url: mBlocked, alt: 'Blocked' };
-    if (e.flags.fumbleLost) return { url: mLooseBall, alt: 'Fumble' };
+    if (e.flags.fumbleLost) return { url: [aPile, mLooseBall, aFumble][n % 3], alt: 'Fumble' };
     if (e.type === 'fieldGoal' && !e.flags.roughing) return e.flags.good ? { url: fgGood, alt: 'The field goal is good' } : { url: n % 2 ? fgMiss : mNoGood, alt: 'The field goal is no good' };
-    if (e.type === 'pat') return e.flags.good ? { url: patGood, alt: 'The extra point is good' } : { url: fgMiss, alt: 'The extra point is no good' };
-    if (e.flags.sack) return { url: sack, alt: 'Sack' };
+    if (e.type === 'pat') return e.flags.good ? { url: n % 2 ? aCheer : patGood, alt: 'The extra point is good' } : { url: fgMiss, alt: 'The extra point is no good' };
+    if (e.flags.sack) return { url: n % 2 ? aSack : sack, alt: 'Sack' };
+    // The long ones: a runner breaking into the open, a catch down the field.
+    if (e.type === 'run' && e.yards >= BIG_PLAY) return { url: (n + e.yards) % 2 ? aBurst : aStiff, alt: 'A long run' };
+    if (e.type === 'pass' && e.flags.complete && e.yards >= BIG_PLAY) return { url: (n + e.yards) % 2 ? aLeap : aThrow, alt: 'A long pass' };
     if (e.type === 'kickoff' && e.flags.onside) return { url: kickoff, alt: 'Onside kick' };
   }
   if (period === 'final') return ctx.won && ctx.title ? { url: mChampions, alt: 'State champions' } : ctx.won ? { url: mCelebration, alt: 'A win' } : { url: n % 2 ? nHandshake : final, alt: 'Game over' };

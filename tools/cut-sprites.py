@@ -30,6 +30,31 @@ ST_ROW = (113, 190)
 ST_SCALE = 0.45
 ST_FRAMES = [('snap', 103, 173), ('hold', 356, 435), ('punt0', 615, 668), ('punt1', 669, 723)]
 
+# Linemen from the linemen pack's red-and-silver row: down in a three-point stance, and driving off the snap.
+LINE_ROW = (115, 190)
+LINE_SCALE = 0.38
+LINE_FRAMES = [('line', 268, 339), ('drive', 348, 440)]
+
+# Receivers from the wide receiver sheet's red-and-silver row: laid out for a ball he could not reach, and the spike.
+WR_ROW = (98, 168)
+WR_SCALE = 0.42
+WR_FRAMES = [('dive', 749, 827), ('spike', 1255, 1293)]
+
+# Ball carriers from the running back sheet's red-and-silver row: the lowered shoulder, the cut, the dive for the line.
+RB_ROW = (100, 176)
+RB_SCALE = 0.42
+RB_FRAMES = [('truck', 760, 820), ('juke', 141, 196), ('pylon', 1052, 1142)]
+# The man under a kick, from the special-teams sheet.
+FIELD_FRAMES = [('field', 977, 1021)]
+# The quarterback handing the ball off, and the back seven of the defense: crouched before the snap, laid out for a
+# tackle, swatting a pass away, going up for an interception. Both sheets are in art/source/sheets3.
+QB_ROW = (222, 309)
+QB_FRAMES = [('handoff', 438, 507)]
+LB_ROW = (215, 304)
+LB_FRAMES = [('crouch', 50, 103), ('tackle', 936, 1053), ('swat', 1095, 1155), ('pick', 1308, 1343)]
+# Frames drawn facing left in the sheet; everything in the game faces right.
+MIRRORED = {'pylon'}
+
 def classify(px, upper):
     """Returns (material, shade): 0 keep the sheet's colour, 1 jersey, 2 helmet, 3 pants."""
     r, g, b, a = [int(v) for v in px]
@@ -44,13 +69,19 @@ def classify(px, upper):
 def cut_players():
     sheet = Image.open(SRC + '01_tecmo_players_spritesheet.png').convert('RGBA')
     st = Image.open(SRC + '14_special_teams_pack_spritesheet.png').convert('RGBA')
-    every = [(n, x0, x1, sheet, ROW, SCALE) for n, x0, x1 in FRAMES] + [(n, x0, x1, st, ST_ROW, ST_SCALE) for n, x0, x1 in ST_FRAMES]
+    line = Image.open(SRC + '13_linemen_pack_spritesheet.png').convert('RGBA')
+    wr = Image.open(SRC + '11_wide_receiver_moves_spritesheet.png').convert('RGBA')
+    rb = Image.open(SRC + '10_running_back_moves_spritesheet.png').convert('RGBA')
+    qb = Image.open('art/source/sheets3/15_quarterback_handoffs.png').convert('RGBA')
+    lb = Image.open('art/source/sheets3/16_linebackers_safeties.png').convert('RGBA')
+    every = [(n, x0, x1, sheet, ROW, SCALE) for n, x0, x1 in FRAMES] + [(n, x0, x1, st, ST_ROW, ST_SCALE) for n, x0, x1 in ST_FRAMES] + [(n, x0, x1, line, LINE_ROW, LINE_SCALE) for n, x0, x1 in LINE_FRAMES] + [(n, x0, x1, wr, WR_ROW, WR_SCALE) for n, x0, x1 in WR_FRAMES] + [(n, x0, x1, rb, RB_ROW, RB_SCALE) for n, x0, x1 in RB_FRAMES] + [(n, x0, x1, st, ST_ROW, 0.37) for n, x0, x1 in FIELD_FRAMES] + [(n, x0, x1, qb, QB_ROW, SCALE) for n, x0, x1 in QB_FRAMES] + [(n, x0, x1, lb, LB_ROW, SCALE) for n, x0, x1 in LB_FRAMES]
     base = Image.new('RGBA', (CELL_W * len(every), CELL_H), (0, 0, 0, 0))
     mask = Image.new('RGBA', (CELL_W * len(every), CELL_H), (0, 0, 0, 0))
     for i, (name, x0, x1, src, row, scale) in enumerate(every):
         fr = src.crop((x0, row[0], x1, row[1]))
         box = fr.getbbox()
         fr = fr.crop(box)
+        if name in MIRRORED: fr = fr.transpose(Image.FLIP_LEFT_RIGHT)
         w, h = min(CELL_W, max(1, round(fr.width * scale))), min(CELL_H, max(1, round(fr.height * scale)))
         small = fr.resize((w, h), Image.LANCZOS)
         a = np.array(small)
@@ -62,7 +93,7 @@ def cut_players():
         m = np.zeros((h, w, 4), dtype=np.uint8)
         for y in range(h):
             for x in range(w):
-                upper = (x > cx) if name == 'down' else (y < cy)
+                upper = (x > cx) if name in ('down', 'dive', 'pylon', 'tackle') else (y < cy)
                 mat, v = classify(a[y, x], upper)
                 if mat:
                     m[y, x] = (mat * 60, min(255, int(v * 255)), 0, 255)

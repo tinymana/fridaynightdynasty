@@ -2,6 +2,178 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.23.0",
+      "date": "2026-11-27",
+      "title": "The game book: box score, drives and play-by-play",
+      "items": [
+        {
+          "tag": "new",
+          "text": "A game book after every game, with four tabs. Summary: points by quarter, every scoring play and the team totals, now with third and fourth downs, penalties, punts and time of possession."
+        },
+        {
+          "tag": "new",
+          "text": "Box score: every player's line for both teams. Passing, rushing, receiving, defense, kicking and returns."
+        },
+        {
+          "tag": "new",
+          "text": "Drives: every possession, where it started, how many plays and yards, how long it took and how it ended."
+        },
+        {
+          "tag": "new",
+          "text": "Play-by-play: every snap of the game with down, distance and spot, quarter by quarter."
+        },
+        {
+          "tag": "new",
+          "text": "In a dynasty, open the game book for any of last week's games between other schools from the results list."
+        },
+        {
+          "tag": "note",
+          "text": "The book for a game you coached is on the final screen that night; it is not kept afterwards yet."
+        }
+      ]
+    },
+    {
+      "version": "0.22.0",
+      "date": "2026-11-27",
+      "title": "Injuries, walk-ons, phenoms, and a new main menu",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Injuries. A few players in every program get hurt each season. Most miss a game or two, some are lost for the year, and once in a great while an injury ends a career. A player who is out does not dress, and the next man at his position moves up."
+        },
+        {
+          "tag": "new",
+          "text": "Grades and discipline. When report cards come out in mid-season a player can be ruled academically ineligible for two or three games, and now and then someone is suspended for a game or two."
+        },
+        {
+          "tag": "new",
+          "text": "Kids move. A family can move away during the season, and over the summer a player or two may transfer out or give the game up."
+        },
+        {
+          "tag": "new",
+          "text": "Walk-ons. One to three players turn up at fall camp every year from the soccer team, the track team, the band. Most are depth; about one in eight can really play."
+        },
+        {
+          "tag": "new",
+          "text": "Transfers in. Some years a player transfers into your school."
+        },
+        {
+          "tag": "new",
+          "text": "Phenoms. About one freshman class in eight has a player with senior-level talent on the day he arrives. He is flagged in your program so you can decide whether to call him up."
+        },
+        {
+          "tag": "new",
+          "text": "Team news on the dynasty page: the injury report and the comings and goings at your school, and anything big from around the league. Before each game you are told who is not dressing."
+        },
+        {
+          "tag": "new",
+          "text": "A new main menu on wide screens: the sunset kickoff picture with the six choices down the right side. Phones keep the stacked menu."
+        },
+        {
+          "tag": "note",
+          "text": "Injuries are decided between games for now; nobody is carried off during a game you are coaching. All of this applies to solo dynasties. In a league with friends, players can leave between seasons and walk-ons arrive, but nobody is sidelined in season yet."
+        }
+      ]
+    },
+    {
+      "version": "0.21.0",
+      "date": "2026-11-27",
+      "title": "Closer to real Friday nights, and more of the art on the field",
+      "items": [
+        {
+          "tag": "tune",
+          "text": "Scoring is up. The clock runs a little less between plays, so each team gets about five more snaps a game and even games average about 20 points a team instead of 19."
+        },
+        {
+          "tag": "tune",
+          "text": "Strong schools and weak schools are further apart. In a league, about four games in ten are now decided by three scores or more (it was fewer than two in ten; real high school football is over five), and the average is about 21 points a team."
+        },
+        {
+          "tag": "new",
+          "text": "Home field counts. The home side now wins about 55 percent of league games, the same as real results."
+        },
+        {
+          "tag": "tune",
+          "text": "To keep leagues from being run by one school for ever, programs drift back toward the middle a little faster between seasons."
+        },
+        {
+          "tag": "fixed",
+          "text": "Runs look like runs. On a run the quarterback turns and hands the ball to the back; he no longer sets up as if to throw first."
+        },
+        {
+          "tag": "new",
+          "text": "A flag on the play: yellow penalty flags are thrown across the screen and land on the field."
+        },
+        {
+          "tag": "new",
+          "text": "Running back art: a lowered shoulder for a truck, a hard cut for a juke, and a full-stretch dive at the goal line."
+        },
+        {
+          "tag": "new",
+          "text": "Receiver art: a receiver lays out for a pass he cannot reach, and the scorer spikes the ball after a touchdown."
+        },
+        {
+          "tag": "new",
+          "text": "Special teams art: the returner settles under the kick with his hands up before he takes off."
+        },
+        {
+          "tag": "new",
+          "text": "Defense art: linebackers and the secondary wait in a crouch, the tackler is laid out where he made the stop, a defender has his hand up after knocking a pass away, and an interceptor goes up with the ball."
+        },
+        {
+          "tag": "new",
+          "text": "Quarterback art: the handoff uses the new handoff picture, ball held out to the back."
+        },
+        {
+          "tag": "new",
+          "text": "Eleven more arcade-style panels and signs: a runner bursting into the open and a stiff arm for runs of 20 yards or more, a leaping catch and a quarterback's throw for long passes, a pile-up for fumbles, the referee's signal and a TOUCHDOWN sign, cheerleaders after an extra point, and FUMBLE, INTERCEPTED and SACK signs."
+        },
+        {
+          "tag": "note",
+          "text": "A dynasty already under way keeps its results, records and stats; its rosters shift a little because of the wider gap between schools."
+        }
+      ]
+    },
+    {
+      "version": "0.20.0",
+      "date": "2026-11-27",
+      "title": "Saves that follow you, linemen in their stances, and a crowd with feelings",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Permanent saves. Sign in with a coach name and a four-digit PIN (the same one you use to play online) and your dynasty, your designed plays and your playbook are kept on the server every time they change."
+        },
+        {
+          "tag": "new",
+          "text": "Sign in with the same name on another device and your dynasty is there. Play a week on your phone and the laptop picks it up the next time you open the game."
+        },
+        {
+          "tag": "new",
+          "text": "An older copy never quietly overwrites a newer one. If a device has a dynasty of its own that differs from the one on the server, the game shows you both and asks which to keep."
+        },
+        {
+          "tag": "new",
+          "text": "Save files. Download your save as a file to keep, and load it back on any device, signed in or not."
+        },
+        {
+          "tag": "new",
+          "text": "A Saves page on the main menu shows where your save is and when it was last saved."
+        },
+        {
+          "tag": "new",
+          "text": "Linemen line up like linemen. Both lines get down in a three-point stance facing each other across the ball, and drive into their man at the snap, using the linemen art pack."
+        },
+        {
+          "tag": "new",
+          "text": "The crowd shows how it feels. Faces pop up out of the stands after the plays that matter: celebrating when the home team scores or takes the ball away, groaning when the visitors do."
+        },
+        {
+          "tag": "note",
+          "text": "One save per coach name for now. Saving to the server works on the website; the preview build cannot reach the server, but save files still load there."
+        }
+      ]
+    },
+    {
       "version": "0.19.0",
       "date": "2026-11-27",
       "title": "Weather you can see, a homecoming court, and new story panels",

@@ -55,10 +55,10 @@ describe('AI coach: kneel-downs', () => {
   it('never kneels on fourth down', () => expect(decide(late({ clock: 20, down: 4, distance: 9, yardLine: 30, oppTimeouts: 0 }))).not.toBe('kneel'));
   it('deep in its own half with ten seconds before halftime: kneel', () => expect(decide(sit({ quarter: 2, clock: 10, yardLine: 25, down: 2 }))).toBe('kneel'));
   it('the kneel-out arithmetic counts opponent timeouts', () => {
-    expect(canKneelOut(late({ clock: 105, oppTimeouts: 0 }))).toBe(true);
-    expect(canKneelOut(late({ clock: 106, oppTimeouts: 0 }))).toBe(false);
-    expect(canKneelOut(late({ clock: 73, oppTimeouts: 1 }))).toBe(true);
-    expect(canKneelOut(late({ clock: 74, oppTimeouts: 1 }))).toBe(false);
+    expect(canKneelOut(late({ clock: 96, oppTimeouts: 0 }))).toBe(true);
+    expect(canKneelOut(late({ clock: 97, oppTimeouts: 0 }))).toBe(false);
+    expect(canKneelOut(late({ clock: 67, oppTimeouts: 1 }))).toBe(true);
+    expect(canKneelOut(late({ clock: 68, oppTimeouts: 1 }))).toBe(false);
   });
 });
 

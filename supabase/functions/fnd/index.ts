@@ -12,7 +12,7 @@
  */
 // @ts-expect-error Deno resolves npm: specifiers at runtime.
 import postgres from 'npm:postgres@3.4.5';
-import { AI_COACH, RoomError, createApi, type Career, type Coach, type GameResult, type Room, type SharedLeague, type Store } from '../../../packages/online/src/index';
+import { AI_COACH, RoomError, createApi, type Career, type Coach, type GameResult, type Room, type SaveMeta, type SharedLeague, type Store } from '../../../packages/online/src/index';
 
 declare const Deno: { env: { get(name: string): string | undefined }; serve(handler: (req: Request) => Promise<Response> | Response): void };
 
@@ -120,6 +120,27 @@ const store: Store = {
     await sql`update fnd.coaches set championships = championships + 1 where id = ${coachId}`;
   },
 
+  async getSave(coachId: string) {
+    const rows: Row[] = await sql`select rev, label, bytes, data, extract(epoch from updated_at) * 1000 as at from fnd.saves where coach_id = ${coachId}`;
+    if (rows.length === 0) return null;
+    const raw = rows[0].data;
+    return { meta: saveMeta(rows[0] as Row), data: typeof raw === 'string' ? JSON.parse(raw) : raw };
+  },
+
+  async putSave(coachId: string, data: unknown, label: string, bytes: number, base: number | null, force: boolean, at: number) {
+    // One statement: the row is written only if the browser saw the revision that is there (or there is none, or it insists).
+    const rows: Row[] = await sql`
+      insert into fnd.saves as s (coach_id, rev, label, bytes, data, updated_at)
+      values (${coachId}, 1, ${label}, ${bytes}, ${sql.json(data as never)}, to_timestamp(${at / 1000}))
+      on conflict (coach_id) do update
+        set rev = s.rev + 1, label = excluded.label, bytes = excluded.bytes, data = excluded.data, updated_at = excluded.updated_at
+        where ${force} or s.rev = ${base}
+      returning rev, label, bytes, extract(epoch from updated_at) * 1000 as at`;
+    if (rows.length) return { saved: true as const, meta: saveMeta(rows[0] as Row) };
+    const have: Row[] = await sql`select rev, label, bytes, extract(epoch from updated_at) * 1000 as at from fnd.saves where coach_id = ${coachId}`;
+    return { saved: false as const, meta: saveMeta(have[0] as Row) };
+  },
+
   async dropRoomsOf(coachId: string, olderThan: number) {
     await sql`delete from fnd.rooms where host_id = ${coachId} or updated_at < to_timestamp(${olderThan / 1000})`;
   },
@@ -156,6 +177,10 @@ const store: Store = {
     return rows.map(career);
   },
 };
+
+function saveMeta(r: Row): SaveMeta {
+  return { rev: Number(r.rev), at: Math.round(Number(r.at)), label: String(r.label), bytes: Number(r.bytes) };
+}
 
 function career(r: Row): Career {
   return {

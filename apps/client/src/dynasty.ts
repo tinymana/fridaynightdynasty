@@ -1,9 +1,10 @@
 import { GROUPS, WEATHER, overall, type GameSetup, type Team } from '@fnd/core';
 import {
-  CLASS_NAMES, CLASS_SHORT, MAX_CALL_UPS, RECORD_DEFS, REGULAR_WEEKS, STATES, career, emptyLine, incomingOf, newsText, occasionFor, openings, programOf, schoolOfPlayer, seasonYear, statsOf, recordOf, setCallUp, createDynasty, createLeague, editSchool, gameSeed, gameSetup, loadDynasty, nextSeason, playWeek, standings, stateByCode, teamFor, userGame, weekGames, winnerOf,
-  type BoxScore, type Dynasty, type GameResult, type Honoree, type ProgramPlayer, type RecordNews, type SeasonAwards, type StatLine,
+  CLASS_NAMES, CLASS_SHORT, MAX_CALL_UPS, RECORD_DEFS, OUT_FOR_SEASON, REGULAR_WEEKS, STATES, replayResult, leagueNews, career, emptyLine, incomingOf, newsText, occasionFor, openings, programOf, schoolOfPlayer, seasonYear, statsOf, recordOf, setCallUp, createDynasty, createLeague, editSchool, gameSeed, gameSetup, loadDynasty, nextSeason, playWeek, standings, stateByCode, matchTeams, userGame, weekGames, winnerOf,
+  type BoxScore, type Incident, type LeagueNews, type Dynasty, type GameResult, type Honoree, type ProgramPlayer, type RecordNews, type SeasonAwards, type StatLine,
 } from '@fnd/league';
 import { bindSchoolForm, schoolFormHtml } from './school-form';
+import { renderGamebook } from './gamebook';
 
 /**
  * The solo dynasty screen: pick a state and a school, then play a season a week at a time.
@@ -33,6 +34,11 @@ export interface DynastyHost {
 
 const css = (n: number): string => `#${n.toString(16).padStart(6, '0')}`;
 const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+/** Why a player is not dressing and when he is back, in a few words. */
+const outText = (o: Incident): string => {
+  const why = o.kind === 'grades' ? 'ineligible' : o.kind === 'suspension' ? 'suspended' : `out: ${o.what.replace(/^an? /, '')}`;
+  return o.back >= OUT_FOR_SEASON ? `${why}, season` : `${why}, back ${o.back < REGULAR_WEEKS ? `week ${o.back + 1}` : o.back === REGULAR_WEEKS ? 'for the title game' : 'next year'}`;
+};
 const weekName = (w: number): string => (w < REGULAR_WEEKS ? `Week ${w + 1}` : 'Championship');
 
 export class DynastyScreen {
@@ -42,7 +48,9 @@ export class DynastyScreen {
   private busy = false;
   private editing = -1;
   /** Which page of the dynasty is showing: the season, or the program (varsity, junior varsity, classes). */
-  private view: 'season' | 'program' | 'stats' | 'records' | 'awards' = 'season';
+  private view: 'season' | 'program' | 'stats' | 'records' | 'awards' | 'book' = 'season';
+  /** The finished game whose book is open. */
+  private bookGame: GameResult | null = null;
   /** Which school's record book is open. */
   private bookOf = -1;
   /** Record calls already made in the game being played, so each is made once. */
@@ -54,6 +62,15 @@ export class DynastyScreen {
     this.pickSeed = newSeed();
   }
   private readonly newSeed: () => number;
+
+  /** Reads the dynasty again from where it is kept, after a save has been loaded over it. */
+  reload(): void {
+    this.d = loadDynasty(this.host.load());
+    this.view = 'season';
+    this.bookOf = -1;
+    this.editing = -1;
+    this.called.clear();
+  }
 
   get active(): Dynasty | null {
     return this.d;
@@ -73,6 +90,7 @@ export class DynastyScreen {
     else if (this.d && this.view === 'stats') this.renderStats(this.d);
     else if (this.d && this.view === 'records') this.renderRecords(this.d);
     else if (this.d && this.view === 'awards') this.renderAwards(this.d);
+    else if (this.d && this.view === 'book' && this.bookGame) this.renderBook(this.d, this.bookGame);
     else if (this.d) this.renderSeason(this.d);
     else this.renderNew();
   }
@@ -190,6 +208,29 @@ export class DynastyScreen {
   }
 
   /** The latest records to fall around the league, newest first. */
+  /** The game book of a finished game between two other schools, played again from its seed. */
+  private renderBook(d: Dynasty, g: GameResult): void {
+    const schools = d.league.schools;
+    this.title.textContent = `${weekName(g.week)} · ${schools[g.away].name} at ${schools[g.home].name}`;
+    const replay = replayResult(d, g);
+    this.root.innerHTML = `<div class="orow center"><button class="seg on" id="bkBack">Back to the season</button></div>
+      <div class="result" style="text-align:center">${esc(schools[g.home].abbr)} ${g.score[0]}  –  ${g.score[1]} ${esc(schools[g.away].abbr)}</div>
+      ${replay ? '<div id="dyBook" class="gamebook"></div>' : '<p style="text-align:center">The book for this game was not kept.</p>'}`;
+    this.root.querySelector('#bkBack')!.addEventListener('click', () => { this.view = 'season'; this.bookGame = null; this.render(); });
+    if (replay) renderGamebook(this.root.querySelector<HTMLElement>('#dyBook')!, replay.events, replay.teams, 'summary');
+  }
+
+  /** The injury report and the comings and goings: my program's, and anything the whole league is talking about. */
+  private programNewsHtml(d: Dynasty): string {
+    const all = leagueNews(d);
+    const mine = all.filter((n) => n.school === d.user).slice(0, 7);
+    const around = all.filter((n) => n.school !== d.user && n.big).slice(0, 3);
+    if (!mine.length && !around.length) return '';
+    const when = (w: number): string => (w < 0 ? 'Fall camp' : `After ${weekName(w).toLowerCase()}`);
+    const line = (n: LeagueNews, withSchool: boolean): string => `<div class="dy-game${n.school === d.user ? ' me' : ''}"><span>${withSchool ? `${esc(d.league.schools[n.school].name)}: ` : ''}${esc(n.text)}</span><span>${when(n.week)}</span></div>`;
+    return `${mine.length ? `<h3>Team news</h3>${mine.map((n) => line(n, false)).join('')}` : ''}${around.length ? `<h3>Around the league</h3>${around.map((n) => line(n, true)).join('')}` : ''}`;
+  }
+
   private newsHtml(d: Dynasty): string {
     const news = (d.stats?.news ?? []).slice(0, 4);
     if (!news.length) return '';
@@ -289,7 +330,8 @@ export class DynastyScreen {
     const ups = d.callUps ?? [];
     const order = (a: ProgramPlayer, b: ProgramPlayer): number => GROUPS.indexOf(a.pos) - GROUPS.indexOf(b.pos) || overall(b) - overall(a);
     const cls = (p: ProgramPlayer): string => `<span class="cls c${p.year}" title="${CLASS_NAMES[p.year - 1]}">${CLASS_SHORT[p.year - 1]}</span>`;
-    const row = (p: ProgramPlayer, action: string): string => `<tr><td>${p.pos}</td><td>${esc(p.name)}${p.calledUp ? ' <span class="tag-up">called up</span>' : ''}</td><td>${cls(p)}</td><td><b>${overall(p)}</b></td><td>${p.year < 4 ? p.ceiling : ''}</td><td>${action}</td></tr>`;
+    const tags = (p: ProgramPlayer): string => `${p.calledUp ? ' <span class="tag-up">called up</span>' : ''}${p.phenom ? ' <span class="tag-star" title="The rare freshman who is ready now">phenom</span>' : ''}${p.origin === 'walkon' ? ` <span class="tag-new" title="Walked on from ${esc(p.from ?? '')}">walk-on</span>` : p.origin === 'transfer' ? ` <span class="tag-new" title="Transferred in from ${esc(p.from ?? '')}">transfer</span>` : ''}${p.out ? ` <span class="tag-out">${esc(outText(p.out))}</span>` : ''}`;
+    const row = (p: ProgramPlayer, action: string): string => `<tr class="${p.out ? 'is-out' : ''}"><td>${p.pos}</td><td>${esc(p.name)}${tags(p)}</td><td>${cls(p)}</td><td><b>${overall(p)}</b></td><td>${p.year < 4 ? p.ceiling : ''}</td><td>${action}</td></tr>`;
     const head = '<tr><th>Pos</th><th>Player</th><th>Class</th><th>Now</th><th title="His rating as a senior if he keeps developing">Senior</th><th></th></tr>';
     const full = ups.length >= MAX_CALL_UPS;
     const count = (list: ProgramPlayer[]): string => [4, 3, 2, 1].map((y) => `${list.filter((p) => p.year === y).length} ${CLASS_SHORT[y - 1]}`).join(' · ');
@@ -312,7 +354,7 @@ export class DynastyScreen {
         <table>${head}${[...varsity].sort(order).map((p) => row(p, p.calledUp ? `<button class="seg mini" data-down="${p.id}">Send down</button>` : '')).join('')}</table></div>
       <div><h3>Junior varsity <small>${jv.length} players · ${count(jv)}</small></h3>
         <p class="sl-note">JV record ${jvRec[0]}-${jvRec[1]}${jvRec[2] ? `-${jvRec[2]}` : ''}.${jvLine} Call-ups used: ${ups.length} of ${MAX_CALL_UPS}.</p>
-        <table>${head}${[...jv].sort(order).map((p) => row(p, `<button class="seg mini" data-up="${p.id}"${full ? ' disabled' : ''}>Call up</button>`)).join('')}</table></div></div>
+        <table>${head}${[...jv].sort(order).map((p) => row(p, p.out ? '' : `<button class="seg mini" data-up="${p.id}"${full ? ' disabled' : ''}>Call up</button>`)).join('')}</table></div></div>
       <div id="dyMsg" class="sl-note" role="status" aria-live="polite" style="text-align:center"></div>`;
     (this.root.querySelector('#pgBack') as HTMLElement).addEventListener('click', () => { this.view = 'season'; this.render(); });
     const move = (id: string, up: boolean): void => {
@@ -337,11 +379,14 @@ export class DynastyScreen {
     const table = standings(d.results);
     const dot = (i: number): string => `<span class="chip-sq" style="background:${css(schools[i].colors.jersey)}"></span>`;
     const rows = table.map((r, i) => `<tr class="${r.school === d.user ? 'me' : ''}"><td>${i + 1}</td><td>${dot(r.school)}${esc(schools[r.school].name)} ${esc(schools[r.school].mascot)}</td><td><b>${r.wins}-${r.losses}${r.ties ? `-${r.ties}` : ''}</b></td><td>${r.pointsFor}</td><td>${r.pointsAgainst}</td></tr>`).join('');
-    const line = (g: GameResult): string => `<div class="dy-game${g.home === d.user || g.away === d.user ? ' me' : ''}"><span>${esc(schools[g.away].name)} at ${esc(schools[g.home].name)}</span><b>${g.score[1]}–${g.score[0]}</b></div>`;
+    const mineGame = (g: GameResult): boolean => g.home === d.user || g.away === d.user;
+    const line = (g: GameResult): string => `<div class="dy-game${mineGame(g) ? ' me' : ''}"><span>${esc(schools[g.away].name)} at ${esc(schools[g.home].name)}</span><span>${mineGame(g) ? '' : `<button class="seg mini" data-book="${g.home}-${g.away}">Game book</button> `}<b>${g.score[1]}–${g.score[0]}</b></span></div>`;
     const lastWeek = d.week - 1;
     const last = lastWeek >= 0 ? d.results.filter((g) => g.week === lastWeek) : [];
     const own = over ? null : userGame(d);
     const c = career(d);
+    // Varsity players who cannot play this week.
+    const sidelined = over ? [] : programOf(d, d.user).filter((p) => p.out && p.squad === 'varsity');
 
     let next = '';
     if (over) {
@@ -358,6 +403,7 @@ export class DynastyScreen {
       const nightText = night === 'homecoming' ? `Homecoming at ${esc(schools[hm].name)}. ` : night === 'seniorNight' ? `Senior night at ${esc(schools[hm].name)}. ` : night === 'opener' ? `Home opener for ${esc(schools[hm].name)}. ` : '';
       next = `<div class="dy-next"><div class="big">${weekName(d.week)}: ${hm === d.user ? 'home to' : 'away at'} ${esc(schools[opp].name)} ${esc(schools[opp].mascot)}</div>
         <div>${nightText}They are ${oppRow.wins}-${oppRow.losses}${oppRow.ties ? `-${oppRow.ties}` : ''}. Forecast: ${wx.name.toLowerCase()}. ${d.setup.quarterMinutes}-minute quarters.</div>
+        ${sidelined.length ? `<div class="dy-out">Not dressing: ${sidelined.map((p) => `${p.pos} ${esc(p.name)} (${esc(outText(p.out!))})`).join(', ')}.</div>` : ''}
         <div class="orow"><button class="seg on" id="dyPlay">Coach the game</button><button class="seg" id="dySim">Let my assistant coach it</button></div></div>`;
     } else {
       const [hm, aw] = weekGames(d)[0];
@@ -374,12 +420,18 @@ export class DynastyScreen {
       <div class="dy-cols"><div><h3>Standings</h3><table><tr><th>#</th><th>School</th><th>Record</th><th>PF</th><th>PA</th></tr>${rows}</table></div>
       <div>${upcoming}${last.length ? `<h3>${weekName(lastWeek)} results</h3>${last.map(line).join('')}` : ''}${past}</div></div>
       ${this.editing >= 0 ? schoolFormHtml(schools[this.editing]) : `<div class="orow center" style="margin-top:12px"><label class="pick">Rename a school <select id="dyEdit"><option value="">Choose\u2026</option>${schools.map((s, i) => `<option value="${i}">${esc(s.name)} ${esc(s.mascot)}</option>`).join('')}</select></label></div>`}
+      ${this.programNewsHtml(d)}
       ${this.newsHtml(d)}
       <div class="orow center" style="margin-top:14px"><button class="seg on" id="dyProgram">Your program: varsity and JV</button><button class="seg on" id="dyStats">Statistics</button><button class="seg on" id="dyRecords">Record book</button><button class="seg on" id="dyAwards">Awards</button><button class="seg" id="dyBack">Main menu</button><button class="seg" id="dyQuit">Abandon this dynasty</button></div>
       <div id="dyMsg" class="sl-note" role="status" aria-live="polite" style="text-align:center"></div>`;
     const q = (id: string): HTMLElement | null => this.root.querySelector(`#${id}`);
     q('dyBack')!.addEventListener('click', () => this.host.back());
     q('dyProgram')!.addEventListener('click', () => { this.view = 'program'; this.render(); });
+    this.root.querySelectorAll<HTMLElement>('[data-book]').forEach((el) => el.addEventListener('click', () => {
+      const [h, a] = el.dataset.book!.split('-').map(Number);
+      this.bookGame = last.find((g) => g.home === h && g.away === a) ?? null;
+      if (this.bookGame) { this.view = 'book'; this.render(); }
+    }));
     q('dyStats')!.addEventListener('click', () => { this.view = 'stats'; this.render(); });
     q('dyRecords')!.addEventListener('click', () => { this.view = 'records'; this.bookOf = d.user; this.render(); });
     q('dyAwards')!.addEventListener('click', () => { this.view = 'awards'; this.render(); });
@@ -419,7 +471,7 @@ export class DynastyScreen {
     q('dyPlay')?.addEventListener('click', () => {
       const [hm, aw] = own!;
       this.host.play({
-        seed: gameSeed(d, d.week, hm, aw), teams: [teamFor(d, hm), teamFor(d, aw)], user: hm === d.user ? 0 : 1, setup: gameSetup(d, d.week, hm, aw),
+        seed: gameSeed(d, d.week, hm, aw), teams: matchTeams(d, hm, aw), user: hm === d.user ? 0 : 1, setup: gameSetup(d, d.week, hm, aw),
         week: d.week, home: hm, away: aw, label: `${state.name} year ${d.year}, ${weekName(d.week).toLowerCase()}`,
       });
     });

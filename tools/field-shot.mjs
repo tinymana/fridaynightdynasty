@@ -9,7 +9,7 @@ const page = await browser.newPage();
 await page.setViewport({ width: 1000, height: 900 });
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));
-await page.goto(pathToFileURL('site/play/index.html').href);
+await page.goto(pathToFileURL('site/play/index.html').href + (process.env.LOWRES ? '?lowres' : ''));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 await sleep(500); await page.click('#title'); await sleep(150); await page.click('#goExhibition'); await page.click('[data-team="0"]');
 await page.evaluate(() => { window.__fnd.setPlayClock(false); window.__fnd.setSpeed(1); });

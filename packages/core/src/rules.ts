@@ -8,7 +8,7 @@ export const RULES = {
   touchbackAt: 20,
   twoPointFrom: 97,
   /** Seconds run off between plays while the clock is running. Tuned for 50 to 60 plays a team. */
-  runoffSeconds: 32,
+  runoffSeconds: 29,
   /** Chance of each foul. Before the snap: per snap. Holding: per play the offense gained on. Interference: per incomplete pass. */
   falseStartChance: 0.03,
   /** Changing the play at the line is noisy: this much more chance of a false start. */

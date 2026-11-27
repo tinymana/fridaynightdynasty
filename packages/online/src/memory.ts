@@ -1,6 +1,7 @@
 import type { Career, Store } from './api';
 import { RoomError, type Coach, type GameResult, type Room } from './room';
 import type { SharedLeague } from './shared';
+import type { SaveMeta, StoredSave } from './save';
 
 const blank = (name: string): Career => ({ name, games: 0, wins: 0, losses: 0, ties: 0, pointsFor: 0, pointsAgainst: 0, championships: 0, streak: 0, bestStreak: 0 });
 
@@ -16,6 +17,7 @@ export class MemoryStore implements Store {
   readonly rooms = new Map<string, Room>();
   readonly careers = new Map<string, Career>();
   readonly leagues = new Map<string, SharedLeague>();
+  readonly saves = new Map<string, StoredSave>();
   private nextId = 1;
 
   async signIn(name: string, pin: string) {
@@ -58,6 +60,19 @@ export class MemoryStore implements Store {
     const out = fn(room);
     this.rooms.set(pin, room);
     return out;
+  }
+
+  async getSave(coachId: string): Promise<StoredSave | null> {
+    const s = this.saves.get(coachId);
+    return s ? structuredClone(s) : null;
+  }
+
+  async putSave(coachId: string, data: unknown, label: string, bytes: number, base: number | null, force: boolean, at: number): Promise<{ saved: true; meta: SaveMeta } | { saved: false; meta: SaveMeta }> {
+    const have = this.saves.get(coachId);
+    if (have && !force && have.meta.rev !== base) return { saved: false, meta: { ...have.meta } };
+    const meta: SaveMeta = { rev: (have?.meta.rev ?? 0) + 1, at, label, bytes };
+    this.saves.set(coachId, { meta, data: structuredClone(data) });
+    return { saved: true, meta: { ...meta } };
   }
 
   private nameOf(id: string): string {

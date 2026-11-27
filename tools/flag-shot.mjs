@@ -1,0 +1,22 @@
+// Screenshots of the penalty flags in flight and landed. Run: node tools/flag-shot.mjs
+import puppeteer from 'puppeteer-core';
+import { pathToFileURL } from 'node:url';
+const browser = await puppeteer.launch({ executablePath: process.env.CHROME ?? '/usr/bin/google-chrome', headless: 'new', args: ['--no-sandbox', '--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+const page = await browser.newPage();
+await page.setViewport({ width: 1000, height: 900 });
+const errors = [];
+page.on('pageerror', (e) => errors.push(String(e)));
+await page.goto(pathToFileURL('site/play/index.html').href + '?lowres');
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+await sleep(500); await page.click('#title'); await sleep(150); await page.click('#goExhibition'); await page.click('[data-team="0"]');
+await sleep(4300);
+const stage = await page.$('#stage');
+await page.evaluate(() => window.__fnd.flag(4));
+await sleep(450);
+await stage.screenshot({ path: '/tmp/fnd-shots/flag-air.png' });
+await sleep(900);
+await stage.screenshot({ path: '/tmp/fnd-shots/flag-down.png' });
+await sleep(2600);
+const left = await page.$$eval('.flagdrop', (els) => els.length);
+console.log(JSON.stringify({ left, errors }));
+await browser.close();

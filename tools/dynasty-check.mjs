@@ -58,11 +58,14 @@ try {
   // The program: varsity, junior varsity and a call-up.
   await page.click('#dyProgram');
   await sleep(100);
-  check('the program page lists a 39-man varsity and a 49-man junior varsity', (await page.$$('#dyBody .prog table')).length === 2 && (await page.$$('#dyBody [data-up]')).length === 49 && (await text('#dyBody')).includes('39 players'));
+  // Four classes of 22 and a walk-on or three: 39 dress for the varsity (anyone who is out is listed with them) and the rest are junior varsity.
+  const jvCount = (await page.$$('#dyBody [data-up]')).length;
+  const varsityCount = Number(/Varsity\s*(\d+) players/.exec(await text('#dyBody'))?.[1] ?? 0);
+  check('the program page lists a varsity of 39 or so and a junior varsity of 49 or so', (await page.$$('#dyBody .prog table')).length === 2 && jvCount >= 44 && jvCount <= 54 && varsityCount >= 39 && varsityCount <= 43);
   const kid = await page.$eval('#dyBody [data-up]', (e) => e.dataset.up);
   await page.click(`#dyBody [data-up="${kid}"]`);
   await sleep(100);
-  check('a called-up player moves to the varsity and can be sent down', (await page.$$(`#dyBody [data-down="${kid}"]`)).length === 1 && (await page.$$('#dyBody [data-up]')).length === 49 && (await text('#dyBody')).includes('Call-ups used: 1 of 6'));
+  check('a called-up player moves to the varsity and can be sent down', (await page.$$(`#dyBody [data-down="${kid}"]`)).length === 1 && (await page.$$('#dyBody [data-up]')).length === jvCount && (await text('#dyBody')).includes('Call-ups used: 1 of 6'));
   await page.screenshot({ path: `${out}/dynasty-program.png`, fullPage: true });
   await page.click('#pgBack');
   await sleep(100);

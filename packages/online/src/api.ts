@@ -7,6 +7,7 @@ import {
   LEAGUE_CODE, claimSchool, createShared, editLeagueSchool, forceWeek, gameOf, nextSharedSeason, recordGame, roomKey, roomLeague, startSeason, stepLeague, viewLeague,
   type SharedLeague,
 } from './shared';
+import { checkSave, type SaveMeta, type StoredSave } from './save';
 
 /**
  * The online API: one endpoint, called with POST { action, ... }. Storage is behind the `Store` interface,
@@ -35,6 +36,13 @@ export interface Store {
   withLeague<T>(code: string, fn: (league: SharedLeague) => T): Promise<T>;
   /** Adds one dynasty championship to a coach's career record. */
   addChampionship(coachId: string): Promise<void>;
+  /** The coach's saved game, or null if he has none. */
+  getSave(coachId: string): Promise<StoredSave | null>;
+  /**
+   * Keeps a save for the coach. `base` is the revision his browser last saw (null for none): if the server holds a
+   * different one and `force` is off, nothing is written and the save that is there is described instead.
+   */
+  putSave(coachId: string, data: unknown, label: string, bytes: number, base: number | null, force: boolean, at: number): Promise<{ saved: true; meta: SaveMeta } | { saved: false; meta: SaveMeta }>;
 }
 
 /** A coach's career record in online games. Championships arrive with dynasty seasons. */
@@ -315,6 +323,28 @@ export function createApi(store: Store, now: () => number = Date.now): (body: un
     },
 
     /** The Hall of Fame: the ten best records among all coaches. Public; no sign-in needed. */
+    /** What is saved on the server for this coach, without the save itself. */
+    async saveInfo(body) {
+      const me = await auth(body);
+      return { save: (await store.getSave(me.id))?.meta ?? null };
+    },
+
+    async saveLoad(body) {
+      const me = await auth(body);
+      const s = await store.getSave(me.id);
+      return { save: s?.meta ?? null, data: s?.data ?? null };
+    },
+
+    /** Keeps this coach's save. A browser holding an older copy is told so (`conflict`) instead of overwriting. */
+    async saveStore(body) {
+      const me = await auth(body);
+      const c = checkSave(body['data'], body['label']);
+      if (!c.ok) throw new RoomError('bad_save', c.reason);
+      const base = typeof body['base'] === 'number' && Number.isInteger(body['base']) ? (body['base'] as number) : null;
+      const r = await store.putSave(me.id, body['data'], c.label, c.bytes, base, body['force'] === true, now());
+      return { save: r.meta, conflict: !r.saved };
+    },
+
     async hall() {
       return { hall: await store.hallOfFame(10) };
     },
