@@ -11,6 +11,7 @@ import { boxScore, occasionFor, type Occasion, type StatLine } from '@fnd/league
 import { FIGHT_SONG_BEAT, chantFor, fightSong, halftimeShow, type CrowdInput, type Note } from './atmosphere';
 import { OnlineError, online } from './net/online';
 import { cutinFor } from './cutins';
+import { renderGamebook } from './gamebook';
 import { makeSave, readSave, saveFileName, saveLabel, type SaveContents } from './saves';
 import wxRainUrl from './assets/wx-rain.png';
 import wxSnowUrl from './assets/wx-snow.png';
@@ -1724,6 +1725,7 @@ function showFinal(): void {
   const [a, b] = summarize(game.events);
   const verdict = s.score[user] > s.score[other(user)] ? 'You win' : s.score[user] < s.score[other(user)] ? 'You lose' : 'Tie game';
   $('finalScore').textContent = `${teams[0].abbr} ${s.score[0]}  –  ${s.score[1]} ${teams[1].abbr}`;
+  $('finalVerdict').textContent = `${verdict}${s.quarter > 4 ? ' in overtime' : ''}`;
   const row = (label: string, x: string | number, y: string | number): string => `<tr><td>${label}</td><td>${x}</td><td>${y}</td></tr>`;
   $('finalTable').innerHTML = `<tr><th>${verdict}</th><th>${teams[0].abbr}</th><th>${teams[1].abbr}</th></tr>`
     + row('Total yards', a.totalYds, b.totalYds) + row('Plays', a.plays, b.plays) + row('First downs', a.firstDowns, b.firstDowns)
@@ -1772,6 +1774,7 @@ function showFinal(): void {
     }, 60);
   }
   $('log').innerHTML = game.events.filter((e) => e.points[0] + e.points[1] > 0).map((e) => `<div><b>${e.quarter > 4 ? (e.quarter > 5 ? `${e.quarter - 4}OT` : 'OT') : `Q${e.quarter} ${Math.floor(e.clock / 60)}:${String(e.clock % 60).padStart(2, '0')}`}</b> ${e.text} <b>${e.scoreAfter[0]}–${e.scoreAfter[1]}</b></div>`).join('') || '<div>No scoring.</div>';
+  renderGamebook($('gamebook'), game.events, teams, 'summary');
   show('final');
 }
 

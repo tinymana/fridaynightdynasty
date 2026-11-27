@@ -1,9 +1,10 @@
 import { GROUPS, WEATHER, overall, type GameSetup, type Team } from '@fnd/core';
 import {
-  CLASS_NAMES, CLASS_SHORT, MAX_CALL_UPS, RECORD_DEFS, OUT_FOR_SEASON, REGULAR_WEEKS, STATES, leagueNews, career, emptyLine, incomingOf, newsText, occasionFor, openings, programOf, schoolOfPlayer, seasonYear, statsOf, recordOf, setCallUp, createDynasty, createLeague, editSchool, gameSeed, gameSetup, loadDynasty, nextSeason, playWeek, standings, stateByCode, matchTeams, userGame, weekGames, winnerOf,
+  CLASS_NAMES, CLASS_SHORT, MAX_CALL_UPS, RECORD_DEFS, OUT_FOR_SEASON, REGULAR_WEEKS, STATES, replayResult, leagueNews, career, emptyLine, incomingOf, newsText, occasionFor, openings, programOf, schoolOfPlayer, seasonYear, statsOf, recordOf, setCallUp, createDynasty, createLeague, editSchool, gameSeed, gameSetup, loadDynasty, nextSeason, playWeek, standings, stateByCode, matchTeams, userGame, weekGames, winnerOf,
   type BoxScore, type Incident, type LeagueNews, type Dynasty, type GameResult, type Honoree, type ProgramPlayer, type RecordNews, type SeasonAwards, type StatLine,
 } from '@fnd/league';
 import { bindSchoolForm, schoolFormHtml } from './school-form';
+import { renderGamebook } from './gamebook';
 
 /**
  * The solo dynasty screen: pick a state and a school, then play a season a week at a time.
@@ -47,7 +48,9 @@ export class DynastyScreen {
   private busy = false;
   private editing = -1;
   /** Which page of the dynasty is showing: the season, or the program (varsity, junior varsity, classes). */
-  private view: 'season' | 'program' | 'stats' | 'records' | 'awards' = 'season';
+  private view: 'season' | 'program' | 'stats' | 'records' | 'awards' | 'book' = 'season';
+  /** The finished game whose book is open. */
+  private bookGame: GameResult | null = null;
   /** Which school's record book is open. */
   private bookOf = -1;
   /** Record calls already made in the game being played, so each is made once. */
@@ -87,6 +90,7 @@ export class DynastyScreen {
     else if (this.d && this.view === 'stats') this.renderStats(this.d);
     else if (this.d && this.view === 'records') this.renderRecords(this.d);
     else if (this.d && this.view === 'awards') this.renderAwards(this.d);
+    else if (this.d && this.view === 'book' && this.bookGame) this.renderBook(this.d, this.bookGame);
     else if (this.d) this.renderSeason(this.d);
     else this.renderNew();
   }
@@ -204,6 +208,18 @@ export class DynastyScreen {
   }
 
   /** The latest records to fall around the league, newest first. */
+  /** The game book of a finished game between two other schools, played again from its seed. */
+  private renderBook(d: Dynasty, g: GameResult): void {
+    const schools = d.league.schools;
+    this.title.textContent = `${weekName(g.week)} · ${schools[g.away].name} at ${schools[g.home].name}`;
+    const replay = replayResult(d, g);
+    this.root.innerHTML = `<div class="orow center"><button class="seg on" id="bkBack">Back to the season</button></div>
+      <div class="result" style="text-align:center">${esc(schools[g.home].abbr)} ${g.score[0]}  –  ${g.score[1]} ${esc(schools[g.away].abbr)}</div>
+      ${replay ? '<div id="dyBook" class="gamebook"></div>' : '<p style="text-align:center">The book for this game was not kept.</p>'}`;
+    this.root.querySelector('#bkBack')!.addEventListener('click', () => { this.view = 'season'; this.bookGame = null; this.render(); });
+    if (replay) renderGamebook(this.root.querySelector<HTMLElement>('#dyBook')!, replay.events, replay.teams, 'summary');
+  }
+
   /** The injury report and the comings and goings: my program's, and anything the whole league is talking about. */
   private programNewsHtml(d: Dynasty): string {
     const all = leagueNews(d);
@@ -363,7 +379,8 @@ export class DynastyScreen {
     const table = standings(d.results);
     const dot = (i: number): string => `<span class="chip-sq" style="background:${css(schools[i].colors.jersey)}"></span>`;
     const rows = table.map((r, i) => `<tr class="${r.school === d.user ? 'me' : ''}"><td>${i + 1}</td><td>${dot(r.school)}${esc(schools[r.school].name)} ${esc(schools[r.school].mascot)}</td><td><b>${r.wins}-${r.losses}${r.ties ? `-${r.ties}` : ''}</b></td><td>${r.pointsFor}</td><td>${r.pointsAgainst}</td></tr>`).join('');
-    const line = (g: GameResult): string => `<div class="dy-game${g.home === d.user || g.away === d.user ? ' me' : ''}"><span>${esc(schools[g.away].name)} at ${esc(schools[g.home].name)}</span><b>${g.score[1]}–${g.score[0]}</b></div>`;
+    const mineGame = (g: GameResult): boolean => g.home === d.user || g.away === d.user;
+    const line = (g: GameResult): string => `<div class="dy-game${mineGame(g) ? ' me' : ''}"><span>${esc(schools[g.away].name)} at ${esc(schools[g.home].name)}</span><span>${mineGame(g) ? '' : `<button class="seg mini" data-book="${g.home}-${g.away}">Game book</button> `}<b>${g.score[1]}–${g.score[0]}</b></span></div>`;
     const lastWeek = d.week - 1;
     const last = lastWeek >= 0 ? d.results.filter((g) => g.week === lastWeek) : [];
     const own = over ? null : userGame(d);
@@ -410,6 +427,11 @@ export class DynastyScreen {
     const q = (id: string): HTMLElement | null => this.root.querySelector(`#${id}`);
     q('dyBack')!.addEventListener('click', () => this.host.back());
     q('dyProgram')!.addEventListener('click', () => { this.view = 'program'; this.render(); });
+    this.root.querySelectorAll<HTMLElement>('[data-book]').forEach((el) => el.addEventListener('click', () => {
+      const [h, a] = el.dataset.book!.split('-').map(Number);
+      this.bookGame = last.find((g) => g.home === h && g.away === a) ?? null;
+      if (this.bookGame) { this.view = 'book'; this.render(); }
+    }));
     q('dyStats')!.addEventListener('click', () => { this.view = 'stats'; this.render(); });
     q('dyRecords')!.addEventListener('click', () => { this.view = 'records'; this.bookOf = d.user; this.render(); });
     q('dyAwards')!.addEventListener('click', () => { this.view = 'awards'; this.render(); });

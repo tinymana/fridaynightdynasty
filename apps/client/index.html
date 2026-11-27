@@ -302,6 +302,28 @@
   .prog h3 small { font-weight: 400; color: var(--dim); font-size: 11px; margin-left: 6px; }
   .cls { display: inline-block; min-width: 22px; text-align: center; padding: 0 4px; border-radius: 3px; font-size: 10px; font-weight: 700; background: #33405e; color: #dfe7ff; }
   .cls.c1 { background: #2f6b3a; } .cls.c2 { background: #2b5f86; } .cls.c3 { background: #6a4b99; } .cls.c4 { background: #9a5a1c; }
+  /* The game book: tabs over one game's summary, box score, drives and play-by-play. */
+  .gamebook { text-align: left; margin: 14px auto; max-width: 860px; }
+  .gb-tabs { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 10px; }
+  .gb-body { background: var(--navy, var(--panel)); border: 2px solid var(--edge, var(--line)); border-radius: 3px; padding: 10px 14px 14px; max-height: 62vh; overflow: auto; }
+  .gb-body h4 { margin: 14px 0 6px; font-size: 17px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); }
+  .gb-body h4:first-child { margin-top: 2px; }
+  .gb-body table { width: 100%; border-collapse: collapse; margin: 0 0 10px; }
+  .gb-body th, .gb-body td { padding: 3px 8px; text-align: right; border-bottom: 1px solid rgba(160, 170, 220, 0.2); }
+  .gb-body th:first-child, .gb-body td:first-child { text-align: left; }
+  .gb-body th { color: var(--dim); font-weight: 400; }
+  .gb-body small { color: var(--dim); }
+  .gb-line td, .gb-line th { text-align: center; }
+  .gb-totals td:first-child { color: var(--dim); }
+  .gb-drives td:last-child, .gb-drives th:last-child { text-align: left; }
+  .gb-drives tr.gb-score td { color: var(--accent); }
+  .gb-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 700px) { .gb-cols { grid-template-columns: 1fr; } }
+  .gb-play { display: flex; gap: 10px; align-items: baseline; padding: 3px 0; border-bottom: 1px solid rgba(160, 170, 220, 0.14); }
+  .gb-play > span:nth-child(2) { flex: 1; }
+  .gb-when { flex: 0 0 74px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .gb-big > span:nth-child(2) { color: var(--accent); }
+  .gb-ball { margin: 8px 0 2px; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; font-size: 0.85em; }
   .tag-out { font-size: 12px; color: #ff9d8a; border: 1px solid #ff9d8a; border-radius: 3px; padding: 0 3px; }
   .tag-new { font-size: 12px; color: #9fe0ff; border: 1px solid #9fe0ff; border-radius: 3px; padding: 0 3px; }
   .tag-star { font-size: 12px; color: #ffe066; border: 1px solid #ffe066; border-radius: 3px; padding: 0 3px; }
@@ -640,13 +662,15 @@
   <section id="final" class="hidden">
     <h2>Final</h2>
     <div class="result" id="finalScore"></div>
+    <div id="finalVerdict" style="text-align:center;font-size:1.3em;color:var(--accent);margin:2px 0 8px"></div>
     <div id="finalLeaders"></div>
     <div id="finalCareer" aria-live="polite"></div>
     <div id="finalRecords" aria-live="polite"></div>
-    <table id="finalTable"></table>
+    <table id="finalTable" class="hidden"></table>
+    <div id="gamebook" class="gamebook"></div>
     <button id="again">New game</button>
     <div class="note" id="finalMeta"></div>
-    <div id="log"></div>
+    <div id="log" class="hidden"></div>
   </section>
 </div>
 <script type="module" src="/src/main.ts"></script>

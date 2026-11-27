@@ -2,6 +2,37 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.23.0",
+      "date": "2026-11-27",
+      "title": "The game book: box score, drives and play-by-play",
+      "items": [
+        {
+          "tag": "new",
+          "text": "A game book after every game, with four tabs. Summary: points by quarter, every scoring play and the team totals, now with third and fourth downs, penalties, punts and time of possession."
+        },
+        {
+          "tag": "new",
+          "text": "Box score: every player's line for both teams. Passing, rushing, receiving, defense, kicking and returns."
+        },
+        {
+          "tag": "new",
+          "text": "Drives: every possession, where it started, how many plays and yards, how long it took and how it ended."
+        },
+        {
+          "tag": "new",
+          "text": "Play-by-play: every snap of the game with down, distance and spot, quarter by quarter."
+        },
+        {
+          "tag": "new",
+          "text": "In a dynasty, open the game book for any of last week's games between other schools from the results list."
+        },
+        {
+          "tag": "note",
+          "text": "The book for a game you coached is on the final screen that night; it is not kept afterwards yet."
+        }
+      ]
+    },
+    {
       "version": "0.22.0",
       "date": "2026-11-27",
       "title": "Injuries, walk-ons, phenoms, and a new main menu",

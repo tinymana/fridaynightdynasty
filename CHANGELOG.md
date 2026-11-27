@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.23.0 — 2026-11-27
+
+The game book. Client and league package; no change to how a game plays, so no server redeploy for this one alone.
+
+### Added
+- `packages/league/src/gamebook.ts`: `periodScores`, `scoringPlays`, `gameTotals` (third and fourth downs, penalties,
+  punts, time of possession from the game clock), `driveChart`, `situation`, `elapsed`.
+- `replayResult(d, game)`: a finished league game between two other schools played again from its seed and rosters
+  for its play-by-play; null for the coach's own games or if the replay does not end on the recorded score.
+- Client `gamebook.ts`: `renderGamebook(root, events, teams)` with Summary, Box score, Drives and Play-by-play tabs.
+  On the final screen in place of the old totals table and scoring log; in a dynasty from last week's results.
+- `tests/gamebook.test.ts` (6 tests over 40 games), `tools/book-shot.mjs`.
+
 ## 0.22.0 — 2026-11-27
 
 Injuries and roster events. Simulation change (rosters): redeploy the `fnd` function with the merge.

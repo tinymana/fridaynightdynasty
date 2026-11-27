@@ -1,4 +1,4 @@
-import { DEFAULT_SETUP, Rng, clamp, cleanSetup, hashString, type GameSetup, type Ratings, type Team, type TeamColors, type Weather } from '@fnd/core';
+import { DEFAULT_SETUP, Rng, clamp, cleanSetup, hashString, type GameSetup, type PlayEvent, type Ratings, type Team, type TeamColors, type Weather } from '@fnd/core';
 import { simulateGame } from '@fnd/match-sim';
 import { LEAGUE_TUNING, MAX_CALL_UPS, cleanCallUps, enrolledIn, incomingClass, jvTeam, programFor, programNames, programNews, varsityTeam, type ProgramNews, type ProgramPlayer } from './program';
 import { cleanStatBook, closeSeason, historicBook, recordGame, type RecordNews, type StatBook } from './records';
@@ -449,6 +449,19 @@ export function simulateWithBox(d: Dynasty, week: number, home: number, away: nu
   return { result: { week, home, away, score: [g.state.score[0], g.state.score[1]] }, box: boxScore(g.events) };
 }
 
+/**
+ * Plays a finished game between two other schools again to get its play-by-play, for the game book. A league game is
+ * its seed and its two rosters, so the replay is the game. Returns null for a game of the coach's own school (his
+ * calls are not kept) or if the replay does not end on the recorded score.
+ */
+export function replayResult(d: Dynasty, g: GameResult): { events: PlayEvent[]; teams: [Team, Team] } | null {
+  if (g.home === d.user || g.away === d.user) return null;
+  const teams = matchTeams(d, g.home, g.away, g.week);
+  const game = simulateGame(gameSeed(d, g.week, g.home, g.away), teams, { setup: gameSetup(d, g.week, g.home, g.away) });
+  if (game.state.score[0] !== g.score[0] || game.state.score[1] !== g.score[1]) return null;
+  return { events: [...game.events], teams };
+}
+
 export function simulate(d: Dynasty, week: number, home: number, away: number): GameResult {
   const g = simulateGame(gameSeed(d, week, home, away), matchTeams(d, home, away, week), { setup: gameSetup(d, week, home, away) });
   return { week, home, away, score: [g.state.score[0], g.state.score[1]] };
@@ -600,3 +613,4 @@ export { CLASS_NAMES, CLASS_SHORT, LEAGUE_TUNING, MAX_CALL_UPS, OUT_FOR_GOOD, OU
 export * from './stats';
 export * from './records';
 export * from './awards';
+export * from './gamebook';
