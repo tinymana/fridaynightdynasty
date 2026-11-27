@@ -349,6 +349,8 @@
   .gb-drives tr.gb-score td { color: var(--accent); }
   .gb-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
   @media (max-width: 700px) { .gb-cols { grid-template-columns: 1fr; } }
+  /* On a phone the tables tighten up and the drive chart drops its time column so the result stays on screen. */
+  @media (max-width: 700px) { .gb-body { padding: 8px 8px 10px; } .gb-body th, .gb-body td { padding: 3px 4px; } .gb-drives th:nth-child(6), .gb-drives td:nth-child(6) { display: none; } .gb-when { flex-basis: 56px; } }
   .gb-play { display: flex; gap: 10px; align-items: baseline; padding: 3px 0; border-bottom: 1px solid rgba(160, 170, 220, 0.14); }
   .gb-play > span:nth-child(2) { flex: 1; }
   .gb-when { flex: 0 0 74px; color: var(--dim); font-variant-numeric: tabular-nums; }

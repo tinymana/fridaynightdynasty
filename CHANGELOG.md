@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.25.1 — 2026-11-27
+
+Client only.
+
+### Changed
+- Game book tables tighten at phone width; the drive chart drops its time column there.
+- `tools/phone-sweep.mjs`: opens 18 pages at 390 px and reports any that scroll sideways.
+
 ## 0.25.0 — 2026-11-27
 
 The off-season. League change (rosters carry a spring focus): redeploy the `fnd` function with the merge.
