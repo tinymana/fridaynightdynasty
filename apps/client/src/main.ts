@@ -17,6 +17,7 @@ import wxSnowUrl from './assets/wx-snow.png';
 import wxFogUrl from './assets/wx-fog.png';
 import wxLeavesUrl from './assets/wx-leaves.png';
 import menuArtUrl from './assets/menu-stadium.webp';
+import menuWideUrl from './assets/menu-wide.webp';
 import pressStartUrl from '@fontsource/press-start-2p/files/press-start-2p-latin-400-normal.woff2';
 import jerseyUrl from '@fontsource/jersey-15/files/jersey-15-latin-400-normal.woff2';
 import { DynastyScreen, type DynastyGame } from './dynasty';
@@ -2357,6 +2358,7 @@ voice.onChange(renderVoice);
 ($('titleArt') as HTMLImageElement).src = titleUrl;
 ($('setupLogo') as HTMLImageElement).src = logoUrl;
 ($('menuArt') as HTMLImageElement).src = menuArtUrl;
+$('mainMenu').style.setProperty('--title-art', `url(${menuWideUrl})`);
 // Pixel faces for the menu, carried inside the page like everything else.
 for (const [family, url, weight] of [['Press Start 2P', pressStartUrl, '400'], ['Jersey 15', jerseyUrl, '400']] as const) {
   try { void new FontFace(family, `url(${url}) format('woff2')`, { weight }).load().then((f) => document.fonts.add(f)); } catch { /* the fallback face is fine */ }

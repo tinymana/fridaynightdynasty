@@ -68,6 +68,19 @@
   .mi:hover b, .mi:focus-visible b { color: #fff0a8; }
   .mi:active { transform: translateY(1px); }
   @media (max-width: 520px) { #mainMenu .board { padding: 18px 26px 14px; } .mi .yd { flex-basis: 52px; font-size: 20px; } .mi b { font-size: 14px; } .mi small { font-size: 18px; } }
+  /* On a wide screen the menu is the start-screen picture itself, with the six rows down its right side. */
+  @media (min-width: 900px) {
+    #setup[data-page="menu"] #mainMenu { --mw: min(96vw, 1280px); position: relative; width: var(--mw); max-width: none; margin-left: 50%; transform: translateX(-50%); aspect-ratio: 16 / 9; background: #0a0d24 var(--title-art) center / cover no-repeat; border-color: #0a0d24; }
+    #setup[data-page="menu"] #menuArt { display: none; }
+    /* The rows sit exactly where the picture has them painted, so the live rows cover the painted ones. */
+    #setup[data-page="menu"] #mainMenu .board { position: absolute; left: 62.7%; top: 6.9%; width: 31.4%; height: 68.4%; padding: 0; background: none; display: flex; flex-direction: column; justify-content: space-between; }
+    #setup[data-page="menu"] .mi { margin: 0; height: 16.35%; }
+    #setup[data-page="menu"] .mi .in { min-height: 0; height: 100%; }
+    #setup[data-page="menu"] .mi .yd { flex-basis: calc(var(--mw) * 0.05); font-size: calc(var(--mw) * 0.02); border-right-width: 3px; }
+    #setup[data-page="menu"] .mi .mt { padding: calc(var(--mw) * 0.006) calc(var(--mw) * 0.01); }
+    #setup[data-page="menu"] .mi b { font-size: calc(var(--mw) * 0.0122); }
+    #setup[data-page="menu"] .mi small { margin-top: calc(var(--mw) * 0.004); font-size: max(13px, calc(var(--mw) * 0.0142)); line-height: 1.1; }
+  }
   .crumb { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin-top: 14px; }
   .crumb .seg { justify-self: start; }
   .crumb h2 { margin: 0 !important; }
