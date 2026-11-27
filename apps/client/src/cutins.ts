@@ -43,6 +43,8 @@ import nHomecoming from './assets/cutins/n-homecoming.webp';
 import nLocker from './assets/cutins/n-locker.webp';
 import nOvertime from './assets/cutins/n-overtime.webp';
 import nRunthrough from './assets/cutins/n-runthrough.webp';
+import nRivalry from './assets/cutins/n-rivalry.webp';
+import nRivalryWin from './assets/cutins/n-rivalry-win.webp';
 
 /** Broadcast-style cut-in panels. Art by the creative director; cut from the sheets in art/source by tools/cut-art.py. */
 export interface Cutin {
@@ -64,6 +66,8 @@ export interface CutinContext {
   homecoming?: boolean;
   /** The coach's team is at home. */
   home?: boolean;
+  /** The two schools are rivals and this is their game. */
+  rivalry?: boolean;
 }
 
 /** A point in the night that gets its own panel: before the kickoff, the half, the start of the fourth, overtime, the end. */
@@ -85,6 +89,8 @@ export function cutinFor(e: PlayEvent | null, period: CutinPeriod, n: number, ct
     if (e.type === 'pass' && e.flags.complete && e.yards >= BIG_PLAY) return { url: (n + e.yards) % 2 ? aLeap : aThrow, alt: 'A long pass' };
     if (e.type === 'kickoff' && e.flags.onside) return { url: kickoff, alt: 'Onside kick' };
   }
+  if (period === 'final' && ctx.won && ctx.rivalry) return { url: nRivalryWin, alt: 'A rivalry win' };
+  if (period === 'opening' && ctx.rivalry) return { url: nRivalry, alt: 'Rivalry game' };
   if (period === 'final') return ctx.won && ctx.title ? { url: mChampions, alt: 'State champions' } : ctx.won ? { url: mCelebration, alt: 'A win' } : { url: n % 2 ? nHandshake : final, alt: 'Game over' };
   if (period === 'half') return ctx.homecoming ? { url: mCrowning, alt: 'The homecoming king and queen are crowned' } : { url: [halftime, nLocker, mHalftimeShow, nChalk][n % 4], alt: 'Half time' };
   if (period === 'fourth') return { url: nFourth, alt: 'Fourth quarter' };

@@ -1067,7 +1067,7 @@ function showResult(e: PlayEvent | null): void {
   let period = '';
   if (s.phase === 'final') period = 'End of game. ';
   else if (s.quarter !== lastQuarter) period = lastQuarter === 2 ? 'Halftime. ' : lastQuarter === 4 ? 'End of regulation: overtime! Each team gets the ball at the ten. ' : lastQuarter > 4 ? 'Still level: another overtime. ' : `End of quarter ${lastQuarter}. `;
-  const cut = showCutins && speed !== 0 ? cutinFor(e, s.phase === 'final' ? 'final' : s.quarter === lastQuarter ? null : lastQuarter === 2 ? 'half' : lastQuarter === 3 ? 'fourth' : lastQuarter >= 4 ? 'overtime' : null, s.score[0] + s.score[1] + s.quarter, { won: s.score[user] > s.score[other(user)], title: occasion === 'championship', homecoming: occasion === 'homecoming' }) : null;
+  const cut = showCutins && speed !== 0 ? cutinFor(e, s.phase === 'final' ? 'final' : s.quarter === lastQuarter ? null : lastQuarter === 2 ? 'half' : lastQuarter === 3 ? 'fourth' : lastQuarter >= 4 ? 'overtime' : null, s.score[0] + s.score[1] + s.quarter, { won: s.score[user] > s.score[other(user)], title: occasion === 'championship', homecoming: occasion === 'homecoming', rivalry: !!dynastyGame?.rivalry }) : null;
   const cutEl = $('cutin') as HTMLImageElement;
   cutEl.classList.toggle('hidden', !cut);
   if (cut) {
@@ -1695,7 +1695,7 @@ function startGame(team: 0 | 1, conditions: GameSetup = setup): void {
   $('banner').innerHTML = `${teams[receiving].name} will receive the opening kickoff.<small>You are coaching the ${teams[user].name} ${teams[user].mascot}. ${setupLine(game.setup)}.</small>`;
   $('banner').classList.remove('hidden');
   setPanelWaiting('Kickoff');
-  const opening = showCutins && speed !== 0 ? cutinFor(null, 'opening', 0, { homecoming: occasion === 'homecoming', home: user === 0 }) : null;
+  const opening = showCutins && speed !== 0 ? cutinFor(null, 'opening', 0, { homecoming: occasion === 'homecoming', home: user === 0, rivalry: !!dynastyGame?.rivalry }) : null;
   if (opening) {
     const cutEl = $('cutin') as HTMLImageElement;
     cutEl.src = opening.url;

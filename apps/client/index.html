@@ -302,6 +302,24 @@
   .prog h3 small { font-weight: 400; color: var(--dim); font-size: 11px; margin-left: 6px; }
   .cls { display: inline-block; min-width: 22px; text-align: center; padding: 0 4px; border-radius: 3px; font-size: 10px; font-weight: 700; background: #33405e; color: #dfe7ff; }
   .cls.c1 { background: #2f6b3a; } .cls.c2 { background: #2b5f86; } .cls.c3 { background: #6a4b99; } .cls.c4 { background: #9a5a1c; }
+  /* The weekly paper: newsprint, a masthead, a lead story and columns. */
+  #dyBody .paper { max-width: 880px; margin: 14px auto; padding: 18px 22px 22px; background: #efe6cf; color: #1d1a14; border: 2px solid #1d1a14; box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.5); text-align: left; }
+  #dyBody .np-mast { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; border-bottom: 4px double #1d1a14; padding-bottom: 8px; margin-bottom: 12px; }
+  #dyBody .np-mast b { font-family: var(--disp, inherit); font-size: 20px; letter-spacing: 1px; }
+  #dyBody .paper h3 { margin: 0 0 6px; font-family: var(--ui, inherit); font-size: 28px; line-height: 1.05; color: #1d1a14; text-transform: none; letter-spacing: 0; text-align: left; text-shadow: none; }
+  #dyBody .paper .np-lead h3 { font-size: 42px; }
+  .np-lead { border-bottom: 2px solid #1d1a14; padding-bottom: 10px; margin-bottom: 12px; }
+  #dyBody .paper p { margin: 0 0 8px; font-size: 19px; line-height: 1.25; color: #1d1a14; text-align: left; }
+  .np-cols { display: grid; grid-template-columns: 1.6fr 1fr; gap: 22px; }
+  .np-cols > div:last-child { border-left: 1px solid #1d1a14; padding-left: 18px; }
+  @media (max-width: 700px) { .np-cols { grid-template-columns: 1fr; } .np-cols > div:last-child { border-left: 0; padding-left: 0; border-top: 1px solid #1d1a14; padding-top: 10px; } #dyBody .paper .np-lead h3 { font-size: 32px; } }
+  .np-story { border-bottom: 1px solid rgba(29, 26, 20, 0.4); padding-bottom: 6px; margin-bottom: 10px; }
+  #dyBody .paper h4 { margin: 10px 0 6px; font-size: 16px; letter-spacing: 2px; text-transform: uppercase; border-bottom: 2px solid #1d1a14; color: #1d1a14; text-align: left; }
+  #dyBody .paper h4:first-child { margin-top: 0; }
+  #dyBody .np-row { font-size: 19px; padding: 2px 0; border-bottom: 1px dotted rgba(29, 26, 20, 0.5); }
+  #dyBody .paper .np-note { font-size: 17px; }
+  .dy-rival { color: var(--accent); }
+  .dy-rivalline { text-align: center; color: var(--dim); margin: 12px 0 0; }
   /* The game book: tabs over one game's summary, box score, drives and play-by-play. */
   .gamebook { text-align: left; margin: 14px auto; max-width: 860px; }
   .gb-tabs { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 10px; }
