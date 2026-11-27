@@ -1,0 +1,20 @@
+// Screenshot of the panel shown before the opening kickoff. Run: node tools/opening-shot.mjs [team 0|1]
+import puppeteer from 'puppeteer-core';
+import { pathToFileURL } from 'node:url';
+import { mkdirSync } from 'node:fs';
+const team = process.argv[2] ?? '0';
+const out = '/tmp/fnd-shots';
+mkdirSync(out, { recursive: true });
+const browser = await puppeteer.launch({ executablePath: process.env.CHROME ?? '/usr/bin/google-chrome', headless: 'new', args: ['--no-sandbox', '--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
+const page = await browser.newPage();
+await page.setViewport({ width: 1000, height: 900 });
+const errors = [];
+page.on('pageerror', (e) => errors.push(String(e)));
+await page.goto(pathToFileURL('site/play/index.html').href + '?lowres');
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+await sleep(500); await page.click('#title'); await sleep(150); await page.click('#goExhibition'); await page.click(`[data-team="${team}"]`);
+await sleep(700);
+const cutin = await page.evaluate(() => window.__fnd.state().cutin);
+await (await page.$('#stage')).screenshot({ path: `${out}/opening-${team}.png` });
+console.log(JSON.stringify({ team, cutin, errors }));
+await browser.close();

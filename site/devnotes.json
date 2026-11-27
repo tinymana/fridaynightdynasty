@@ -2,6 +2,37 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.19.0",
+      "date": "2026-11-27",
+      "title": "Weather you can see, a homecoming court, and new story panels",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Rain, snow and wind now use the drawn weather art. Rain falls in slanted streaks, snow drifts down in flakes, and on a windy night leaves blow across the field."
+        },
+        {
+          "tag": "new",
+          "text": "A low mist drifts across the field behind the rain and the snow."
+        },
+        {
+          "tag": "new",
+          "text": "On homecoming night the court walks out at halftime: a king and queen, four attendants and a banner, standing with the band."
+        },
+        {
+          "tag": "new",
+          "text": "A panel before the kickoff. At home your team bursts through the paper banner; on the road the bus pulls in under the lights; on homecoming night the homecoming banner goes up."
+        },
+        {
+          "tag": "new",
+          "text": "More panels through the night: a banner for the start of the fourth quarter, a coin toss or banner for overtime, the locker room and the chalkboard at half time, and the coaches' handshake after a loss."
+        },
+        {
+          "tag": "note",
+          "text": "There is no fog-only weather in the game yet, so the fog art shows as the mist in rain and snow. That finishes the list of looks; saves that follow you between devices are next."
+        }
+      ]
+    },
+    {
       "version": "0.18.0",
       "date": "2026-11-27",
       "title": "A field that wears, and players who block, catch and spin",
