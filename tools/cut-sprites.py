@@ -165,10 +165,25 @@ SIDE = [('stand0', 79, 125), ('stand1', 137, 183), ('stand2', 195, 249), ('stand
 # The chain crew, in their own colours: (name, x0, y0, x1, y1).
 CREW = [('stick', 492, 16, 549, 90), ('box1', 215, 16, 264, 90), ('box2', 215, 93, 264, 173), ('box3', 355, 16, 407, 90), ('box4', 419, 16, 475, 90)]
 
+# Cheerleaders, from the red squad's row of the cheer sheet (repainted per school): (name, x0, x1).
+CHEER_ROW = (128, 204)
+CHEER = [('pom0', 211, 272), ('pom1', 281, 343), ('wave0', 79, 122), ('wave1', 149, 192)]
+# The referee, in stripes: (name, x0, x1) in the first row of the referee sheet.
+REF_ROW = (14, 130)
+REFS = [('ref', 78, 137), ('refrun0', 213, 275), ('refrun1', 289, 359), ('reftd', 475, 534), ('refpoint', 639, 725), ('refflag', 1025, 1127)]
+
 def cut_sideline():
     sheet = Image.open(SRC + '18_sideline_teams_spritesheet.png').convert('RGBA')
     crew = Image.open(SRC + '20_chain_gang_spritesheet.png').convert('RGBA')
     parts = [(n, *repaintable(sheet.crop((x0, SIDE_ROW[0], x1, SIDE_ROW[1])))) for n, x0, x1 in SIDE]
+    cheer = Image.open(SRC + '06_cheerleaders_spritesheet.png').convert('RGBA')
+    parts += [(n, *repaintable(cheer.crop((x0, CHEER_ROW[0], x1, CHEER_ROW[1])))) for n, x0, x1 in CHEER]
+    refs = Image.open(SRC + '02_referees_spritesheet.png').convert('RGBA')
+    for n, x0, x1 in REFS:
+        fr = refs.crop((x0, REF_ROW[0], x1, REF_ROW[1]))
+        fr = fr.crop(fr.getbbox())
+        small = fr.resize((max(1, round(fr.width * 0.3)), max(1, round(fr.height * 0.3))), Image.LANCZOS)
+        parts.append((n, small, Image.new('RGBA', small.size, (0, 0, 0, 0))))
     for n, x0, y0, x1, y1 in CREW:
         fr = crew.crop((x0, y0, x1, y1))
         fr = fr.crop(fr.getbbox())

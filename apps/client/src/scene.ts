@@ -55,6 +55,10 @@ export interface FieldView {
   frame: number;
   /** The down, for the box on the sideline. */
   down?: number;
+  /** What the referee is signalling: a touchdown, a first down, a flag. */
+  official?: 'td' | 'point' | 'flag' | null;
+  /** The team whose cheerleaders are going wild. */
+  cheering?: 0 | 1 | null;
 }
 
 const DIGITS: Record<string, string[]> = {
@@ -80,6 +84,8 @@ export class FieldScene extends Phaser.Scene {
   private crew: Phaser.GameObjects.Image[] = [];
   private bench: Phaser.GameObjects.Image[] = [];
   private paint: Phaser.GameObjects.Text[] = [];
+  private squads: { img: Phaser.GameObjects.Image; team: number; n: number }[] = [];
+  private referee: Phaser.GameObjects.Image | null = null;
   /** Mud, torn turf and puddles, stamped where the plays go. */
   private wear!: Phaser.GameObjects.RenderTexture;
   /** Snow or frost lying on the field, trampled away where the players have been. */
@@ -166,6 +172,17 @@ export class FieldScene extends Phaser.Scene {
       const row: [string, number][] = [['coach0', 0], ['stand0', 16], ['stand1', 30], ['bench', 66], ['stand3', 104], ['bench', 138], ['stand2', 174], ['coach1', 190]];
       for (const [name, dx] of row) this.bench.push(this.add.image(x0 + dx, ground, key, name).setOrigin(0.5, 1).setScale(1 / ZOOM * 1.15).setDepth(9000));
     });
+    // Cheerleaders at each end of the near sideline, in their school's colours, and the referee in stripes.
+    for (const o of this.squads) o.img.destroy();
+    this.squads = [];
+    teams.forEach((_, i) => {
+      for (let n = 0; n < 5; n++) {
+        const img = this.add.image((i === 0 ? 150 : 715) + n * 19, ground - 1, `side${i}`, 'pom0').setOrigin(0.5, 1).setScale(1 / ZOOM * 1.05).setDepth(9000);
+        this.squads.push({ img, team: i, n });
+      }
+    });
+    this.referee?.destroy();
+    this.referee = this.add.image(0, 0, 'side0', 'ref').setOrigin(0.5, 1).setScale(1 / ZOOM * 1.25).setVisible(false);
     // Paint on the grass: each school's name in its end zone and the home team's letters at midfield.
     for (const o of this.paint) o.destroy();
     this.paint = [];
@@ -320,6 +337,25 @@ export class FieldScene extends Phaser.Scene {
       if (show) o.setX(Math.round(wx(at!)) + (k === 2 ? 3 : 0));
     });
     if (this.crew[2] && view.down) this.crew[2].setFrame(`box${Math.min(4, Math.max(1, view.down))}`);
+
+    // Cheerleaders shake their pom-poms in turn, and all together when their team scores.
+    for (const c of this.squads) {
+      const wild = view.cheering === c.team;
+      const beat = Math.floor((view.frame + c.n * 9) / (wild ? 7 : 22)) % 2;
+      c.img.setFrame(wild ? (beat ? 'pom0' : 'pom1') : c.n % 2 ? (beat ? 'wave0' : 'wave1') : beat ? 'pom1' : 'wave0');
+      c.img.setY(FIELD_TOP + FIELD_H + APRON_H - 4 - (wild && beat ? 2 : 0));
+    }
+    // The referee stands behind the offense and signals what he saw.
+    if (this.referee) {
+      const on = view.los !== null && view.toGain !== null;
+      this.referee.setVisible(on);
+      if (on) {
+        const back = view.toGain! < view.los! ? 1 : -1;
+        const ry = wy(FIELD_WIDTH_YD / 2 - 11);
+        this.referee.setPosition(Math.round(wx(Math.max(2, Math.min(98, view.los! + back * 13)))), ry).setDepth(ry)
+          .setFrame(view.official === 'td' ? 'reftd' : view.official === 'flag' ? 'refflag' : view.official === 'point' ? 'refpoint' : 'ref').setFlipX(back === 1);
+      }
+    }
 
     const b = view.ball;
     this.ball.setVisible(b.visible);

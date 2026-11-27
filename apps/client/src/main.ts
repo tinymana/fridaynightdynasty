@@ -99,6 +99,7 @@ let thrower = -1;
 let armUntil = new Map<unknown, number>();
 let spinUntil = new Map<unknown, number>();
 let cheerTeam: 0 | 1 | null = null;
+let official: 'td' | 'point' | 'flag' | null = null;
 let kick: KickAnim | null = null;
 /** A kick, punt or turnover being run back: the real return, replayed from the game. */
 let viewReturn: { sim: ReturnSim; frame: 0 | 1; then: (() => void) | null; hold: number } | null = null;
@@ -331,7 +332,7 @@ function buildView(): FieldView {
     }
     const [bx, by] = abs(off, b.x / U, b.y / U);
     const z = b.state === 'air' && b.T > 0 ? Math.round(4 * Math.min(16, b.T * 0.3) * (b.t / b.T) * (1 - b.t / b.T)) : 0;
-    return { players, ball: { x: bx, y: by, z, visible: b.state !== 'held' || mode === 'presnap' }, los: marks?.los ?? null, toGain: marks?.toGain ?? null, focusX: bx, frame, down: (game as Game | undefined)?.state.phase === 'scrimmage' ? game.state.down : 1 };
+    return { players, ball: { x: bx, y: by, z, visible: b.state !== 'held' || mode === 'presnap' }, los: marks?.los ?? null, toGain: marks?.toGain ?? null, focusX: bx, frame, down: (game as Game | undefined)?.state.phase === 'scrimmage' ? game.state.down : 1, official: mode === 'post' ? official : null, cheering: mode === 'post' ? cheerTeam : null };
   }
   if (kick) {
     const k = kick;
@@ -860,6 +861,7 @@ function showResult(e: PlayEvent | null): void {
   updateBug();
   // The team that just scored a touchdown throws its arms up.
   cheerTeam = e && (e.flags.touchdown || e.flags.defensiveTouchdown) ? (e.flags.defensiveTouchdown ? other(e.offense) : e.offense) : null;
+  official = !e ? null : e.type === 'penalty' ? 'flag' : cheerTeam !== null ? 'td' : e.flags.firstDown ? 'point' : null;
   // A call sheet left up by a play that never ran (the clock ran out first) comes down.
   if ($('panel').querySelector('[data-act]')) setPanelWaiting('');
   setStaticIfIdle();
