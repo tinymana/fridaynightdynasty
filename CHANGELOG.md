@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.33.0 — 2026-11-27
+
+Close view, tips toggle, league banquet. Client only: no function redeploy.
+
+### Added
+- `FieldScene.setClose`: camera zoom 1.5 with vertical follow (`camY`, `focusY`); `carrierAt` accounts for it. `#zoomBtn`, `fnd.close.v1`.
+- `setTips`, `#tipsToggle`, a tips switch on the sideline Game plan tab.
+- League book: `renderOff` shows the banquet and signing day when the host is a league (`host.callUp`).
+- `tools/parity.ts`. The 30-season test now allows at most 12 titles for one school.
+
 ## 0.32.0 — 2026-11-27
 
 Kicker accuracy, tips, hold to read, online toss choice, own game books. Simulation and online change: redeploy the `fnd` function with the merge.

@@ -247,7 +247,9 @@ export class DynastyScreen {
   private renderOff(d: Dynasty): void {
     const schools = d.league.schools;
     const me = schools[d.user];
-    const STEPS = ['Awards banquet', 'Signing day', 'Coaching carousel', 'Spring practice', 'Fall camp'];
+    // A league with friends holds the banquet and signing day here; jobs, spring practice and the new year are run from the league page.
+    const league = !!this.host.callUp;
+    const STEPS = league ? ['Awards banquet', 'Signing day'] : ['Awards banquet', 'Signing day', 'Coaching carousel', 'Spring practice', 'Fall camp'];
     const step = Math.max(0, Math.min(STEPS.length - 1, this.offStep));
     this.title.textContent = `${seasonYear(d.year)} off-season · ${STEPS[step]}`;
     const h = d.history[d.history.length - 1];
@@ -286,7 +288,7 @@ export class DynastyScreen {
       <div class="off-body">${body}</div>
       <div class="orow center" style="margin-top:14px">
         <button class="seg" id="offBack">${step === 0 ? 'Back to the season' : 'Back'}</button>
-        ${step < STEPS.length - 1 ? `<button class="seg on" id="offNext">Next: ${STEPS[step + 1].toLowerCase()}</button>` : `<button class="seg on" id="dyNext">Start year ${d.year + 1}</button>`}
+        ${step < STEPS.length - 1 ? `<button class="seg on" id="offNext">Next: ${STEPS[step + 1].toLowerCase()}</button>` : league ? '<button class="seg on" id="offDone">Back to the league book</button>' : `<button class="seg on" id="dyNext">Start year ${d.year + 1}</button>`}
       </div>`;
     const q = (id: string): HTMLElement | null => this.root.querySelector(`#${id}`);
     q('offBack')!.addEventListener('click', () => {
@@ -295,6 +297,7 @@ export class DynastyScreen {
       this.render();
     });
     q('offNext')?.addEventListener('click', () => { this.offStep = step + 1; this.render(); });
+    q('offDone')?.addEventListener('click', () => { this.view = 'season'; this.offStep = 0; this.render(); });
     q('dyNext')?.addEventListener('click', () => {
       this.d = nextSeason(d, this.offFocus);
       this.host.save(this.d);
@@ -555,7 +558,7 @@ export class DynastyScreen {
       const h = d.history[d.history.length - 1];
       next = `<div class="dy-next"><div class="big">${h.champion === d.user ? `State champions! ${esc(me.name)} ${esc(me.mascot)} win it all.` : `${esc(schools[h.champion].name)} ${esc(schools[h.champion].mascot)} are ${state.name} champions.`}</div>
         <div>You finished the regular season in place ${h.place} at ${h.record[0]}-${h.record[1]}${h.record[2] ? `-${h.record[2]}` : ''} overall.</div>
-        <div class="orow"><button class="seg on" id="dyOff">Go to the off-season</button></div></div>`;
+        <div class="orow"><button class="seg on" id="dyOff">${this.host.callUp ? 'Awards banquet and signing day' : 'Go to the off-season'}</button></div></div>`;
     } else if (own) {
       const [hm, aw] = own;
       const opp = hm === d.user ? aw : hm;

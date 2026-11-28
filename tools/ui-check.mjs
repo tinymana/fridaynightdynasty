@@ -67,7 +67,7 @@ while ((!seenOff || !seenDef) && n++ < 80 && s.mode !== 'final') {
     await page.click('[data-agg="2"]');
     await page.click('[data-thr="35"]');
     await sleep(50);
-    check('game plan choices are shown as selected', (await page.$$eval('#slBody .seg.on', (els) => els.map((e) => e.textContent))).join('|') === 'Pass heavy|Aggressive|35%');
+    check('game plan choices are shown as selected', (await page.$$eval('#slBody .seg.on', (els) => els.map((e) => e.textContent))).join('|') === 'Pass heavy|Aggressive|35%|On');
     await page.screenshot({ path: `${out}/m2-plan.png` });
     const clockBefore = (await st()).playClock;
     await sleep(1200);

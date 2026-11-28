@@ -2,6 +2,33 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.33.0",
+      "date": "2026-11-27",
+      "title": "A closer view of the field, tips on and off, and the banquet for friends' leagues",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Close view. The field can be shown one and a half times nearer, following the ball up and down as well as along the field, so players are big enough to follow on a phone. It is on by default on a phone and off on a computer; the Close / Wide button under the field switches it."
+        },
+        {
+          "tag": "new",
+          "text": "Coaching tips can be switched on and off: a checkbox on the exhibition page, and On / Off under Game plan on the sideline during any game. Switching them on starts them over."
+        },
+        {
+          "tag": "new",
+          "text": "Friends' leagues get the awards banquet and signing day. When the season ends, the league book has a button for your team awards, the league awards, and which of your seniors are going on to play in college."
+        },
+        {
+          "tag": "note",
+          "text": "Parity checked: with the four-team bracket, the best school in a league wins about seven titles in thirty years, every school wins at least one, and the longest run of titles in a row is three or four. No tuning needed."
+        },
+        {
+          "tag": "improved",
+          "text": "On a phone the Announcer button reads PA so the controls still fit on one line."
+        }
+      ]
+    },
+    {
       "version": "0.32.0",
       "date": "2026-11-27",
       "title": "Kickers with two legs to stand on, first-game tips, and hold a play to read it",
