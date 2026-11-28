@@ -1,7 +1,7 @@
 import { cleanSetup, type GameSetup, type Team, type TeamColors } from '@fnd/core';
 import {
-  LEAGUE_SIZE, REGULAR_WEEKS, STATES, addResult, closeWeek, createDynasty, createLeague, editSchool, gameSeed, gameSetup, nextSeason, recordOf, simulate, standings, matchTeams, weekComplete, weekGames,
-  type Dynasty, type SchoolIdentity, type SeasonRecord, type Standing,
+  LEAGUE_SIZE, STATES, closeWeek, createDynasty, createLeague, editSchool, gameSeed, gameSetup, lastWeek, nextSeason, recordLeagueGame, recordOf, seasonOver, settleSeason, simulateWithBox, standings, matchTeams, weekComplete, weekGames,
+  type BoxScore, type Dynasty, type SchoolIdentity, type SeasonRecord, type Standing,
 } from '@fnd/league';
 import { RoomError, type Coach } from './room';
 
@@ -13,6 +13,22 @@ import { RoomError, type Coach } from './room';
  */
 
 export const LEAGUE_CODE = /^[A-Z]{5}$/;
+
+/** A league saved before these fields existed is brought up to date the first time it is touched. */
+function normal(l: SharedLeague): void {
+  if (!l.dynasty.shared) l.dynasty = { ...l.dynasty, shared: true };
+}
+
+/**
+ * The whole league as a dynasty, for a coach's read-only book: statistics, records, awards, the paper, the news.
+ * `user` is his school, so the pages that have a point of view take his.
+ */
+export function leagueBook(l: SharedLeague, coachId: string): Dynasty {
+  normal(l);
+  const you = l.coaches.findIndex((c) => c?.id === coachId);
+  // A book is of finished weeks: this week's games that are already in wait for the rest (their numbers are already counted).
+  return { ...l.dynasty, results: l.dynasty.results.filter((g) => g.week < l.dynasty.week), user: you >= 0 ? you : 0, callUps: [] };
+}
 
 export interface SharedLeague {
   code: string;
@@ -49,14 +65,15 @@ export function leagueTeams(l: RoomLeague): [Team, Team] {
   const league = createLeague(l.state, l.seed);
   league.schools[l.home] = { ...league.schools[l.home], ...l.identity?.[0], prestige: l.prestige[0] };
   league.schools[l.away] = { ...league.schools[l.away], ...l.identity?.[1], prestige: l.prestige[1] };
-  const d = { league, year: l.year };
+  // The week is part of it: a player who is hurt or ineligible that week does not dress, for a coach's game as for a simulated one.
+  const d = { league, year: l.year, week: l.week };
   return matchTeams(d, l.home, l.away);
 }
 
 export function createShared(code: string, coach: Coach, stateCode: unknown, seed: number, setup: unknown, now: number): SharedLeague {
   if (!STATES.some((s) => s.code === stateCode)) throw new RoomError('bad_request', 'Choose a state.');
   return {
-    code, state: 'lobby', dynasty: { ...createDynasty(stateCode as string, seed, 0, { quarterMinutes: cleanSetup(setup).quarterMinutes }), bracket: false },
+    code, state: 'lobby', dynasty: { ...createDynasty(stateCode as string, seed, 0, { quarterMinutes: cleanSetup(setup).quarterMinutes }), shared: true },
     commissioner: coach, coaches: Array<Coach | null>(LEAGUE_SIZE).fill(null), rooms: {}, createdAt: now, updatedAt: now,
   };
 }
@@ -119,9 +136,10 @@ export function roomLeague(l: SharedLeague, home: number, away: number): { leagu
 }
 
 /** Records a finished room game. A result for a week that has moved on, or a game already in, is ignored. */
-export function recordGame(l: SharedLeague, r: RoomLeague, score: readonly [number, number], now: number): boolean {
+export function recordGame(l: SharedLeague, r: RoomLeague, score: readonly [number, number], now: number, box?: BoxScore): boolean {
+  normal(l);
   if (l.state !== 'season' || r.year !== l.dynasty.year || r.week !== l.dynasty.week || played(l, r.home, r.away)) return false;
-  l.dynasty = addResult(l.dynasty, { week: r.week, home: r.home, away: r.away, score: [score[0], score[1]] });
+  l.dynasty = recordLeagueGame(l.dynasty, { week: r.week, home: r.home, away: r.away, score: [score[0], score[1]] }, box);
   delete l.rooms[key(r.home, r.away)];
   l.updatedAt = now;
   return true;
@@ -132,19 +150,23 @@ export function recordGame(l: SharedLeague, r: RoomLeague, score: readonly [numb
  * Returns the coach who has just won a championship, if this step decided one.
  */
 export function stepLeague(l: SharedLeague, now: number): { champion: Coach | null; changed: boolean } {
-  if (l.state !== 'season' || l.dynasty.week > REGULAR_WEEKS) return { champion: null, changed: false };
+  normal(l);
+  if (l.state !== 'season' || seasonOver(l.dynasty)) return { champion: null, changed: false };
   for (const [h, a] of weekGames(l.dynasty)) {
     if (played(l, h, a)) continue;
     const human = l.coaches[h] !== null || l.coaches[a] !== null;
     // A game with a coach in it waits for him, unless the commissioner has moved the week on.
     if (human && !l.forced) continue;
     if (human && l.rooms[key(h, a)]) delete l.rooms[key(h, a)];
-    l.dynasty = addResult(l.dynasty, simulate(l.dynasty, l.dynasty.week, h, a));
+    const sim = simulateWithBox(l.dynasty, l.dynasty.week, h, a);
+    l.dynasty = recordLeagueGame(l.dynasty, sim.result, sim.box);
     l.updatedAt = now;
     return { champion: null, changed: true };
   }
   if (!weekComplete(l.dynasty)) return { champion: null, changed: false };
-  const wasFinal = l.dynasty.week === REGULAR_WEEKS;
+  const wasFinal = l.dynasty.week === lastWeek(l.dynasty);
+  // The last game of the season settles the record books and the awards.
+  if (wasFinal) l.dynasty = settleSeason(l.dynasty);
   l.dynasty = closeWeek(l.dynasty);
   l.rooms = {};
   l.forced = false;
@@ -160,16 +182,17 @@ export function stepLeague(l: SharedLeague, now: number): { champion: Coach | nu
 
 export function forceWeek(l: SharedLeague, coachId: string, now: number): void {
   if (l.commissioner.id !== coachId) throw new RoomError('not_host', 'Only the commissioner can move the week on.', 403);
-  if (l.state !== 'season' || l.dynasty.week > REGULAR_WEEKS) throw new RoomError('bad_request', 'There is no week in progress.');
+  if (l.state !== 'season' || seasonOver(l.dynasty)) throw new RoomError('bad_request', 'There is no week in progress.');
   l.forced = true;
   l.updatedAt = now;
 }
 
 export function nextSharedSeason(l: SharedLeague, coachId: string, now: number): void {
   if (l.commissioner.id !== coachId) throw new RoomError('not_host', 'Only the commissioner can start the next season.', 403);
-  if (l.state !== 'season' || l.dynasty.week <= REGULAR_WEEKS) throw new RoomError('bad_request', 'The season is not over.');
-  // A league with friends still ends with first against second; the bracket is for solo dynasties for now.
-  l.dynasty = nextSeason({ ...l.dynasty, bracket: false });
+  if (l.state !== 'season' || !seasonOver(l.dynasty)) throw new RoomError('bad_request', 'The season is not over.');
+  // A league that began before brackets finishes its year with first against second and gets a bracket from here on.
+  const { bracket: _was, ...rest } = l.dynasty;
+  l.dynasty = nextSeason(rest);
   l.rooms = {};
   l.forced = false;
   l.updatedAt = now;
@@ -189,6 +212,8 @@ export interface LeagueGameView {
 export interface LeagueView {
   code: string;
   state: SharedLeague['state'];
+  /** This season ends with semifinals and a final. */
+  bracket: boolean;
   stateCode: string;
   seed: number;
   year: number;
@@ -210,15 +235,16 @@ export interface LeagueView {
 }
 
 export function viewLeague(l: SharedLeague, coachId: string): LeagueView {
+  normal(l);
   const d = l.dynasty;
-  const over = d.week > REGULAR_WEEKS;
+  const over = seasonOver(d);
   const you = schoolOf(l, coachId);
   const games: LeagueGameView[] = l.state === 'season' && !over ? weekGames(d).map(([h, a]) => {
     const r = d.results.find((g) => g.week === d.week && g.home === h && g.away === a);
     return { home: h, away: a, score: r ? [r.score[0], r.score[1]] : null, human: [l.coaches[h] !== null, l.coaches[a] !== null], open: !!l.rooms[key(h, a)], weather: gameSetup(d, d.week, h, a).weather };
   }) : [];
   return {
-    code: l.code, state: l.state, stateCode: d.league.state, seed: d.league.seed, year: d.year, week: d.week, over, quarterMinutes: d.setup.quarterMinutes,
+    code: l.code, state: l.state, bracket: !!d.bracket, stateCode: d.league.state, seed: d.league.seed, year: d.year, week: d.week, over, quarterMinutes: d.setup.quarterMinutes,
     schools: d.league.schools.map((s, i) => ({ name: s.name, mascot: s.mascot, abbr: s.abbr, colors: s.colors, prestige: s.prestige, coach: l.coaches[i]?.name ?? null })),
     you, isCommissioner: l.commissioner.id === coachId, commissioner: l.commissioner.name,
     standings: standings(d.results), games,

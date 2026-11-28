@@ -53,6 +53,7 @@ export const online = {
   join: (token: string, pin: string, book: string[], plays: OffPlay[] = [], defenses: DefPlay[] = [], have = 0) => post<{ room: RoomView }>({ action: 'join', token, pin, book, plays, defenses, have }),
   profile: (token: string) => post<{ career: Career | null }>({ action: 'profile', token }),
   hall: () => post<{ hall: Career[] }>({ action: 'hall' }),
+  leagueBook: (token: string, code: string) => post<{ dynasty: unknown }>({ action: 'leagueBook', token, code }),
   // Permanent saves: one per coach, kept on the server.
   saveInfo: (token: string) => post<{ save: SaveMeta | null }>({ action: 'saveInfo', token }),
   saveLoad: (token: string) => post<{ save: SaveMeta | null; data: unknown }>({ action: 'saveLoad', token }),

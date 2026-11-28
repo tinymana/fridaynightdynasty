@@ -535,19 +535,19 @@ export class DynastyScreen {
     }
 
     const upcoming = over ? '' : `<h3>${weekName(d.week)}</h3>${weekGames(d).map(([hm, aw]) => `<div class="dy-game${hm === d.user || aw === d.user ? ' me' : ''}"><span>${esc(schools[aw].name)} at ${esc(schools[hm].name)}</span><span>${WEATHER[gameSetup(d, d.week, hm, aw).weather].name}</span></div>`).join('')}`;
-    const past = d.history.length ? `<h3>Trophy case</h3>${[...d.history].reverse().slice(0, 8).map((h) => `<div class="dy-game${h.champion === d.user ? ' me' : ''}"><span>Year ${h.year}: ${esc(schools[h.champion].name)} beat ${esc(schools[h.runnerUp].name)}</span><span>you ${h.record[0]}-${h.record[1]}${h.record[2] ? `-${h.record[2]}` : ''}</span></div>`).join('')}` : '';
+    const past = d.history.length ? `<h3>Trophy case</h3>${[...d.history].reverse().slice(0, 8).map((h) => `<div class="dy-game${h.champion === d.user ? ' me' : ''}"><span>Year ${h.year}: ${esc(schools[h.champion].name)} beat ${esc(schools[h.runnerUp].name)}</span><span>${d.shared ? '' : `you ${h.record[0]}-${h.record[1]}${h.record[2] ? `-${h.record[2]}` : ''}`}</span></div>`).join('')}` : '';
 
-    this.root.innerHTML = `<p>${dot(d.user)}Coach of the ${esc(me.name)} ${esc(me.mascot)}${c.seasons ? ` · career ${c.wins}-${c.losses}${c.ties ? `-${c.ties}` : ''} · ${c.championships} ${c.championships === 1 ? 'championship' : 'championships'}` : ''}</p>
+    this.root.innerHTML = `<p>${dot(d.user)}Coach of the ${esc(me.name)} ${esc(me.mascot)}${c.seasons && !d.shared ? ` · career ${c.wins}-${c.losses}${c.ties ? `-${c.ties}` : ''} · ${c.championships} ${c.championships === 1 ? 'championship' : 'championships'}` : ''}</p>
       ${next}
       ${over && d.awards?.length && d.awards[d.awards.length - 1].year === d.year ? `<h3>${seasonYear(d.year)} awards</h3>${this.awardsHtml(d, d.awards[d.awards.length - 1], false)}` : ''}
       <div class="dy-cols"><div><h3>Standings</h3><table><tr><th>#</th><th>School</th><th>Record</th><th>PF</th><th>PA</th></tr>${rows}</table></div>
       <div>${upcoming}${last.length ? `<h3>${weekName(lastWeek)} results</h3>${last.map(line).join('')}` : ''}${past}</div></div>
-      ${this.editing >= 0 ? schoolFormHtml(schools[this.editing]) : `<div class="orow center" style="margin-top:12px"><label class="pick">Rename a school <select id="dyEdit"><option value="">Choose\u2026</option>${schools.map((s, i) => `<option value="${i}">${esc(s.name)} ${esc(s.mascot)}</option>`).join('')}</select></label></div>`}
+      ${this.editing >= 0 ? schoolFormHtml(schools[this.editing]) : `<div class="orow center dy-rename" style="margin-top:12px"><label class="pick">Rename a school <select id="dyEdit"><option value="">Choose\u2026</option>${schools.map((s, i) => `<option value="${i}">${esc(s.name)} ${esc(s.mascot)}</option>`).join('')}</select></label></div>`}
       <p class="dy-rivalline">Your rival: ${dot(rival)}${esc(schools[rival].name)} ${esc(schools[rival].mascot)}. You play for ${esc(myRivalry.trophy)} in week ${RIVALRY_WEEK + 1}; ${myRivalry.holder === d.user ? 'you hold it' : 'they hold it'} and ${seriesText}.</p>
       ${bracketHtml}
       ${this.programNewsHtml(d)}
       ${this.newsHtml(d)}
-      <div class="orow center" style="margin-top:14px">${d.week > 0 ? '<button class="seg on" id="dyPaper">Read the paper</button>' : ''}<button class="seg on" id="dyProgram">Your program: varsity and JV</button><button class="seg on" id="dyStats">Statistics</button><button class="seg on" id="dyRecords">Record book</button><button class="seg on" id="dyAwards">Awards</button><button class="seg" id="dyBack">Main menu</button><button class="seg" id="dyQuit">Abandon this dynasty</button></div>
+      <div class="orow center" style="margin-top:14px">${d.week > 0 ? '<button class="seg on" id="dyPaper">Read the paper</button>' : ''}<button class="seg on" id="dyProgram">Your program: varsity and JV</button><button class="seg on" id="dyStats">Statistics</button><button class="seg on" id="dyRecords">Record book</button><button class="seg on" id="dyAwards">Awards</button><button class="seg" id="dyBack">${d.shared ? 'Back to the league' : 'Main menu'}</button><button class="seg" id="dyQuit">Abandon this dynasty</button></div>
       <div id="dyMsg" class="sl-note" role="status" aria-live="polite" style="text-align:center"></div>`;
     const q = (id: string): HTMLElement | null => this.root.querySelector(`#${id}`);
     q('dyBack')!.addEventListener('click', () => this.host.back());

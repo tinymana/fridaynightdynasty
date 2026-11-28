@@ -4,6 +4,7 @@ import {
 } from '@fnd/core';
 import { DEFAULT_PLAN } from '@fnd/football-ai';
 import { AutoCoach, Game, gameHash, replayGame, type LoggedDecision } from '@fnd/match-sim';
+import { boxScore, type BoxScore } from '@fnd/league';
 import { leagueTeams, type RoomLeague } from './shared';
 
 /**
@@ -80,6 +81,8 @@ export interface GameResult {
   score: [number, number];
   /** The league game this was, if it was one. */
   league?: RoomLeague;
+  /** A league game's box score, for the league's statistics and record books. */
+  box?: BoxScore;
 }
 
 /** Hands over the result of a finished game exactly once. */
@@ -89,7 +92,7 @@ export function takeResult(room: Room): GameResult | null {
   const coaches: [string, string] = ['', ''];
   coaches[room.hostTeam] = room.host.id;
   coaches[room.hostTeam === 0 ? 1 : 0] = room.guest.id;
-  return room.league ? { coaches, score: [room.score[0], room.score[1]], league: room.league } : { coaches, score: [room.score[0], room.score[1]] };
+  return room.league ? { coaches, score: [room.score[0], room.score[1]], league: room.league, box: boxScore(buildGame(room).events) } : { coaches, score: [room.score[0], room.score[1]] };
 }
 
 export interface VoiceSignal {
