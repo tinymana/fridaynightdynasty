@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { GROUPS, ROSTER_SIZE, overall } from '@fnd/core';
-import { MAX_CALL_UPS, REGULAR_WEEKS, createDynasty, incomingOf, jvTeamFor, loadDynasty, nextSeason, playWeek, programOf, setCallUp, simulateJv, teamFor, type Dynasty } from '@fnd/league';
+import { MAX_CALL_UPS, REGULAR_WEEKS, seasonOver, createDynasty, incomingOf, jvTeamFor, loadDynasty, nextSeason, playWeek, programOf, setCallUp, simulateJv, teamFor, type Dynasty } from '@fnd/league';
 
 const fresh = (): Dynasty => createDynasty('OH', 31, 2);
 function season(d: Dynasty): Dynasty {
   let x = d;
-  while (x.week <= REGULAR_WEEKS) x = playWeek(x);
+  while (!seasonOver(x)) x = playWeek(x);
   return x;
 }
 

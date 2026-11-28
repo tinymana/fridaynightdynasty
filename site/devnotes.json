@@ -2,6 +2,33 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.26.0",
+      "date": "2026-11-27",
+      "title": "Playoffs, and fewer injuries",
+      "items": [
+        {
+          "tag": "new",
+          "text": "A four-team playoff. The top four in the standings play on: first hosts fourth and second hosts third in the semifinals, and the winners meet for the championship at the home of the higher finisher."
+        },
+        {
+          "tag": "new",
+          "text": "The dynasty page shows the bracket, and a dashed line under fourth place in the standings marks who is in."
+        },
+        {
+          "tag": "new",
+          "text": "Playoff wins and losses count in your record. The paper prints a semifinals edition before the championship edition."
+        },
+        {
+          "tag": "tune",
+          "text": "Injuries are about half as common: around two a program a season instead of four. The serious ones are rarer still: about one injury in seventeen ends a season, and about one in four hundred ends a career."
+        },
+        {
+          "tag": "note",
+          "text": "A dynasty you already have finishes its current season the old way, first against second, and gets the bracket from its next season. Nothing in an existing save is changed. Leagues with friends still end with first against second for now."
+        }
+      ]
+    },
+    {
       "version": "0.25.1",
       "date": "2026-11-27",
       "title": "A phone check",

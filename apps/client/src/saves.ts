@@ -3,7 +3,7 @@
  * and for the file he can download. Whatever is read back is checked again piece by piece before it is used.
  */
 import { DEFAULT_BOOK, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, validateBook, validateDefPlay, validateOffPlay, type DefPlay, type OffPlay } from '@fnd/core';
-import { REGULAR_WEEKS, loadDynasty, type Dynasty } from '@fnd/league';
+import { REGULAR_WEEKS, lastWeek, loadDynasty, seasonOver, type Dynasty } from '@fnd/league';
 
 export interface SaveFile {
   fnd: 'save';
@@ -32,7 +32,7 @@ export function saveLabel(c: SaveContents): string {
   const d = c.dynasty;
   if (!d) return designs ? `No dynasty; ${plural(designs, 'design', 'designs')} in the playbook` : 'Nothing saved yet';
   const s = d.league.schools[d.user];
-  const when = d.week > REGULAR_WEEKS ? 'season over' : d.week === REGULAR_WEEKS ? 'championship week' : `week ${d.week + 1}`;
+  const when = seasonOver(d) ? 'season over' : d.week === lastWeek(d) ? 'championship week' : d.week === REGULAR_WEEKS ? 'semifinal week' : `week ${d.week + 1}`;
   return `${s.name} ${s.mascot}, year ${d.year}, ${when}${designs ? `; ${plural(designs, 'design', 'designs')}` : ''}`;
 }
 

@@ -1,5 +1,5 @@
 import { Rng, hashString, overall, type Group } from '@fnd/core';
-import { LEAGUE_SIZE, REGULAR_WEEKS, career, programOf, standings, statsOf, type Dynasty } from './index';
+import { LEAGUE_SIZE, seasonOver, career, programOf, standings, statsOf, type Dynasty } from './index';
 import { voteAwards, type Candidate, type Honoree } from './awards';
 import { programNews, type ProgramNews } from './program';
 
@@ -73,7 +73,7 @@ export interface JobOffer {
  * won: a winning season, or a title. At most two call. Nobody is ever fired; the coach can stay as long as he likes.
  */
 export function jobOffers(d: Dynasty): JobOffer[] {
-  if (d.week <= REGULAR_WEEKS) return [];
+  if (!seasonOver(d)) return [];
   const h = d.history[d.history.length - 1];
   if (!h) return [];
   const [w, l] = h.record;

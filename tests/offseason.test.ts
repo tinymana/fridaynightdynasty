@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { overall } from '@fnd/core';
 import {
-  CALL_UP_COST_MAX, FOCUSES, REGULAR_WEEKS, campNews, career, createDynasty, jobOffers, loadDynasty, nextSeason, playWeek, programOf, setCallUp, signings, takeJob, teamFor, teamHonors,
+  CALL_UP_COST_MAX, FINAL_WEEK, FOCUSES, seasonOver, campNews, career, createDynasty, jobOffers, loadDynasty, nextSeason, playWeek, programOf, setCallUp, signings, takeJob, teamFor, teamHonors,
   type Dynasty,
 } from '@fnd/league';
 
 /** The off-season: banquet, signing day, the coaching carousel, spring practice, the cost of a call-up, fall camp. */
 
 const season = (d: Dynasty): Dynasty => {
-  while (d.week <= REGULAR_WEEKS) d = playWeek(d);
+  while (!seasonOver(d)) d = playWeek(d);
   return d;
 };
 
@@ -17,7 +17,7 @@ describe('the off-season', () => {
     const d = { ...createDynasty('TX', 51, 0, { quarterMinutes: 4 }) };
     let signed = 0, top = 0, schoolYears = 0;
     for (let year = 1; year <= 12; year++) for (let school = 0; school < 8; school++) {
-      const now = { ...d, year, week: REGULAR_WEEKS + 1 };
+      const now = { ...d, year, week: FINAL_WEEK + 1 };
       const list = signings(now, school);
       schoolYears++;
       signed += list.length;
@@ -41,7 +41,7 @@ describe('the off-season', () => {
 
   it('spring practice lifts the ratings it works on for returning players, and only those', () => {
     let d = createDynasty('OH', 14, 3, { quarterMinutes: 4 });
-    d = { ...d, week: REGULAR_WEEKS + 1, history: [{ year: 1, champion: 0, runnerUp: 1, record: [4, 4, 0], place: 4 }] };
+    d = { ...d, week: FINAL_WEEK + 1, history: [{ year: 1, champion: 0, runnerUp: 1, record: [4, 4, 0], place: 4 }] };
     const plain = nextSeason(d);
     for (const f of FOCUSES) {
       const worked = nextSeason(d, f.id);
@@ -67,7 +67,7 @@ describe('the off-season', () => {
     const kid = programOf(d, 3).filter((p) => p.squad === 'jv' && p.year === 1 && !p.out && p.pos === 'WR')[0];
     d = setCallUp(d, kid.id, true);
     expect(programOf(d, 3).find((p) => p.id === kid.id)!.calledUp).toBe(true);
-    d = { ...d, week: REGULAR_WEEKS + 1, history: [{ year: 1, champion: 0, runnerUp: 1, record: [4, 4, 0], place: 4 }] };
+    d = { ...d, week: FINAL_WEEK + 1, history: [{ year: 1, champion: 0, runnerUp: 1, record: [4, 4, 0], place: 4 }] };
     const without = nextSeason({ ...d, callUps: [] });
     const withCall = nextSeason(d);
     expect(withCall.dev).toEqual({ [kid.id]: -1 });
@@ -79,7 +79,7 @@ describe('the off-season', () => {
     // Year after year it adds up, but only so far.
     let again = withCall;
     for (let y = 0; y < 3; y++) {
-      again = { ...again, callUps: [kid.id], week: REGULAR_WEEKS + 1, history: [...again.history, { year: again.year, champion: 0, runnerUp: 1, record: [4, 4, 0], place: 4 }] };
+      again = { ...again, callUps: [kid.id], week: FINAL_WEEK + 1, history: [...again.history, { year: again.year, champion: 0, runnerUp: 1, record: [4, 4, 0], place: 4 }] };
       again = nextSeason(again);
     }
     expect(again.dev?.[kid.id] ?? 0).toBeGreaterThanOrEqual(-CALL_UP_COST_MAX);

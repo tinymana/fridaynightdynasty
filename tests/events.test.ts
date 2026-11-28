@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { GROUPS } from '@fnd/core';
-import { OUT_FOR_GOOD, OUT_FOR_SEASON, REGULAR_WEEKS, createDynasty, incidentsOf, jvTeamFor, leagueNews, nextSeason, playWeek, programOf, teamFor, type Dynasty } from '@fnd/league';
+import { OUT_FOR_GOOD, OUT_FOR_SEASON, REGULAR_WEEKS, seasonOver, createDynasty, incidentsOf, jvTeamFor, leagueNews, nextSeason, playWeek, programOf, teamFor, type Dynasty } from '@fnd/league';
 
 /** Injuries, ineligibility, suspensions, players who leave, walk-ons, transfers and phenoms. Nothing is stored: it all comes from the league seed. */
 
@@ -16,9 +16,9 @@ describe('incidents', () => {
     expect(JSON.stringify(leagueNews(at(d, 4, 5)))).toBe(JSON.stringify(leagueNews(at(createDynasty('OH', 77, 0), 4, 5))));
   });
 
-  it('come at a believable rate: a few injuries a school a season, most of them short', () => {
+  it('come at a believable rate: about two injuries a school a season, most of them short', () => {
     let injuries = 0, short = 0, season = 0, career = 0, grades = 0, suspensions = 0, moved = 0, schoolSeasons = 0;
-    for (const id of ids) for (let y = 1; y <= 60; y++) {
+    for (const id of ids) for (let y = 1; y <= 400; y++) {
       schoolSeasons++;
       for (const i of incidentsOf(77, id, y)) {
         if (i.kind === 'injury') {
@@ -32,14 +32,15 @@ describe('incidents', () => {
       }
     }
     const per = injuries / schoolSeasons;
-    expect(per).toBeGreaterThan(3);
-    expect(per).toBeLessThan(6);
-    expect(short / injuries).toBeGreaterThan(0.6);
-    expect(season / injuries).toBeGreaterThan(0.08);
-    expect(season / injuries).toBeLessThan(0.2);
+    expect(per).toBeGreaterThan(1.6);
+    expect(per).toBeLessThan(2.4);
+    expect(short / injuries).toBeGreaterThan(0.75);
+    expect(season / injuries).toBeGreaterThan(0.03);
+    expect(season / injuries).toBeLessThan(0.09);
     // Career-ending injuries are very rare: across eight schools, fewer than one a season, but they do happen.
     expect(career).toBeGreaterThan(0);
-    expect(career / schoolSeasons).toBeLessThan(0.06);
+    // About one in four hundred injuries: a given school sees one every couple of hundred seasons.
+    expect(career / schoolSeasons).toBeLessThan(0.012);
     expect(grades / schoolSeasons).toBeGreaterThan(0.3);
     expect(suspensions / schoolSeasons).toBeGreaterThan(0.1);
     expect(moved / schoolSeasons).toBeLessThan(0.2);
@@ -155,7 +156,7 @@ describe('a season with injuries', () => {
   it('plays through, keeps every name on its statistics, and carries on into the next year', { timeout: 240_000 }, () => {
     let d = createDynasty('GA', 31, 1, { quarterMinutes: 4 });
     for (let y = 0; y < 2; y++) {
-      while (d.week <= REGULAR_WEEKS) d = playWeek(d);
+      while (!seasonOver(d)) d = playWeek(d);
       const news = leagueNews(d);
       expect(news.some((n) => n.kind === 'injury')).toBe(true);
       // Newest first, and nothing from a week that has not been played.

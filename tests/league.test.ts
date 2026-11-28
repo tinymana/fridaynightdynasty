@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  LEAGUE_SIZE, PRESTIGE_MAX, PRESTIGE_MIN, REGULAR_WEEKS, STATES, career, createDynasty, createLeague, editSchool, loadDynasty, nextSeason, playWeek, schedule, standings, teamFor, userGame, weekGames, winnerOf,
+  FINAL_WEEK, LEAGUE_SIZE, PRESTIGE_MAX, PRESTIGE_MIN, REGULAR_WEEKS, seasonOver, STATES, career, createDynasty, createLeague, editSchool, loadDynasty, nextSeason, playWeek, schedule, standings, teamFor, userGame, weekGames, winnerOf,
   type Dynasty,
 } from '@fnd/league';
 
@@ -59,7 +59,7 @@ describe('league generator', () => {
 
 describe('a season', () => {
   const fast = { quarterMinutes: 4 as const };
-  it('plays seven weeks and a championship between first and second', () => {
+  it('plays seven weeks, semifinals for the top four and a final', () => {
     let d = createDynasty('GA', 11, 2, fast);
     for (let w = 0; w < REGULAR_WEEKS; w++) {
       expect(weekGames(d).length).toBe(4);
@@ -70,13 +70,27 @@ describe('a season', () => {
     expect(table.reduce((n, r) => n + r.wins + r.losses + r.ties, 0)).toBe(REGULAR_WEEKS * LEAGUE_SIZE);
     expect(table.reduce((n, r) => n + r.wins, 0)).toBe(table.reduce((n, r) => n + r.losses, 0));
     for (let i = 1; i < table.length; i++) expect(table[i - 1].wins).toBeGreaterThanOrEqual(table[i].wins);
-    expect(weekGames(d)).toEqual([[table[0].school, table[1].school]]);
+    // Semifinals: first hosts fourth, second hosts third.
+    expect(weekGames(d)).toEqual([[table[0].school, table[3].school], [table[1].school, table[2].school]]);
     d = playWeek(d);
-    expect(d.week).toBe(REGULAR_WEEKS + 1);
+    expect(d.week).toBe(FINAL_WEEK);
+    expect(d.history.length).toBe(0);
+    expect(seasonOver(d)).toBe(false);
+    const semis = d.results.filter((g) => g.week === REGULAR_WEEKS);
+    expect(semis.length).toBe(2);
+    // The final: the two winners, at the home of the higher finisher. The regular-season table does not move.
+    expect(standings(d.results)).toEqual(table);
+    const through = semis.map(winnerOf).sort((a, b) => table.findIndex((r) => r.school === a) - table.findIndex((r) => r.school === b));
+    expect(weekGames(d)).toEqual([[through[0], through[1]]]);
+    d = playWeek(d);
+    expect(d.week).toBe(FINAL_WEEK + 1);
+    expect(seasonOver(d)).toBe(true);
+    expect(weekGames(d)).toEqual([]);
+    expect(() => playWeek(d)).toThrow();
     expect(d.history.length).toBe(1);
     const final = d.results[d.results.length - 1];
     expect(d.history[0].champion).toBe(winnerOf(final));
-    expect([table[0].school, table[1].school]).toContain(d.history[0].champion);
+    expect(table.slice(0, 4).map((r) => r.school)).toContain(d.history[0].champion);
     expect(() => playWeek(d)).toThrow();
   });
   it('uses the coach\'s own result for his game and refuses a result for the wrong game', () => {
@@ -118,8 +132,8 @@ describe('30 seasons of one league', () => {
     let ties = 0, games = 0, points = 0;
     for (let year = 1; year <= 30; year++) {
       expect(d.year).toBe(year);
-      while (d.week <= REGULAR_WEEKS) d = playWeek(d);
-      expect(d.results.length).toBe(REGULAR_WEEKS * 4 + 1);
+      while (!seasonOver(d)) d = playWeek(d);
+      expect(d.results.length).toBe(REGULAR_WEEKS * 4 + 3);
       for (const r of standings(d.results)) wins[r.school] += r.wins;
       for (const g of d.results) {
         games++;

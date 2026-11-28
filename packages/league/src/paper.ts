@@ -1,6 +1,6 @@
 import { hashString, type Team } from '@fnd/core';
 import {
-  REGULAR_WEEKS, RIVALRY_WEEK, isRivalryGame, leagueNews, recordOf, replayResult, rivalries, standings, stateByCode, userGame, weekGames,
+  REGULAR_WEEKS, RIVALRY_WEEK, isRivalryGame, lastWeek, leagueNews, recordOf, replayResult, rivalries, standings, stateByCode, userGame, weekGames,
   type Dynasty, type GameResult,
 } from './index';
 import { newsText, seasonYear } from './records';
@@ -45,7 +45,7 @@ function headline(d: Dynasty, g: GameResult): string {
   const l = w === g.home ? g.away : g.home;
   const hi = Math.max(h, a);
   const lo = Math.min(h, a);
-  if (g.week === REGULAR_WEEKS) return `${s[w].name} ${s[w].mascot} are ${stateByCode(d.league.state).name} champions`;
+  if (g.week === lastWeek(d)) return `${s[w].name} ${s[w].mascot} are ${stateByCode(d.league.state).name} champions`;
   const verb = lo === 0 && hi >= 14 ? 'shuts out' : hi - lo >= 28 ? pickBy(ROUT, key) : hi - lo >= 14 ? pickBy(SOLID, key) : hi - lo <= 3 ? pickBy(TIGHT, key) : pickBy(CLOSE, key);
   return `${s[w].name} ${verb} ${s[l].name}, ${hi}-${lo}`;
 }
@@ -87,7 +87,8 @@ export function weeklyPaper(d: Dynasty, stars = true): Paper | null {
   if (!games.length) return null;
   const table = standings(d.results);
   const place = (school: number): string => ORDINAL[table.findIndex((r) => r.school === school)] ?? 'last';
-  const title = week === REGULAR_WEEKS;
+  const title = week === lastWeek(d);
+  const semis = !!d.bracket && week === REGULAR_WEEKS;
   const mine = games.find((g) => g.home === d.user || g.away === d.user) ?? null;
   const rivalry = (g: GameResult): string | null => {
     if (!isRivalryGame(g.week, g.home, g.away)) return null;
@@ -137,13 +138,15 @@ export function weeklyPaper(d: Dynasty, stars = true): Paper | null {
         next += ` It is rivalry week: ${r.trophy} is on the line, and ${s[r.holder].name} has it.`;
       }
     }
-  } else if (d.week === REGULAR_WEEKS) {
+  } else if (d.week === lastWeek(d)) {
     const [h, a] = weekGames(d)[0] as [number, number];
     next = `Next week: ${s[a].name} at ${s[h].name} for the ${state.name} championship.`;
+  } else if (d.bracket && d.week === REGULAR_WEEKS) {
+    next = `Next week, the semifinals: ${weekGames(d).map(([h, a]) => `${s[a].name} at ${s[h].name}`).join(', and ')}.`;
   }
   return {
     name: `The ${state.name} Prep Ledger`,
-    edition: `${title ? 'Championship edition' : `Week ${week + 1}`}, ${seasonYear(d.year)}`,
+    edition: `${title ? 'Championship edition' : semis ? 'Semifinals' : `Week ${week + 1}`}, ${seasonYear(d.year)}`,
     lead, stories, notes: notes.slice(0, 8),
     table: table.map((r, i) => `${i + 1}. ${s[r.school].name} ${r.wins}-${r.losses}${r.ties ? `-${r.ties}` : ''}`),
     next,

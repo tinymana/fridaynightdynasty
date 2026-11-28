@@ -56,7 +56,7 @@ export function leagueTeams(l: RoomLeague): [Team, Team] {
 export function createShared(code: string, coach: Coach, stateCode: unknown, seed: number, setup: unknown, now: number): SharedLeague {
   if (!STATES.some((s) => s.code === stateCode)) throw new RoomError('bad_request', 'Choose a state.');
   return {
-    code, state: 'lobby', dynasty: createDynasty(stateCode as string, seed, 0, { quarterMinutes: cleanSetup(setup).quarterMinutes }),
+    code, state: 'lobby', dynasty: { ...createDynasty(stateCode as string, seed, 0, { quarterMinutes: cleanSetup(setup).quarterMinutes }), bracket: false },
     commissioner: coach, coaches: Array<Coach | null>(LEAGUE_SIZE).fill(null), rooms: {}, createdAt: now, updatedAt: now,
   };
 }
@@ -168,7 +168,8 @@ export function forceWeek(l: SharedLeague, coachId: string, now: number): void {
 export function nextSharedSeason(l: SharedLeague, coachId: string, now: number): void {
   if (l.commissioner.id !== coachId) throw new RoomError('not_host', 'Only the commissioner can start the next season.', 403);
   if (l.state !== 'season' || l.dynasty.week <= REGULAR_WEEKS) throw new RoomError('bad_request', 'The season is not over.');
-  l.dynasty = nextSeason(l.dynasty);
+  // A league with friends still ends with first against second; the bracket is for solo dynasties for now.
+  l.dynasty = nextSeason({ ...l.dynasty, bracket: false });
   l.rooms = {};
   l.forced = false;
   l.updatedAt = now;
