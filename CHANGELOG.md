@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.28.0 — 2026-11-27
+
+Each coach's own program in a shared league. Server change: redeploy the `fnd` function with the merge.
+
+### Added
+- `Dynasty.plans` (shared leagues): per school, `SchoolPlan { focus, callUps, dev }`. `tuneOf` and `callUpsOf` read
+  it; `setPlanCallUp`; `nextSeason(d, focus, focuses)` carries every plan forward with the same call-up cost.
+- `RoomLeague.plans` so a game room, both browsers and the server build the same two rosters.
+- `setLeagueCallUp`, `setLeagueFocus`, `SharedLeague.nextFocus`, `LeagueView.plan`; API actions `leagueCallUp`
+  (answers with the league book) and `leagueFocus`.
+- Client: call-up buttons work in the league book (`DynastyHost.callUp`); a spring practice picker on the league
+  page once the season is over.
+
 ## 0.27.0 — 2026-11-27
 
 Leagues with friends keep what a solo dynasty keeps. Server change: redeploy the `fnd` function with the merge.

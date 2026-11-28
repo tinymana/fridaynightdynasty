@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DefDecision, OffDecision } from '@fnd/core';
-import { REGULAR_WEEKS, leagueNews, loadDynasty, rivalries, weeklyPaper, type Dynasty } from '@fnd/league';
+import { REGULAR_WEEKS, leagueNews, loadDynasty, programOf, rivalries, weeklyPaper, type Dynasty } from '@fnd/league';
 import { gameHash, replayGame } from '@fnd/match-sim';
 import { MemoryStore, createApi, leagueTeams, type Career, type LeagueView, type RoomView } from '@fnd/online';
 
@@ -274,6 +274,78 @@ describe('a whole shared season', () => {
     const y2 = (await w.call({ action: 'leagueNext', token: a, code })).league!;
     expect(y2.bracket).toBe(true);
     expect(y2.year).toBe(2);
+  });
+});
+
+describe('each coach runs his own program', () => {
+  type BookReply = { ok: boolean; error?: { code: string; message: string }; dynasty?: Dynasty };
+  const bookOf = async (w: World, token: string, code: string): Promise<Dynasty> => loadDynasty(JSON.parse(JSON.stringify(((await w.call({ action: 'leagueBook', token, code })) as unknown as BookReply).dynasty)))!;
+
+  it('a coach calls a player up for his own school only, within the limit, and the game he plays uses it', async () => {
+    const { w, a, b, c, code } = await league();
+    await w.call({ action: 'leagueStart', token: a, code });
+    const before = await bookOf(w, b, code);
+    expect(before.user).toBe(7);
+    const jv = programOf(before, 7).filter((p) => p.squad === 'jv' && !p.out);
+    const kid = jv.find((p) => p.pos === 'WR')!;
+    const r = (await w.call({ action: 'leagueCallUp', token: b, code, player: kid.id, up: true })) as unknown as BookReply;
+    expect(r.ok).toBe(true);
+    const mine = loadDynasty(JSON.parse(JSON.stringify(r.dynasty)))!;
+    expect(programOf(mine, 7).find((p) => p.id === kid.id)!.calledUp).toBe(true);
+    expect(mine.callUps).toEqual([kid.id]);
+    expect((await poll(w, b, code)).plan.callUps).toBe(1);
+    // Nobody else's program moves, and another coach cannot call up my player.
+    expect((await poll(w, c, code)).plan.callUps).toBe(0);
+    const theirs = await bookOf(w, c, code);
+    expect(programOf(theirs, 1).some((p) => p.calledUp)).toBe(false);
+    await w.call({ action: 'leagueCallUp', token: c, code, player: kid.id, up: true });
+    expect((await poll(w, c, code)).plan.callUps).toBe(0);
+    // The game room carries the plan, so both browsers and the server build the same roster.
+    const room = (await w.call({ action: 'leaguePlay', token: b, code })).room!;
+    const side = room.league!.home === 7 ? 0 : 1;
+    expect(room.league!.plans![side]!.callUps).toEqual([kid.id]);
+    expect(leagueTeams(room.league!)[side].roster.some((p) => p.id === kid.id)).toBe(true);
+    // Six at most, and he can be sent back down.
+    for (const p of jv.filter((x) => x.id !== kid.id).slice(0, 12)) await w.call({ action: 'leagueCallUp', token: b, code, player: p.id, up: true });
+    expect((await poll(w, b, code)).plan.callUps).toBeLessThanOrEqual(6);
+    const down = (await w.call({ action: 'leagueCallUp', token: b, code, player: kid.id, up: false })) as unknown as BookReply;
+    expect(down.dynasty!.plans![7]!.callUps).not.toContain(kid.id);
+    // Someone who is not in the league, or not signed in, changes nothing.
+    const d = await w.enter('COACH D');
+    expect((await w.call({ action: 'leagueCallUp', token: d, code, player: kid.id, up: true })).ok).toBe(false);
+    expect((await w.call({ action: 'leagueCallUp', token: 'nope', code, player: kid.id, up: true })).error!.code).toBe('signed_out');
+  });
+
+  it('spring practice is chosen after the season, by each coach for his own school, and a call-up still costs a point', { timeout: 300_000 }, async () => {
+    const { w, a, b, c, code } = await league();
+    await w.call({ action: 'leagueStart', token: a, code });
+    expect((await w.call({ action: 'leagueFocus', token: b, code, focus: 'speed' })).ok).toBe(false);
+    const start = await bookOf(w, b, code);
+    // A freshman a long way from earning a place: he will still need the call when the season ends.
+    const kid = programOf(start, 7).filter((p) => p.squad === 'jv' && p.year === 1 && !p.out && !p.phenom).sort((x, y) => x.ceiling - y.ceiling)[0];
+    await w.call({ action: 'leagueCallUp', token: b, code, player: kid.id, up: true });
+    let v = await poll(w, a, code);
+    for (let n = 0; n <= REGULAR_WEEKS + 1 && !v.over; n++) {
+      await w.call({ action: 'leagueForce', token: a, code });
+      v = await poll(w, a, code, 7);
+    }
+    expect(v.over).toBe(true);
+    expect((await w.call({ action: 'leagueCallUp', token: b, code, player: kid.id, up: false })).ok).toBe(false);
+    expect((await w.call({ action: 'leagueFocus', token: b, code, focus: 'nonsense' })).ok).toBe(false);
+    expect((await w.call({ action: 'leagueFocus', token: b, code, focus: 'speed' })).league!.plan.next).toBe('speed');
+    expect((await w.call({ action: 'leagueFocus', token: b, code, focus: 'passing' })).league!.plan.next).toBe('passing');
+    expect((await w.call({ action: 'leagueFocus', token: c, code, focus: 'strength' })).league!.plan.next).toBe('strength');
+    expect((await poll(w, a, code)).plan.next).toBeNull();
+    await w.call({ action: 'leagueNext', token: a, code });
+    expect((await poll(w, b, code)).plan).toMatchObject({ focus: 'passing', next: null });
+    expect((await poll(w, c, code)).plan.focus).toBe('strength');
+    expect((await poll(w, a, code)).plan.focus).toBeNull();
+    const y2 = await bookOf(w, b, code);
+    expect(y2.year).toBe(2);
+    expect(y2.plans![7]!.focus).toBe('passing');
+    expect(y2.plans![1]!.focus).toBe('strength');
+    // The freshman who sat on the varsity bench all year is a point short for good.
+    expect(y2.plans![7]!.dev).toEqual({ [kid.id]: -1 });
   });
 });
 

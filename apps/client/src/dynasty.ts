@@ -32,6 +32,8 @@ export interface DynastyHost {
   quarterMinutes(): GameSetup['quarterMinutes'];
   play(g: DynastyGame): void;
   back(): void;
+  /** A league with friends: call-ups are made on the server. Resolves when the book has been refreshed; rejects with the reason if refused. */
+  callUp?(playerId: string, up: boolean): Promise<void>;
 }
 
 const css = (n: number): string => `#${n.toString(16).padStart(6, '0')}`;
@@ -462,13 +464,19 @@ export class DynastyScreen {
         <table>${head}${[...jv].sort(order).map((p) => row(p, p.out ? '' : `<button class="seg mini" data-up="${p.id}"${full ? ' disabled' : ''}>Call up</button>`)).join('')}</table></div></div>
       <div id="dyMsg" class="sl-note" role="status" aria-live="polite" style="text-align:center"></div>`;
     (this.root.querySelector('#pgBack') as HTMLElement).addEventListener('click', () => { this.view = 'season'; this.render(); });
+    const say = (e: unknown): void => { (this.root.querySelector('#dyMsg') as HTMLElement).textContent = e instanceof Error ? e.message : String(e); };
     const move = (id: string, up: boolean): void => {
+      if (this.host.callUp) {
+        // The server makes the change and sends the book back.
+        this.host.callUp(id, up).then(() => { this.d = loadDynasty(this.host.load()); this.render(); }, say);
+        return;
+      }
       try {
         this.d = setCallUp(d, id, up);
         this.host.save(this.d);
         this.render();
       } catch (e) {
-        (this.root.querySelector('#dyMsg') as HTMLElement).textContent = e instanceof Error ? e.message : String(e);
+        say(e);
       }
     };
     this.root.querySelectorAll<HTMLElement>('[data-up]').forEach((el) => el.addEventListener('click', () => move(el.dataset.up!, true)));

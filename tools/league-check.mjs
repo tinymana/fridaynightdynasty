@@ -115,10 +115,14 @@ try {
   await sleep(200);
   const hidden = async (sel) => a.$eval(sel, (e) => getComputedStyle(e).display === 'none').catch(() => true);
   check('the league book opens on the season with the bracket rule and team news', (await text(a, '#dyBody')).includes('top four') && (await a.$('#dyStats')) !== null);
-  check('nothing in it can change the league', (await hidden('#dySim')) && (await hidden('#dyPlay')) && (await hidden('#dyQuit')) && (await hidden('#dyEdit')));
+  check('the league cannot be played or renamed from the book', (await hidden('#dySim')) && (await hidden('#dyPlay')) && (await hidden('#dyQuit')) && (await hidden('#dyEdit')));
   await a.screenshot({ path: `${out}/league-book.png`, fullPage: true });
   await a.click('#dyStats'); await sleep(200);
   check('it has the league\'s statistics from the games played', /Passing|Rushing/.test(await text(a, '#dyBody')));
+  await a.click('#pgBack'); await sleep(100);
+  await a.click('#dyProgram'); await sleep(200);
+  await a.click('#dyBody [data-up]');
+  check('a coach can call a player up from his program page, and the server keeps it', await a.waitForFunction(() => document.querySelector('#dyBody')?.textContent.includes('Call-ups used: 1 of 6'), { timeout: 15000 }).then(() => true, () => false));
   await a.click('#pgBack'); await sleep(100);
   await a.click('#dyPaper'); await sleep(1500);
   check('and the paper', (await text(a, '#dyBody')).includes('Prep Ledger'));

@@ -269,8 +269,10 @@ export interface Dynasty {
   stats?: StatBook;
   /** The awards voted at the end of each season, oldest first. */
   awards?: SeasonAwards[];
-  /** A league several coaches share: no one school is "the coach's", so none gets his call-ups or his spring plans. */
+  /** A league several coaches share: no one school is "the coach's". Each school's coach has his own plan instead. */
   shared?: boolean;
+  /** In a shared league, each school's own call-ups, spring focus and player gains and losses, by school index. Null for a school the league runs. */
+  plans?: (SchoolPlan | null)[];
   /** This season ends with a four-team bracket: semifinals, then a final. */
   bracket?: boolean;
   /** What the coach's school worked on in spring practice before this season. */
@@ -343,10 +345,21 @@ export function createDynasty(stateCode: string, seed: number, user: number, set
 }
 
 /** `week` is the game about to be played. Without it (a league with friends, for now) nobody is sidelined in season. */
-type Rosters = Pick<Dynasty, 'league' | 'year'> & { user?: number; callUps?: string[]; week?: number; focus?: FocusId; dev?: Record<string, number>; shared?: boolean };
+/** What one school's coach has decided in a shared league. */
+export interface SchoolPlan {
+  focus?: FocusId;
+  callUps?: string[];
+  dev?: Record<string, number>;
+}
+type Rosters = Pick<Dynasty, 'league' | 'year'> & { user?: number; callUps?: string[]; week?: number; focus?: FocusId; dev?: Record<string, number>; shared?: boolean; plans?: (SchoolPlan | null | undefined)[] };
 /** The coach's school does what he chose in the spring and carries his players' gains and losses; every other school's spring comes from the seed. */
-const tuneOf = (d: Rosters, school: number): ProgramTune => (d.user === school && !d.shared ? { focus: d.focus, dev: d.dev } : { focus: seededFocus(d.league.seed, d.league.schools[school].id, d.year) });
-const callUpsOf = (d: Rosters, school: number): readonly string[] => (d.user === school ? d.callUps ?? [] : []);
+const tuneOf = (d: Rosters, school: number): ProgramTune => {
+  if (d.user === school && !d.shared) return { focus: d.focus, dev: d.dev };
+  // In a shared league a coach's own choice stands; a school without one works on what the league decides.
+  const plan = d.shared ? d.plans?.[school] : null;
+  return { focus: plan?.focus ?? seededFocus(d.league.seed, d.league.schools[school].id, d.year), dev: plan?.dev };
+};
+const callUpsOf = (d: Rosters, school: number): readonly string[] => (d.shared ? d.plans?.[school]?.callUps ?? [] : d.user === school ? d.callUps ?? [] : []);
 
 /** This year's varsity. Players age a class every season and graduate; a school's prestige lifts or drags the whole program. */
 export function teamFor(d: Rosters, school: number, week: number | undefined = d.week): Team {
@@ -403,6 +416,20 @@ export function setCallUp(d: Dynasty, playerId: string, up: boolean): Dynasty {
     now.push(playerId);
   }
   return { ...d, callUps: cleanCallUps(d.league.seed, d.league.schools[d.user], d.year, now, tuneOf(d, d.user)) };
+}
+
+/** In a shared league: one school's coach calls a junior varsity player up, or sends a called-up player back down. */
+export function setPlanCallUp(d: Dynasty, school: number, playerId: string, up: boolean): Dynasty {
+  const plan = d.plans?.[school] ?? {};
+  const now = (plan.callUps ?? []).filter((id) => id !== playerId);
+  if (up) {
+    if (now.length >= MAX_CALL_UPS) throw new Error(`no more than ${MAX_CALL_UPS} call-ups at a time`);
+    now.push(playerId);
+  }
+  const plans = Array.from({ length: LEAGUE_SIZE }, (_, i) => d.plans?.[i] ?? null);
+  // Checked against the program with nobody called up, so a player who has earned his place does not use up a call.
+  plans[school] = { ...plan, callUps: cleanCallUps(d.league.seed, d.league.schools[school], d.year, now, { focus: tuneOf(d, school).focus, dev: plan.dev }) };
+  return { ...d, plans };
 }
 
 /** The junior varsity game between two schools in a week. They play the same opponent the varsity does. */
@@ -658,7 +685,7 @@ export const CALL_UP_COST_MAX = 3;
  * season still needing the coach's call to be on the varsity spent the year standing behind older players instead of
  * playing every Thursday: he comes back a rating point short of where he would have been, for good.
  */
-export function nextSeason(d: Dynasty, focus?: FocusId): Dynasty {
+export function nextSeason(d: Dynasty, focus?: FocusId, focuses?: Readonly<Record<number, FocusId>>): Dynasty {
   if (!seasonOver(d)) throw new Error('the season is not over');
   const table = standings(d.results);
   const champion = d.history[d.history.length - 1].champion;
@@ -688,6 +715,25 @@ export function nextSeason(d: Dynasty, focus?: FocusId): Dynasty {
   delete out.dev;
   if (isFocus(focus)) out.focus = focus;
   if (Object.keys(dev).length) out.dev = dev;
+  if (d.shared && d.plans) {
+    // Every coach's plan moves on a year the same way a solo coach's does: the spring he chose, the price of his call-ups.
+    out.plans = Array.from({ length: LEAGUE_SIZE }, (_, i) => {
+      const plan = d.plans?.[i];
+      const chosen = focuses?.[i];
+      if (!plan && !isFocus(chosen)) return null;
+      const carried: Record<string, number> = {};
+      for (const [id, v] of Object.entries(plan?.dev ?? {})) {
+        const enrolled = enrolledIn(id);
+        if (enrolled !== null && out.year - enrolled + 1 <= 4 && v !== 0) carried[id] = v;
+      }
+      for (const id of cleanCallUps(d.league.seed, d.league.schools[i], d.year, plan?.callUps ?? [], tuneOf(d, i))) carried[id] = Math.max(-CALL_UP_COST_MAX, (carried[id] ?? 0) - 1);
+      const next: SchoolPlan = { ...(isFocus(chosen) ? { focus: chosen } : {}), ...(Object.keys(carried).length ? { dev: carried } : {}) };
+      const tune = { focus: next.focus ?? seededFocus(out.league.seed, schools[i].id, out.year), dev: next.dev };
+      return { ...next, callUps: cleanCallUps(out.league.seed, schools[i], out.year, plan?.callUps ?? [], tune) };
+    });
+  } else if (d.shared && focuses) {
+    out.plans = Array.from({ length: LEAGUE_SIZE }, (_, i) => (isFocus(focuses[i]) ? { focus: focuses[i] } : null));
+  }
   return { ...out, callUps: cleanCallUps(out.league.seed, schools[d.user], out.year, d.callUps ?? [], tuneOf(out, d.user)) };
 }
 
@@ -710,6 +756,18 @@ function cleanDev(raw: unknown): Record<string, number> | undefined {
     if (enrolledIn(id) !== null && Number.isInteger(v) && (v as number) >= -CALL_UP_COST_MAX && (v as number) <= CALL_UP_COST_MAX && v !== 0) out[id] = v as number;
   }
   return Object.keys(out).length ? out : undefined;
+}
+
+/** Saved plans of a shared league: one per school, each piece checked the way a solo coach's is. */
+function cleanPlans(raw: unknown[], seed: number, schools: School[], year: number): (SchoolPlan | null)[] {
+  return Array.from({ length: LEAGUE_SIZE }, (_, i) => {
+    const p = raw[i] as SchoolPlan | null | undefined;
+    if (!p || typeof p !== 'object') return null;
+    const focus = isFocus(p.focus) ? p.focus : undefined;
+    const dev = cleanDev(p.dev);
+    const tune = { focus: focus ?? seededFocus(seed, schools[i].id, year), dev };
+    return { ...(focus ? { focus } : {}), ...(dev ? { dev } : {}), callUps: cleanCallUps(seed, schools[i], year, p.callUps, tune) };
+  });
 }
 
 /** A saved rivalry log, kept only if it is the right shape: one entry per rivalry, sensible counts. */
@@ -754,6 +812,7 @@ export function loadDynasty(raw: unknown): Dynasty | null {
     return {
       v: 1, league: { seed: base.seed, state: base.state, schools }, user: d.user, year: d.year, week: d.week, results, setup: cleanSetup(d.setup), history: d.history.filter((h) => h && Number.isInteger(h.year) && Array.isArray(h.record)),
       ...(typeof d.bracket === 'boolean' ? { bracket: d.bracket } : {}), ...(d.shared === true ? { shared: true } : {}),
+      ...(d.shared === true && Array.isArray(d.plans) ? { plans: cleanPlans(d.plans, base.seed, schools, d.year) } : {}),
       ...(isFocus(d.focus) ? { focus: d.focus } : {}), ...(cleanDev(d.dev) ? { dev: cleanDev(d.dev) } : {}),
       callUps: cleanCallUps(base.seed, schools[d.user], d.year, d.callUps, { focus: isFocus(d.focus) ? d.focus : undefined, dev: cleanDev(d.dev) }), jv,
       ...(d.awards ? { awards: cleanAwards(d.awards, LEAGUE_SIZE) } : {}),

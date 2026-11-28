@@ -4,7 +4,7 @@ import {
   type Coach, type GameResult, type Room,
 } from './room';
 import {
-  LEAGUE_CODE, claimSchool, createShared, editLeagueSchool, forceWeek, gameOf, leagueBook, nextSharedSeason, recordGame, roomKey, roomLeague, startSeason, stepLeague, viewLeague,
+  LEAGUE_CODE, claimSchool, createShared, editLeagueSchool, forceWeek, gameOf, leagueBook, setLeagueCallUp, setLeagueFocus, nextSharedSeason, recordGame, roomKey, roomLeague, startSeason, stepLeague, viewLeague,
   type SharedLeague,
 } from './shared';
 import { checkSave, type SaveMeta, type StoredSave } from './save';
@@ -268,6 +268,23 @@ export function createApi(store: Store, now: () => number = Date.now): (body: un
     },
 
     /** Commissioner only: the AI plays this week's unfinished games so the league can move on. */
+    /** A coach calls a player up or sends him down; answers with the league book so his program page is up to date. */
+    async leagueCallUp(body) {
+      const me = await auth(body);
+      return store.withLeague(codeOf(body), (l) => {
+        setLeagueCallUp(l, me.id, body['player'], body['up'], now());
+        return { dynasty: leagueBook(l, me.id) };
+      });
+    },
+
+    async leagueFocus(body) {
+      const me = await auth(body);
+      return store.withLeague(codeOf(body), (l) => {
+        setLeagueFocus(l, me.id, body['focus'], now());
+        return { league: viewLeague(l, me.id) };
+      });
+    },
+
     async leagueForce(body) {
       const me = await auth(body);
       return store.withLeague(codeOf(body), (l) => {

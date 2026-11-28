@@ -1596,6 +1596,7 @@ const shared = new SharedLeagueScreen($('shBody'), $('shTitle'), {
     next: async (code) => (await online.leagueNext(session!.token, code)).league,
     play: async (code) => (await online.leaguePlay(session!.token, code, book, myPlays, myDefs)).room,
     edit: async (code, school, identity) => (await online.leagueEdit(session!.token, code, school, identity)).league,
+    focus: async (code, focus) => (await online.leagueFocus(session!.token, code, focus)).league,
   },
   setup: () => setup,
   openRoom: (room) => openLobby(room),
@@ -1623,6 +1624,14 @@ const leagueBook = new DynastyScreen($('dyBody'), $('dyTitle'), {
   save: () => {},
   quarterMinutes: () => setup.quarterMinutes,
   play: () => {},
+  callUp: async (id, up) => {
+    try {
+      leagueBookData = (await online.leagueCallUp(session!.token, leagueBookCode, id, up)).dynasty;
+    } catch (e) {
+      signedOutCheck(e);
+      throw new Error(e instanceof OnlineError ? e.message : 'Something went wrong.');
+    }
+  },
   back: () => {
     $('dynasty').classList.remove('ro');
     show('shared');
