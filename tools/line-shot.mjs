@@ -26,6 +26,7 @@ for (let i = 0; i < 4000 && !(line && move && audibles >= 2); i++) {
   const acts = await page.$$eval('#panel [data-act]', (els) => els.map((e) => e.dataset.act));
   if (acts.includes('snap')) {
     if (!line) { await sleep(120); await page.screenshot({ path: `${out}/line.png` }); line = true; console.log('prompt:', await page.$eval('#prompt', (e) => e.textContent)); }
+    if (acts.includes('aud') && !acts.some((a) => a.startsWith('a:')) && audibles < 2) { await page.click('#panel [data-act="aud"]'); await sleep(120); await page.screenshot({ path: `${out}/audible.png` }); continue; }
     const aud = acts.filter((a) => a.startsWith('a:'));
     if (aud.length && audibles < 2) { await page.click(`#panel [data-act="${aud[0]}"]`); audibles++; await sleep(200); console.log('calls:', await page.$eval('#calls', (e) => e.textContent), '| banner:', await page.$eval('#banner', (e) => e.textContent)); }
     else await page.click('#panel [data-act="snap"]');

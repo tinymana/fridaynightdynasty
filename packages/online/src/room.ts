@@ -1,10 +1,10 @@
 import {
-  CUSTOM_FRONT, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, KICK_STYLES, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, clamp, cleanSetup, exhibitionTeams, validateBook, validateDefPlay, validateOffPlay,
+  CUSTOM_FRONT, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, KICK_STYLES, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, clamp, cleanSetup, validateBook, validateDefPlay, validateOffPlay,
   type DefDecision, type DefPlay, type GamePlan, type GameSetup, type KickStyle, type ManageAction, type OffDecision, type OffPlay,
 } from '@fnd/core';
 import { DEFAULT_PLAN } from '@fnd/football-ai';
 import { AutoCoach, Game, gameHash, replayGame, type LoggedDecision } from '@fnd/match-sim';
-import { boxScore, type BoxScore } from '@fnd/league';
+import { boxScore, cleanPick, matchupTeams, type BoxScore, type TeamPick } from '@fnd/league';
 import { leagueTeams, type RoomLeague } from './shared';
 
 /**
@@ -37,6 +37,8 @@ export interface Room {
   pin: string;
   state: 'lobby' | 'playing' | 'done';
   seed: number;
+  /** One-off games: the school each side picked, by team index. Absent in rooms made before picks and in league rooms. */
+  picks?: [TeamPick | null, TeamPick | null];
   host: Coach;
   guest: Coach | null;
   /** The team (0 home, 1 visitors) the host coaches. The guest takes the other. */
@@ -160,6 +162,8 @@ export interface Bringing {
   book?: unknown;
   plays?: unknown;
   defenses?: unknown;
+  /** The school this coach wants to play as in a one-off game: a state and a school in it. */
+  school?: unknown;
 }
 
 function seat(room: Room, team: 0 | 1, bring: Bringing): void {
@@ -168,6 +172,11 @@ function seat(room: Room, team: 0 | 1, bring: Bringing): void {
   designs.plays[team] = d.plays;
   designs.defenses[team] = d.defenses;
   room.books[team] = cleanBook(bring.book, d.plays);
+  // A league game's schools are the league's; a one-off game is played as the school each coach picked.
+  if (!room.league) {
+    const picks = (room.picks ??= [null, null]);
+    picks[team] = cleanPick(bring.school);
+  }
 }
 
 export function createRoom(pin: string, host: Coach, team: 0 | 1, bring: Bringing, seed: number, now: number): Room {
@@ -241,7 +250,7 @@ export function touch(room: Room, coachId: string, now: number): void {
 }
 
 function buildGame(room: Room): Game {
-  return replayGame(room.seed, room.league ? leagueTeams(room.league) : exhibitionTeams(room.seed), room.log, { books: room.books, plays: room.designs?.plays, defenses: room.designs?.defenses, setup: room.setup });
+  return replayGame(room.seed, room.league ? leagueTeams(room.league) : matchupTeams(room.seed, room.picks), room.log, { books: room.books, plays: room.designs?.plays, defenses: room.designs?.defenses, setup: room.setup });
 }
 
 /** Records what the next decision is. */
@@ -465,6 +474,8 @@ export interface RoomView {
   /** Coach names by team index; null while the seat is empty. */
   coaches: [string | null, string | null];
   seed: number;
+  /** The school each side picked for a one-off game, by team index; null plays as the stock school. */
+  picks: [TeamPick | null, TeamPick | null];
   books: [string[], string[]];
   /** Both coaches' designs. Each browser needs them to redraw the game. */
   designs: Designs;
@@ -501,7 +512,7 @@ export function viewRoom(room: Room, coachId: string, have: number, now: number)
   coaches[other(room.hostTeam)] = room.guest?.name ?? null;
   const iAmOffense = you === room.need.offense;
   return {
-    pin: room.pin, state: room.state, you, isHost: room.host.id === coachId, coaches, seed: room.seed, books: room.books, designs: room.designs ?? { plays: [[], []], defenses: [[], []] }, setup: cleanSetup(room.setup), league: room.league ?? null,
+    pin: room.pin, state: room.state, you, isHost: room.host.id === coachId, coaches, seed: room.seed, books: room.books, designs: room.designs ?? { plays: [[], []], defenses: [[], []] }, setup: cleanSetup(room.setup), league: room.league ?? null, picks: room.picks ?? [null, null],
     turn: room.turn, logSize: room.log.length, log: room.log.slice(clamp(Math.trunc(have) || 0, 0, room.log.length)),
     need: room.need, submitted: { off: !!room.pending.off, def: !!room.pending.def },
     mine: (iAmOffense ? room.pending.off : room.pending.def) ?? null,

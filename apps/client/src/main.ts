@@ -1,16 +1,16 @@
 import {
   BOOK_MIN, BOOK_SIZE, CUSTOM_FRONT, QUARTER_MINUTES, WEATHER, WEATHERS, cleanSetup, DEFAULT_BOOK, DEFENSE_FRONTS, DEFENSE_SCHEMES, FORMATIONS, MAX_CUSTOM_DEFENSES, MAX_CUSTOM_PLAYS, OFFENSE_PLAYS, RULES, U,
-  defAssignment, draftFromDefense, draftFromFront, draftFromPlay, exhibitionTeams, formationOf, frontById, newDesignId, overall, playById, schemeById,
+  defAssignment, draftFromDefense, draftFromFront, draftFromPlay, EXHIBITION_TEAMS, exhibitionTeams, formationOf, frontById, newDesignId, overall, playById, schemeById,
   toFront, toScheme, validateBook, validateDefPlay, validateOffPlay,
   type DefDecision, type DefFront, type DefPlay, type DefScheme, type GameSetup, type Group, type KickStyle, type ManageAction, type OffAssign, type OffDecision, type OffPlay, type PlayEvent, type Team,
 } from '@fnd/core';
 import { fieldGoalDistance } from '@fnd/football-ai';
-import { AutoCoach, Game, gameHash, replayGame, simulateGame, summarize, type LoggedDecision, type MoveKind, type PlaySim, type ReturnSim } from '@fnd/match-sim';
+import { AutoCoach, Game, gameHash, tossWinner, type GameOptions, replayGame, simulateGame, summarize, type LoggedDecision, type MoveKind, type PlaySim, type ReturnSim } from '@fnd/match-sim';
 import { leagueTeams, type Career, type RoomView, type SaveMeta } from '@fnd/online';
-import { boxScore, occasionFor, type Occasion, type StatLine } from '@fnd/league';
+import { STATES, boxScore, cleanPick, matchupTeams, occasionFor, pickableSchools, type Occasion, type StatLine, type TeamPick } from '@fnd/league';
 import { FIGHT_SONG_BEAT, chantFor, fightSong, halftimeShow, type CrowdInput, type Note } from './atmosphere';
 import { OnlineError, online } from './net/online';
-import { cutinFor } from './cutins';
+import { cutinFor, tossCutin } from './cutins';
 import { renderGamebook } from './gamebook';
 import { makeSave, readSave, saveFileName, saveLabel, type SaveContents } from './saves';
 import wxRainUrl from './assets/wx-rain.png';
@@ -176,6 +176,12 @@ let offTab = FORMATIONS[0].id;
 let stAuto = true;
 let frontId: string = DEFENSE_FRONTS[0].id;
 let useClock = store.get<boolean>('fnd.clock.v1', true);
+/** The schools on the two exhibition sidelines, and the school this coach brings to a game against a friend. Null is the classic school. */
+const exPicks: [TeamPick | null, TeamPick | null] = (() => {
+  const raw = store.get<unknown>('fnd.expicks.v1', null);
+  return Array.isArray(raw) ? [cleanPick(raw[0]), cleanPick(raw[1])] : [null, null];
+})();
+let myPick: TeamPick | null = cleanPick(store.get<unknown>('fnd.pick.v1', null));
 let clockLeft = 0;
 let clockOn = false;
 let sidelineOpen = false;
@@ -1367,16 +1373,25 @@ function showLinePanel(playId: string, frontName: string, frontDesc: string, fro
   }
   showPlayClock();
   $('prompt').textContent = `At the line: they show ${frontName}`;
-  $('panel').innerHTML = `<div class="wide line"><button class="act on" data-act="snap">Snap it: ${called.name} <kbd>[S]</kbd><small>${frontDesc || 'Run the play you called.'}</small></button></div>`
-    + (others.length ? `<div class="fronts"><span class="lbl">Audible</span><span class="hint">Same formation. Changing the play risks a false start.</span></div>` : '')
-    + others.map((p, i) => playCard(p, `a:${p.id}`, ` <kbd>[${i + 1}]</kbd>`)).join('');
-  const acts: Record<string, () => void> = { snap: () => go(null) };
-  for (const p of others) acts[`a:${p.id}`] = () => go(p.id);
-  bind(acts, (k) => {
-    const n = Number(k);
-    if (n >= 1 && n <= others.length) return `a:${others[n - 1].id}`;
-    return k === 's' ? 'snap' : null;
-  });
+  // One job on this screen: snap the play that was called. The audibles stay folded away until the coach asks for
+  // them, so the sheet never reads as "pick another play".
+  const draw = (open: boolean): void => {
+    $('panel').innerHTML = `<div class="wide line"><button class="act on" data-act="snap">Snap it: ${called.name} <kbd>[S]</kbd><small>${frontDesc || 'Run the play you called.'}</small></button>`
+      + (others.length ? `<button class="act chg" data-act="aud">${open ? 'Keep the call' : 'Change the play'} <kbd>[A]</kbd><small>${open ? 'Fold the audibles away.' : 'Audible. It risks a false start.'}</small></button>` : '')
+      + '</div>'
+      + (open ? `<div class="wide audlbl"><b>Audible to</b> another play from the same formation.</div>` + others.map((p, i) => playCard(p, `a:${p.id}`, ` <kbd>[${i + 1}]</kbd>`)).join('') : '');
+    const acts: Record<string, () => void> = { snap: () => go(null), aud: () => draw(!open) };
+    if (open) for (const p of others) acts[`a:${p.id}`] = () => go(p.id);
+    // The call sheet may have been scrolled down to reach the play: bring the snap button back into view.
+    $('panel').scrollTop = 0;
+    $('panel').querySelector<HTMLElement>('[data-act="snap"]')?.scrollIntoView({ block: 'nearest' });
+    bind(acts, (k) => {
+      const n = Number(k);
+      if (open && n >= 1 && n <= others.length) return `a:${others[n - 1].id}`;
+      return k === 's' ? 'snap' : k === 'a' && others.length ? 'aud' : null;
+    });
+  };
+  draw(false);
 }
 
 function bind(acts: Record<string, () => void>, keys: (k: string) => string | null): void {
@@ -1690,13 +1705,21 @@ function showSetup(fresh = true, page: SetupPage = setupPage): void {
   dynastyGame = null;
   if (fresh || !teams || teams[0].id !== 'sch_0001') {
     seed = (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0;
-    teams = exhibitionTeams(seed);
+    teams = matchupTeams(seed, exPicks);
   }
   $('dynastyLine').textContent = dynasty.summary();
   $('dynastyName').textContent = dynasty.active ? 'Continue dynasty' : 'Dynasty';
   const qb = (t: Team) => t.roster.find((p) => p.id === t.depth.QB[0])!;
   $('teams').innerHTML = teams.map((t, i) => `<button class="team-card" data-team="${i}"><div class="swatch" style="background:linear-gradient(90deg, ${css(t.colors.jersey)} 0 60%, ${css(t.colors.trim)} 60% 80%, ${css(t.colors.helmet)} 80%)"></div><div class="nm">${t.name} ${t.mascot}</div><div class="sub">${i === 0 ? 'Home' : 'Visitors'} · QB ${qb(t).name} #${qb(t).number}</div></button>`).join('');
   $('teams').querySelectorAll<HTMLElement>('[data-team]').forEach((el) => el.addEventListener('click', () => startGame(Number(el.dataset.team) as 0 | 1)));
+  for (const i of [0, 1] as const) {
+    schoolPicker($(`exPick${i}`), exPicks[i], `${EXHIBITION_TEAMS[i].name} ${EXHIBITION_TEAMS[i].mascot}`, (pk) => {
+      exPicks[i] = pk;
+      store.set('fnd.expicks.v1', exPicks);
+      teams = matchupTeams(seed, exPicks);
+      showSetup(false);
+    }, false);
+  }
   ($('clockToggle') as HTMLInputElement).checked = useClock;
   bookSummary();
   // Back at the menu with something not yet matched to the server: settle it now.
@@ -1716,7 +1739,8 @@ function startGame(team: 0 | 1, conditions: GameSetup = setup): void {
   const defenses: [DefPlay[], DefPlay[]] = [[], []];
   plays[user] = myPlays;
   defenses[user] = myDefs;
-  game = new Game(seed, teams, { books, plays, defenses, setup: conditions });
+  const opts: GameOptions = { books, plays, defenses, setup: conditions };
+  game = new Game(seed, teams, opts);
   coach = new AutoCoach(seed);
   showWeather();
   startAtmosphere();
@@ -1729,20 +1753,73 @@ function startGame(team: 0 | 1, conditions: GameSetup = setup): void {
   setStatic();
   scene.snapCamera(spot.x);
   updateBug();
-  const receiving = other(game.state.kicking);
-  $('banner').className = '';
-  $('banner').innerHTML = `${teams[receiving].name} will receive the opening kickoff.<small>You are coaching the ${teams[user].name} ${teams[user].mascot}. ${setupLine(game.setup)}.</small>`;
-  $('banner').classList.remove('hidden');
-  setPanelWaiting('Kickoff');
-  const opening = showCutins && speed !== 0 ? cutinFor(null, 'opening', 0, { homecoming: occasion === 'homecoming', home: user === 0, rivalry: !!dynastyGame?.rivalry }) : null;
-  if (opening) {
+  openingToss(opts);
+}
+
+/** Set by the check scripts to walk through the coin toss; they skip it otherwise. */
+let tossInChecks = false;
+
+/**
+ * The coin toss. The visitors call it, the seed decides who wins, and the winner picks: take the ball now, or
+ * kick off and take it to open the second half. The AI coach always takes the ball.
+ */
+function openingToss(opts: GameOptions): void {
+  const winner = tossWinner(seed);
+  const banner = $('banner');
+  const say = (head: string, small: string): void => {
+    banner.className = '';
+    banner.innerHTML = `${head}<small>${small}</small>`;
+    banner.classList.remove('hidden');
+  };
+  const you = `You are coaching the ${teams[user].name} ${teams[user].mascot}. ${setupLine(game.setup)}.`;
+  const kickoff = (lead: string): void => {
+    const receiving = other(game.state.kicking);
+    say(`${lead}${teams[receiving].name} will receive the opening kickoff.`, you);
+    setPanelWaiting('Kickoff');
+    const opening = showCutins && speed !== 0 ? cutinFor(null, 'opening', 0, { homecoming: occasion === 'homecoming', home: user === 0, rivalry: !!dynastyGame?.rivalry }) : null;
     const cutEl = $('cutin') as HTMLImageElement;
-    cutEl.src = opening.url;
-    cutEl.alt = opening.alt;
+    if (opening) {
+      cutEl.src = opening.url;
+      cutEl.alt = opening.alt;
+      cutEl.classList.remove('hidden');
+    } else cutEl.classList.add('hidden');
+    keyHandler = null;
+    timer = opening ? 3200 : 2200;
+    mode = 'post';
+  };
+  if (speed === 0 || (navigator.webdriver && !tossInChecks)) return kickoff('');
+  const faces = ['Heads', 'Tails'] as const;
+  const landed = (call: 0 | 1): void => {
+    // The visitors (the second team) call it. The coin lands their way when the seed gave them the toss.
+    const face = winner === 1 ? call : ((1 - call) as 0 | 1);
+    const lead = `${teams[1].name} called ${faces[call].toLowerCase()}. It is ${faces[face].toLowerCase()}. `;
+    if (winner !== user) return kickoff(`${lead}${teams[winner].name} won the toss. `);
+    say(`${lead}You won the toss.`, 'Take the ball now, or kick off and take it to open the second half.');
+    mode = 'choose';
+    $('prompt').textContent = 'You won the toss';
+    $('panel').innerHTML = '<div class="wide"><button class="act" data-act="toss:receive">Receive <kbd>[1]</kbd><small>Your offense starts the game.</small></button><button class="act" data-act="toss:kick">Kick off <kbd>[2]</kbd><small>Defense first. You get the ball after halftime.</small></button></div>';
+    bind({
+      'toss:receive': () => kickoff(''),
+      'toss:kick': () => {
+        game = new Game(seed, teams, { ...opts, receiver: other(user) });
+        setStatic();
+        updateBug();
+        kickoff('');
+      },
+    }, (k) => (k === '1' ? 'toss:receive' : k === '2' ? 'toss:kick' : null));
+  };
+  const cutEl = $('cutin') as HTMLImageElement;
+  if (showCutins) {
+    cutEl.src = tossCutin;
+    cutEl.alt = 'Coin toss';
     cutEl.classList.remove('hidden');
   }
-  timer = opening ? 3200 : 2200;
-  mode = 'post';
+  if (user !== 1) return landed(((seed >>> 5) & 1) as 0 | 1);
+  say('Coin toss at midfield.', 'You are the visitors, so the call is yours.');
+  mode = 'choose';
+  $('prompt').textContent = 'Call it in the air';
+  $('panel').innerHTML = '<div class="wide"><button class="act" data-act="toss:heads">Heads <kbd>[1]</kbd></button><button class="act" data-act="toss:tails">Tails <kbd>[2]</kbd></button></div>';
+  bind({ 'toss:heads': () => landed(0), 'toss:tails': () => landed(1) }, (k) => (k === '1' ? 'toss:heads' : k === '2' ? 'toss:tails' : null));
 }
 
 /** Rain, snow, wind or heat over the field, and a small tag naming it. */
@@ -1829,19 +1906,43 @@ function renderOnlineBox(): void {
   $('oMsg').textContent = '';
   $('oSignedOut').classList.toggle('hidden', !!session);
   $('oSignedIn').classList.toggle('hidden', !session);
+  $('oNote').classList.toggle('hidden', !!session);
   if (!session || !teams) return;
   $('oWho').textContent = `Signed in as ${session.name}`;
   renderCareer();
   void loadCareer(false);
-  $('oHostRow').innerHTML = teams.map((t, i) => `<button class="seg" data-host="${i}">Host as ${t.name}</button>`).join('');
-  $('oHostRow').querySelectorAll<HTMLElement>('[data-host]').forEach((el) => el.addEventListener('click', async () => {
-    try {
-      openLobby((await online.host(session!.token, Number(el.dataset.host) as 0 | 1, book, myPlays, myDefs, setup)).room);
-    } catch (e) {
-      signedOutCheck(e);
-      onlineMessage('oMsg', e);
-    }
-  }));
+  schoolPicker($('oSchool'), myPick, `${EXHIBITION_TEAMS[0].name} ${EXHIBITION_TEAMS[0].mascot}`, (p) => {
+    myPick = p;
+    store.set('fnd.pick.v1', p);
+    renderOnlineBox();
+  });
+}
+
+/**
+ * A state and one of its eight schools. The first choice is the classic school, which is what a coach who never
+ * touches the picker gets. Only the name and colours change: the two rosters are always rolled evenly.
+ */
+function schoolPicker(el: HTMLElement, pick: TeamPick | null, classic: string, on: (p: TeamPick | null) => void, swatch = true): void {
+  const schools = pick ? pickableSchools(pick.state) : [];
+  const now = pick ? schools[pick.school] : null;
+  const chip = now && swatch ? `<span class="sp-chip" style="background:linear-gradient(90deg, ${css(now.colors.jersey)} 0 60%, ${css(now.colors.trim)} 60% 80%, ${css(now.colors.helmet)} 80%)"></span>` : '';
+  el.innerHTML = `${chip}<select class="sp-state" aria-label="State"><option value="">Classic: ${classic}</option>${[...STATES].sort((a, b) => a.name.localeCompare(b.name)).map((s) => `<option value="${s.code}"${pick?.state === s.code ? ' selected' : ''}>${s.name}</option>`).join('')}</select>`
+    + (pick ? `<select class="sp-school" aria-label="School">${schools.map((s, i) => `<option value="${i}"${i === pick.school ? ' selected' : ''}>${s.name} ${s.mascot}</option>`).join('')}</select>` : '');
+  el.querySelector<HTMLSelectElement>('.sp-state')!.addEventListener('change', (ev) => {
+    const code = (ev.target as HTMLSelectElement).value;
+    on(code ? cleanPick({ state: code, school: 0 }) : null);
+  });
+  el.querySelector<HTMLSelectElement>('.sp-school')?.addEventListener('change', (ev) => on(cleanPick({ state: pick!.state, school: Number((ev.target as HTMLSelectElement).value) })));
+}
+
+async function hostGame(): Promise<void> {
+  if (!session) return;
+  try {
+    openLobby((await online.host(session.token, 0, book, myPlays, myDefs, setup, myPick)).room);
+  } catch (e) {
+    signedOutCheck(e);
+    onlineMessage('oMsg', e);
+  }
 }
 
 const recordText = (c: Career): string => `${c.wins}-${c.losses}${c.ties ? `-${c.ties}` : ''}`;
@@ -2135,7 +2236,7 @@ async function loadSaveFile(f: File): Promise<void> {
 async function joinByPin(): Promise<void> {
   if (!session) return;
   try {
-    openLobby((await online.join(session.token, ($('oJoinPin') as HTMLInputElement).value.trim(), book, myPlays, myDefs)).room);
+    openLobby((await online.join(session.token, ($('oJoinPin') as HTMLInputElement).value.trim(), book, myPlays, myDefs, 0, myPick)).room);
   } catch (e) {
     signedOutCheck(e);
     onlineMessage('oMsg', e);
@@ -2165,7 +2266,7 @@ function stopOnline(): void {
 function renderLobby(): void {
   if (!net) return;
   const v = net.view;
-  const lobbyTeams = v.league ? leagueTeams(v.league) : exhibitionTeams(v.seed);
+  const lobbyTeams = v.league ? leagueTeams(v.league) : matchupTeams(v.seed, v.picks);
   $('lobbyPin').textContent = v.pin;
   $('lobbySetup').textContent = setupLine(cleanSetup(v.setup));
   $('lobbySeats').innerHTML = lobbyTeams.map((t, i) => `<div class="team-card seat${i === v.you ? ' me' : ''}"><div class="swatch" style="background:linear-gradient(90deg, ${css(t.colors.jersey)} 0 60%, ${css(t.colors.trim)} 60% 80%, ${css(t.colors.helmet)} 80%)"></div><div class="nm">${t.name} ${t.mascot}</div><div class="coach${v.coaches[i] ? '' : ' empty'}">${v.coaches[i] ? `${v.coaches[i]}${i === v.you ? ' (you)' : ''}` : 'Waiting for a coach…'}</div></div>`).join('');
@@ -2235,7 +2336,7 @@ function enterOnlineGame(): void {
   const v = net.view;
   unlockAudio();
   seed = v.seed;
-  teams = v.league ? leagueTeams(v.league) : exhibitionTeams(seed);
+  teams = v.league ? leagueTeams(v.league) : matchupTeams(seed, v.picks);
   user = v.you;
   coach = new AutoCoach(seed, [v.plan, v.plan]);
   const catchUp = net.queue.length > 1 ? net.queue.splice(0, net.queue.length) : [];
@@ -2252,10 +2353,10 @@ function enterOnlineGame(): void {
   scene.snapCamera(spot.x);
   updateBug();
   $('banner').className = '';
-  $('banner').innerHTML = `${v.coaches[0] ?? ''} (${teams[0].abbr}) against ${v.coaches[1] ?? ''} (${teams[1].abbr})<small>You are coaching the ${teams[user].name} ${teams[user].mascot}. Game PIN ${v.pin}.</small>`;
+  $('banner').innerHTML = `${v.coaches[0] ?? ''} (${teams[0].abbr}) against ${v.coaches[1] ?? ''} (${teams[1].abbr})<small>${catchUp.length ? '' : `${teams[tossWinner(seed)].name} won the coin toss and will receive. `}You are coaching the ${teams[user].name} ${teams[user].mascot}. Game PIN ${v.pin}.</small>`;
   $('banner').classList.remove('hidden');
   setPanelWaiting(catchUp.length ? 'Rejoining the game' : 'Kickoff');
-  timer = 1800;
+  timer = catchUp.length ? 1800 : 3000;
   mode = 'post';
 }
 
@@ -2511,6 +2612,7 @@ for (const id of ['hallBtn', 'hallBtn2']) $(id).addEventListener('click', () => 
 $('hallBack').addEventListener('click', () => showSetup(false));
 $('oOut').addEventListener('click', () => { session = null; career = null; cloudOther = null; cloudError = ''; store.set('fnd.session.v1', null); renderOnlineBox(); });
 $('oJoin').addEventListener('click', () => void joinByPin());
+$('oHost').addEventListener('click', () => void hostGame());
 $('oJoinPin').addEventListener('keydown', (ev) => { if ((ev as KeyboardEvent).key === 'Enter') void joinByPin(); });
 $('lobbyStart').addEventListener('click', () => { if (net) void netRequest(() => online.start(net!.token, net!.pin)); });
 $('lobbyLeave').addEventListener('click', () => {
@@ -2571,6 +2673,8 @@ window.addEventListener('keydown', (ev) => {
 (window as unknown as Record<string, unknown>).__fnd = {
   /** Sends the band out or brings it off. For the automated checks. */
   band: (on: boolean, court = false) => scene.showBand(on, court),
+  /** Walks through the coin toss in an automated browser, which skips it otherwise. */
+  toss: (on = true) => { tossInChecks = on; },
   /** Throws the penalty flags. For the automated checks. */
   flag: (seq = 4) => flagDrop({ seq } as PlayEvent),
   /** Shows the crowd's reaction to a made-up play. For the automated checks. */

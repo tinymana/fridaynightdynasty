@@ -2,6 +2,29 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.30.0",
+      "date": "2026-11-27",
+      "title": "Pick your school, a coin toss, and a Play Online page that makes sense",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Pick your school. In an exhibition, choose a state and one of its eight schools for each sideline. Online, each coach brings his own school to a game against a friend. Only the name and colours change; the two rosters are still rolled evenly so nobody picks an advantage."
+        },
+        {
+          "tag": "new",
+          "text": "The coin toss. The visitors call heads or tails before the opening kickoff. Win it and you choose: take the ball now, or kick off and take it to open the second half. Online, the game tells you who won the toss."
+        },
+        {
+          "tag": "improved",
+          "text": "The Play Online page is rebuilt. Your name and record sit at the top. Under that are two boxes: Play a friend (your school, then Host a game or Join a game) and Dynasty with friends (Start a league or Open a league). One job per button, and everything stacks in one column on a phone."
+        },
+        {
+          "tag": "fixed",
+          "text": "After you called a play, the screen at the line showed the other plays from that formation right under the snap button, and on a phone their label was hidden, so it looked like you had to pick again. Now the line shows one big Snap it button. The audibles stay folded away behind Change the play."
+        }
+      ]
+    },
+    {
       "version": "0.29.0",
       "date": "2026-11-27",
       "title": "Play calling on a phone, and injuries during games",

@@ -38,6 +38,11 @@ export type LoggedDecision =
 /** The fewest players a depth chart can be left with at each position: the most any formation or front asks for. */
 const MIN_ON_CHART: Record<Group, number> = { QB: 1, RB: 2, WR: 4, TE: 2, OL: 5, DL: 5, LB: 4, CB: 3, S: 2, K: 1, P: 1 };
 
+/** The coach who wins the coin toss. Decided by the game's seed. */
+export function tossWinner(seed: number): 0 | 1 {
+  return Rng.stream(seed, 'toss').int(0, 1) as 0 | 1;
+}
+
 export interface GameOptions {
   /** The eight offensive plays each team carries. Defaults to the starter book. */
   books?: readonly [readonly string[], readonly string[]];
@@ -46,6 +51,8 @@ export interface GameOptions {
   defenses?: readonly [readonly DefPlay[], readonly DefPlay[]];
   /** Quarter length and weather. Twelve-minute quarters on a clear night when absent. */
   setup?: Partial<GameSetup>;
+  /** Who takes the opening kickoff, when the coach who won the toss chose. The toss winner receives when absent. */
+  receiver?: 0 | 1;
 }
 
 /** A substitution made because a starter is resting. */
@@ -116,7 +123,7 @@ export class Game {
   constructor(readonly seed: number, readonly teams: readonly [Team, Team], opts: GameOptions = {}) {
     this.setup = cleanSetup({ ...DEFAULT_SETUP, ...opts.setup });
     this.quarterSeconds = this.setup.quarterMinutes * 60;
-    const receiver = Rng.stream(seed, 'toss').int(0, 1) as 0 | 1;
+    const receiver = opts.receiver === 0 || opts.receiver === 1 ? opts.receiver : tossWinner(seed);
     this.state = {
       quarter: 1, clock: this.quarterSeconds, score: [0, 0], possession: receiver, down: 1, distance: 10, yardLine: 20,
       phase: 'kickoff', kicking: other(receiver), kickFrom: RULES.kickoffFrom,

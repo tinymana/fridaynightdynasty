@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.30.0 — 2026-11-27
+
+School choice, coin toss, Play Online page, the line of scrimmage. Online change: redeploy the `fnd` function with the merge.
+
+### Added
+- `TeamPick`, `pickableSchools`, `cleanPick`, `matchupTeams` (league). A pick changes name, mascot, abbreviation and
+  colours only; rosters come from the game seed at the stock strength. Two identical picks: the second is stock.
+- Online: `host` and `join` take `school`; `Room.picks`, `RoomView.picks`. League rooms ignore it.
+- `tossWinner(seed)` and `GameOptions.receiver` (match-sim). Offline the toss winner may kick; online the winner receives.
+- Client: school pickers on the exhibition and online pages (`fnd.expicks.v1`, `fnd.pick.v1`); coin toss before kickoff
+  (skipped in automated browsers unless `__fnd.toss(true)`).
+- `tests/picks.test.ts` (7 tests). `tools/menus-shot.mjs`.
+
+### Changed
+- Play Online page markup: header, "Play a friend" card, "Dynasty with friends" card. One Host button (`#oHost`).
+- At the line: Snap plus a "Change the play" button; audible cards render only after it is pressed (`[A]`).
+
 ## 0.29.0 — 2026-11-27
 
 Phone play calling; injuries during games. Simulation change: redeploy the `fnd` function with the merge.

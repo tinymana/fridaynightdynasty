@@ -50,7 +50,7 @@ try {
   await b.click('#hallBack');
   await signIn(a, 'Coach Ann', '1111');
   await signIn(b, 'coach bo', '2222');
-  await a.click('[data-host="0"]');
+  await a.click('#oHost');
   await a.waitForSelector('#lobby:not(.hidden)');
   const pin = await a.$eval('#lobbyPin', (e) => e.textContent);
   check('host sees a five-digit game PIN', /^[0-9]{5}$/.test(pin));
@@ -86,6 +86,7 @@ try {
       const prompt = await p.$eval('#prompt', (e) => e.textContent);
       const acts = await p.$$eval('#panel [data-act]', (els) => els.map((e) => e.dataset.act));
       let pick = acts.filter((x) => x === 'snap' || x.startsWith('a:') || x.startsWith('p:') || x.startsWith('d:') || x.startsWith('m:') || x.startsWith('k:') || x === 'pat');
+      if (acts.includes('aud') && !acts.some((x) => x.startsWith('a:')) && i % 2 === 0) { await p.click('#panel [data-act="aud"]').catch(() => {}); continue; }
       if (acts.includes('block') && i % 4 === 0) { await p.click('#panel [data-act="block"]').catch(() => {}); blocks++; continue; }
       if (acts.includes('f:@custom') && i % 3 === 0) { await p.click('#panel [data-act="f:@custom"]').catch(() => {}); continue; }
       if (acts.includes('tab:@mine') && !acts.includes(`p:${mineId}`) && i % 2 === 0) { await p.click('#panel [data-act="tab:@mine"]').catch(() => {}); continue; }

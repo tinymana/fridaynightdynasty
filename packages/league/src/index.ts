@@ -1,4 +1,4 @@
-import { DEFAULT_SETUP, Rng, clamp, cleanSetup, hashString, type GameSetup, type PlayEvent, type Ratings, type Team, type TeamColors, type Weather } from '@fnd/core';
+import { DEFAULT_SETUP, EXHIBITION_TEAMS, Rng, clamp, cleanSetup, generateTeam, hashString, type GameSetup, type TeamMeta, type PlayEvent, type Ratings, type Team, type TeamColors, type Weather } from '@fnd/core';
 import { simulateGame } from '@fnd/match-sim';
 import { LEAGUE_TUNING, MAX_CALL_UPS, incidentsOf, isFocus, seededFocus, cleanCallUps, enrolledIn, incomingClass, jvTeam, programFor, programNames, programNews, varsityTeam, type FocusId, type ProgramNews, type ProgramPlayer, type ProgramTune } from './program';
 import { cleanStatBook, closeSeason, historicBook, recordGame, type RecordNews, type StatBook } from './records';
@@ -281,6 +281,42 @@ export interface Dynasty {
   dev?: Record<string, number>;
   /** Rivalry games played in this dynasty, one entry per rivalry: wins for each side, ties, and who won last. */
   rivals?: RivalryLog[];
+}
+
+/** A school chosen for a one-off game: a state and one of its eight schools. */
+export interface TeamPick {
+  state: string;
+  school: number;
+}
+/** The league every state's schools are drawn from when picking a team for a one-off game, so the list is the same for everyone. */
+const PICK_SEED = 2026;
+/** The eight schools of a state that can be picked for a one-off game. */
+export function pickableSchools(stateCode: string): School[] {
+  return createLeague(stateCode, PICK_SEED).schools;
+}
+/** A pick that names a real state and school, or null. */
+export function cleanPick(raw: unknown): TeamPick | null {
+  const p = raw as Partial<TeamPick> | null;
+  if (!p || typeof p !== 'object' || typeof p.state !== 'string' || !STATES.some((s) => s.code === p.state)) return null;
+  return Number.isInteger(p.school) && p.school! >= 0 && p.school! < LEAGUE_SIZE ? { state: p.state, school: p.school! } : null;
+}
+/**
+ * The two teams of a one-off game. Each side plays as the school it picked, or as the stock school for that side.
+ * Only the name and colours come from the pick: both rosters are rolled fresh from the game's seed at the same
+ * strength, so no school is a better choice than another. Two coaches who pick the same school get it once; the
+ * second keeps the stock school.
+ */
+export function matchupTeams(seed: number, picks?: readonly [TeamPick | null | undefined, TeamPick | null | undefined]): [Team, Team] {
+  const counter = { next: 1 };
+  const same = !!picks?.[0] && !!picks[1] && picks[0].state === picks[1].state && picks[0].school === picks[1].school;
+  const meta = (i: 0 | 1): TeamMeta => {
+    const pick = same && i === 1 ? null : cleanPick(picks?.[i]);
+    const stock = EXHIBITION_TEAMS[i] as TeamMeta;
+    if (!pick) return stock;
+    const s = pickableSchools(pick.state)[pick.school] as School;
+    return { name: s.name, mascot: s.mascot, abbr: s.abbr, strength: stock.strength, colors: s.colors };
+  };
+  return [generateTeam(seed, 'sch_0001', meta(0), counter), generateTeam(seed, 'sch_0002', meta(1), counter)];
 }
 
 /** Rivals meet in the last week of the regular season, every year. */
