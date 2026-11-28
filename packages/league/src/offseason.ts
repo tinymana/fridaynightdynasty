@@ -94,6 +94,32 @@ export function jobOffers(d: Dynasty): JobOffer[] {
   }));
 }
 
+/**
+ * The carousel in a league with friends, for the coach of `school`. The same rule as a solo dynasty: a school that
+ * had a losing year calls a coach who has just had a winning one, or won the title. Only a school that `open` says
+ * has no coach of its own can call, and at most two do.
+ */
+export function jobOffersFor(d: Dynasty, school: number, open: (school: number) => boolean): JobOffer[] {
+  if (!seasonOver(d)) return [];
+  const h = d.history[d.history.length - 1];
+  if (!h) return [];
+  const table = standings(d.results);
+  const mine = table.find((r) => r.school === school);
+  if (!mine) return [];
+  const champion = h.champion === school;
+  if (!champion && mine.wins <= mine.losses) return [];
+  const s = d.league.schools;
+  const rng = Rng.stream(d.league.seed, `carousel:${d.year}:${school}`);
+  return table.filter((r) => r.school !== school && open(r.school) && r.wins < r.losses)
+    .filter((r) => champion || s[r.school].prestige >= s[school].prestige - 1 || rng.chance(0.35))
+    .sort((a, b) => s[b.school].prestige - s[a.school].prestige || a.school - b.school)
+    .slice(0, 2)
+    .map((r) => ({
+      school: r.school,
+      pitch: `${s[r.school].name} went ${r.wins}-${r.losses} and wants a new coach. ${s[r.school].prestige > s[school].prestige ? 'It is a bigger program than yours.' : 'It is a rebuilding job.'}`,
+    }));
+}
+
 /** Takes another school's job. His record goes with him; his call-ups, his spring plans and his players' histories stay behind. */
 export function takeJob(d: Dynasty, school: number): Dynasty {
   if (!jobOffers(d).some((o) => o.school === school)) throw new Error('that school has not offered the job');

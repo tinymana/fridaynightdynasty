@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.34.0 — 2026-11-27
+
+League job offers. Online change: redeploy the `fnd` function with the merge.
+
+### Added
+- `jobOffersFor(d, school, open)` (league). `leagueJobs`, `takeLeagueJob`, `LeagueView.jobs`, API action `leagueJob` (online).
+  The old school's coach becomes null, both schools' call-ups are cleared, the mover's `nextFocus` is dropped.
+- Client: offers on the league page when the season is over. One new test in `tests/shared.test.ts`.
+
 ## 0.33.0 — 2026-11-27
 
 Close view, tips toggle, league banquet. Client only: no function redeploy.

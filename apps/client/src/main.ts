@@ -1697,6 +1697,7 @@ const shared = new SharedLeagueScreen($('shBody'), $('shTitle'), {
     play: async (code) => (await online.leaguePlay(session!.token, code, book, myPlays, myDefs)).room,
     edit: async (code, school, identity) => (await online.leagueEdit(session!.token, code, school, identity)).league,
     focus: async (code, focus) => (await online.leagueFocus(session!.token, code, focus)).league,
+    job: async (code, school) => (await online.leagueJob(session!.token, code, school)).league,
   },
   setup: () => setup,
   openRoom: (room) => openLobby(room),
