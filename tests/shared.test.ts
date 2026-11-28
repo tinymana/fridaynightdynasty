@@ -391,3 +391,51 @@ describe('the commissioner renames schools and picks colours', () => {
     expect(gameHash(replayGame(view.seed, leagueTeams(view.league!), log as never, { books: view.books, setup: view.setup }))).toBe(view.hash);
   });
 });
+
+describe('the coaching carousel in a league with friends', () => {
+  it('lets a winning coach take a losing school that has no coach, and hands his old school to the AI', { timeout: 600_000 }, async () => {
+    const { w, a, b, c, code } = await league();
+    await w.call({ action: 'leagueStart', token: a, code });
+    const tokens = [a, b, c];
+    expect((await w.call({ action: 'leagueJob', token: a, code, school: 3 })).ok).toBe(false);
+    let taken = false;
+    for (let season = 0; season < 6 && !taken; season++) {
+      let v = await poll(w, a, code);
+      for (let n = 0; n <= REGULAR_WEEKS + 3 && !v.over; n++) {
+        await w.call({ action: 'leagueForce', token: a, code });
+        v = await poll(w, a, code, 7);
+      }
+      expect(v.over).toBe(true);
+      for (const t of tokens) {
+        const mine = await poll(w, t, code);
+        // Only schools without a coach of their own ever call, and never the coach's own.
+        for (const o of mine.jobs) {
+          expect(mine.schools[o.school].coach).toBeNull();
+          expect(o.school).not.toBe(mine.you);
+        }
+        if (taken || !mine.jobs.length) continue;
+        const to = mine.jobs[0].school;
+        await w.call({ action: 'leagueFocus', token: t, code, focus: 'speed' });
+        // A school that did not call cannot be taken.
+        const other = [0, 1, 2, 3, 4, 5, 6, 7].find((s) => s !== mine.you && !mine.jobs.some((o) => o.school === s))!;
+        expect((await w.call({ action: 'leagueJob', token: t, code, school: other })).ok).toBe(false);
+        const moved = (await w.call({ action: 'leagueJob', token: t, code, school: to })).league!;
+        expect(moved.you).toBe(to);
+        expect(moved.schools[mine.you].coach).toBeNull();
+        expect(moved.schools[to].coach).not.toBeNull();
+        expect(moved.plan.next).toBeNull();
+        // The job is gone for everyone else.
+        for (const u of tokens.filter((x) => x !== t)) expect((await w.call({ action: 'leagueJob', token: u, code, school: to })).ok).toBe(false);
+        taken = true;
+      }
+      expect((await w.call({ action: 'leagueNext', token: a, code })).ok).toBe(true);
+    }
+    expect(taken).toBe(true);
+    // The league carries on with him at his new school.
+    const after = await poll(w, a, code);
+    expect(after.over).toBe(false);
+    expect(after.schools.filter((s) => s.coach !== null)).toHaveLength(3);
+    await w.call({ action: 'leagueForce', token: a, code });
+    expect((await poll(w, a, code, 7)).week).toBeGreaterThan(0);
+  });
+});

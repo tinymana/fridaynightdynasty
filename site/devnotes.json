@@ -2,6 +2,25 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.34.0",
+      "date": "2026-11-27",
+      "title": "The coaching carousel comes to friends' leagues",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Job offers in a league with friends. When the season ends, a coach who had a winning year or won the title may get a call from a losing school that no friend is coaching. Take the job on the league page before the commissioner starts the next year."
+        },
+        {
+          "tag": "note",
+          "text": "The rules: only schools run by the AI ever call, so nobody can take a friend's school. The school you leave goes to the AI with its players. Your record and Hall of Fame line go with you. You pick spring practice again at the new school. If two coaches are offered the same job, the first to take it gets it."
+        },
+        {
+          "tag": "note",
+          "text": "Checked the two same-named quarterbacks seen in testing: it was chance. Two schools share a starting quarterback's surname about once in forty games."
+        }
+      ]
+    },
+    {
       "version": "0.33.0",
       "date": "2026-11-27",
       "title": "A closer view of the field, tips on and off, and the banquet for friends' leagues",

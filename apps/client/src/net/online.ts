@@ -54,6 +54,7 @@ export const online = {
   profile: (token: string) => post<{ career: Career | null }>({ action: 'profile', token }),
   hall: () => post<{ hall: Career[] }>({ action: 'hall' }),
   leagueCallUp: (token: string, code: string, player: string, up: boolean) => post<{ dynasty: unknown }>({ action: 'leagueCallUp', token, code, player, up }),
+  leagueJob: (token: string, code: string, school: number) => post<{ league: LeagueView }>({ action: 'leagueJob', token, code, school }),
   leagueFocus: (token: string, code: string, focus: string) => post<{ league: LeagueView }>({ action: 'leagueFocus', token, code, focus }),
   leagueBook: (token: string, code: string) => post<{ dynasty: unknown }>({ action: 'leagueBook', token, code }),
   // Permanent saves: one per coach, kept on the server.

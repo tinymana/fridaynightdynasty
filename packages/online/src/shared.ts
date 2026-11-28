@@ -1,7 +1,7 @@
 import { cleanSetup, type GameSetup, type Team, type TeamColors } from '@fnd/core';
 import {
-  LEAGUE_SIZE, STATES, isFocus, setPlanCallUp, closeWeek, createDynasty, createLeague, editSchool, gameSeed, gameSetup, lastWeek, nextSeason, recordLeagueGame, recordOf, seasonOver, settleSeason, simulateWithBox, standings, matchTeams, weekComplete, weekGames,
-  type BoxScore, type Dynasty, type FocusId, type SchoolPlan, type SchoolIdentity, type SeasonRecord, type Standing,
+  LEAGUE_SIZE, STATES, isFocus, jobOffersFor, setPlanCallUp, closeWeek, createDynasty, createLeague, editSchool, gameSeed, gameSetup, lastWeek, nextSeason, recordLeagueGame, recordOf, seasonOver, settleSeason, simulateWithBox, standings, matchTeams, weekComplete, weekGames,
+  type BoxScore, type Dynasty, type FocusId, type JobOffer, type SchoolPlan, type SchoolIdentity, type SeasonRecord, type Standing,
 } from '@fnd/league';
 import { RoomError, type Coach } from './room';
 
@@ -234,6 +234,37 @@ export function setLeagueFocus(l: SharedLeague, coachId: string, focus: unknown,
   l.updatedAt = now;
 }
 
+/** The jobs a coach has been offered once the season is over: losing schools that have no coach of their own. */
+export function leagueJobs(l: SharedLeague, coachId: string): JobOffer[] {
+  const school = schoolOf(l, coachId);
+  if (school < 0 || l.state !== 'season') return [];
+  return jobOffersFor(l.dynasty, school, (s) => l.coaches[s] === null);
+}
+
+/**
+ * A coach takes another school's job between seasons. The school he leaves goes to the AI, with its players and
+ * everything they have gained; the spring practice he had chosen is dropped, and he chooses again at his new school.
+ * Two coaches may be offered the same job: the first to take it gets it.
+ */
+export function takeLeagueJob(l: SharedLeague, coach: Coach, school: unknown, now: number): void {
+  normal(l);
+  const had = schoolOf(l, coach.id);
+  if (had < 0) throw new RoomError('bad_request', 'You do not coach a school in this league.', 403);
+  if (l.state !== 'season' || !seasonOver(l.dynasty)) throw new RoomError('bad_request', 'Jobs open once the season is over.');
+  if (typeof school !== 'number' || !Number.isInteger(school) || !leagueJobs(l, coach.id).some((o) => o.school === school)) {
+    throw new RoomError(typeof school === 'number' && l.coaches[school] ? 'taken' : 'bad_request', typeof school === 'number' && l.coaches[school] ? 'Another coach has just taken that job.' : 'That school has not offered you the job.');
+  }
+  l.coaches[had] = null;
+  l.coaches[school] = coach;
+  if (l.nextFocus) {
+    const { [had]: _old, [school]: _new, ...rest } = l.nextFocus;
+    l.nextFocus = rest;
+  }
+  // Nobody is left to make the old school's call-ups, and the new school starts with none of his.
+  if (l.dynasty.plans) l.dynasty = { ...l.dynasty, plans: l.dynasty.plans.map((p, i) => (p && (i === had || i === school) ? { ...p, callUps: [] } : p)) };
+  l.updatedAt = now;
+}
+
 export interface LeagueGameView {
   home: number;
   away: number;
@@ -270,6 +301,8 @@ export interface LeagueView {
   /** Your own plan: what you worked on this spring (null if the league decided), what you have chosen for next spring, and how many call-ups you have made. */
   plan: { focus: FocusId | null; next: FocusId | null; callUps: number };
   forced: boolean;
+  /** Jobs you have been offered, once the season is over. */
+  jobs: JobOffer[];
 }
 
 export function viewLeague(l: SharedLeague, coachId: string): LeagueView {
@@ -288,6 +321,7 @@ export function viewLeague(l: SharedLeague, coachId: string): LeagueView {
     standings: standings(d.results), games,
     lastWeek: d.week > 0 ? d.results.filter((g) => g.week === d.week - 1).map((g) => ({ home: g.home, away: g.away, score: [g.score[0], g.score[1]] })) : [],
     history: d.history, record: you >= 0 ? recordOf(d.results, you) : [0, 0, 0], forced: !!l.forced,
+    jobs: over ? leagueJobs(l, coachId) : [],
     plan: { focus: d.plans?.[you]?.focus ?? null, next: l.nextFocus?.[you] ?? null, callUps: d.plans?.[you]?.callUps?.length ?? 0 },
   };
 }

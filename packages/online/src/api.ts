@@ -4,7 +4,7 @@ import {
   type Coach, type GameResult, type Room,
 } from './room';
 import {
-  LEAGUE_CODE, claimSchool, createShared, editLeagueSchool, forceWeek, gameOf, leagueBook, setLeagueCallUp, setLeagueFocus, nextSharedSeason, recordGame, roomKey, roomLeague, startSeason, stepLeague, viewLeague,
+  LEAGUE_CODE, claimSchool, createShared, editLeagueSchool, forceWeek, gameOf, leagueBook, setLeagueCallUp, setLeagueFocus, takeLeagueJob, nextSharedSeason, recordGame, roomKey, roomLeague, startSeason, stepLeague, viewLeague,
   type SharedLeague,
 } from './shared';
 import { checkSave, type SaveMeta, type StoredSave } from './save';
@@ -281,6 +281,14 @@ export function createApi(store: Store, now: () => number = Date.now): (body: un
       const me = await auth(body);
       return store.withLeague(codeOf(body), (l) => {
         setLeagueFocus(l, me.id, body['focus'], now());
+        return { league: viewLeague(l, me.id) };
+      });
+    },
+
+    async leagueJob(body) {
+      const me = await auth(body);
+      return store.withLeague(codeOf(body), (l) => {
+        takeLeagueJob(l, me, body['school'], now());
         return { league: viewLeague(l, me.id) };
       });
     },

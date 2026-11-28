@@ -20,6 +20,8 @@ export interface SharedApi {
   edit(code: string, school: number, identity: SchoolIdentity): Promise<LeagueView>;
   /** Chooses what my school works on in spring practice. */
   focus(code: string, focus: string): Promise<LeagueView>;
+  /** Takes a job another school has offered, between seasons. */
+  job(code: string, school: number): Promise<LeagueView>;
 }
 
 export interface SharedHost {
@@ -176,6 +178,8 @@ export class SharedLeagueScreen {
           <div>${v.you >= 0 ? `You finished ${rec(v.record)}.` : ''}</div>
           ${v.you >= 0 ? `<div class="sl-spring"><b>Spring practice.</b> Pick what your team works on before next season. Every returning player comes back a point better in it.${v.plan.next ? '' : ' If you pick nothing, the league decides for you.'}
             <div class="orow">${FOCUSES.map((f) => `<button class="seg${v.plan.next === f.id ? ' on' : ''}" data-focus="${f.id}" title="${f.desc}">${f.name}</button>`).join('')}</div></div>` : ''}
+          ${(v.jobs ?? []).length ? `<div class="sl-spring"><b>The phone rang.</b> You can stay where you are, or take a new job before next season. The school you leave goes to the AI; your record goes with you.
+            ${v.jobs.map((o) => `<div class="sl-job"><span>${esc(o.pitch)}</span><button class="seg" data-job="${o.school}">Take the ${esc(v.schools[o.school].name)} job</button></div>`).join('')}</div>` : ''}
           <div class="orow">${v.isCommissioner ? `<button class="seg on" id="shNext">Start year ${v.year + 1}</button>` : '<span class="sl-note">The commissioner starts the next year.</span>'}</div></div>`;
       } else if (mine && !mine.score) {
         const opp = mine.home === v.you ? mine.away : mine.home;
@@ -195,6 +199,7 @@ export class SharedLeagueScreen {
         ? `<div class="orow center" style="margin-top:10px"><button class="seg" id="shForce">${v.forced ? 'Moving the week on…' : this.forceArmed ? 'Really? Coaches who have not played get an AI result' : 'Commissioner: let the AI finish this week'}</button></div>` : '';
       this.root.innerHTML = `${head}${next}<div class="dy-cols"><div><h3>Standings</h3><table><tr><th>#</th><th>School</th><th>Record</th><th>PF</th><th>PA</th></tr>${rows}</table></div><div>${games}${last}${past}</div></div>${force}${foot}`;
       this.root.querySelector('#shNext')?.addEventListener('click', () => void this.act(() => this.host.api.next(v.code)));
+      this.root.querySelectorAll<HTMLElement>('[data-job]').forEach((el) => el.addEventListener('click', () => void this.act(() => this.host.api.job(v.code, Number(el.dataset.job)))));
       this.root.querySelectorAll<HTMLElement>('[data-focus]').forEach((el) => el.addEventListener('click', () => void this.act(() => this.host.api.focus(v.code, el.dataset.focus!))));
       this.root.querySelector('#shForce')?.addEventListener('click', (e) => {
         const el = e.currentTarget as HTMLElement;
