@@ -101,3 +101,22 @@ describe('saves on the server', () => {
     expect(loadDynasty(back.dynasty)).toEqual(loadDynasty(JSON.parse(JSON.stringify(d))));
   });
 });
+
+describe('kept game books in a save', () => {
+  it('travel with the save, newest twelve, and anything misshapen is dropped', async () => {
+    const { cleanGames, makeSave, readSave } = await import('../apps/client/src/saves');
+    const { exhibitionTeams } = await import('@fnd/core');
+    const { simulateGame, replayGame, gameHash } = await import('@fnd/match-sim');
+    const g = simulateGame(11, exhibitionTeams(11));
+    const kept = Array.from({ length: 15 }, (_, i) => ({ key: `TX:1:1:${i}:0-1`, book: { seed: 11, log: g.log, opts: {} } }));
+    const file = makeSave({ dynasty: null, plays: [], defs: [], book: [], games: kept as never }, 1);
+    const back = readSave(JSON.parse(JSON.stringify(file)))!;
+    expect(back.games.map((x) => x.key)).toEqual(kept.slice(-12).map((x) => x.key));
+    // What comes back plays again to the same game.
+    expect(gameHash(replayGame(back.games[0].book.seed, exhibitionTeams(11), back.games[0].book.log as never, {}))).toBe(gameHash(g));
+    expect(cleanGames([null, 7, { key: 'x' }, { key: 'y', book: { seed: 'no', log: [], opts: {} } }, { key: 'z', book: { seed: 1, log: 'no', opts: {} } }, { key: 'ok', book: { seed: 1, log: [], opts: {} } }]).map((x) => x.key)).toEqual(['ok']);
+    expect(cleanGames('nonsense')).toEqual([]);
+    // An old save without kept games still reads.
+    expect(readSave({ fnd: 'save', v: 1, at: 1, label: '', dynasty: null, plays: [], defs: [], book: [] })!.games).toEqual([]);
+  });
+});

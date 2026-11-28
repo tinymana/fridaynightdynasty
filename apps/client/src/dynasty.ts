@@ -35,6 +35,8 @@ export interface DynastyHost {
   save(d: Dynasty | null): void;
   /** Quarter length for a new dynasty. */
   quarterMinutes(): GameSetup['quarterMinutes'];
+  /** The quarter lengths as <option>s, each with how long a game takes. */
+  quarterOptions?(): string;
   play(g: DynastyGame): void;
   back(): void;
   /** A league with friends: call-ups are made on the server. Resolves when the book has been refreshed; rejects with the reason if refused. */
@@ -64,6 +66,8 @@ const weekName = (w: number): string => (w < REGULAR_WEEKS ? `Week ${w + 1}` : B
 
 export class DynastyScreen {
   private d: Dynasty | null;
+  /** The quarter length chosen for a new dynasty, if the coach changed it. */
+  private pickQuarter: GameSetup['quarterMinutes'] | null = null;
   private pickState = 'TX';
   private pickSeed = 1;
   private busy = false;
@@ -122,6 +126,31 @@ export class DynastyScreen {
     else if (this.d && this.view === 'off' && seasonOver(this.d)) this.renderOff(this.d);
     else if (this.d) this.renderSeason(this.d);
     else this.renderNew();
+    this.renderTabs();
+  }
+
+  /**
+   * The row of tabs across the top of every dynasty page, so any page is one tap from any other. The off-season
+   * and a game book are steps of their own and keep their own way back.
+   */
+  private renderTabs(): void {
+    const d = this.d;
+    const shown = this.view === 'off' && d && seasonOver(d) ? 'off' : this.view === 'paper' && d && d.week === 0 ? 'season' : this.view;
+    if (!d || shown === 'off') return;
+    const tabs: [id: string, view: string, label: string][] = [['dyHome', 'season', 'Season'], ['dyProgram', 'program', 'Team']];
+    if (d.week > 0) tabs.push(['dyPaper', 'paper', 'Paper']);
+    tabs.push(['dyStats', 'stats', 'Stats'], ['dyRecords', 'records', 'Records'], ['dyAwards', 'awards', 'Awards']);
+    const at = shown === 'book' ? 'season' : shown;
+    this.root.insertAdjacentHTML('afterbegin', `<nav class="dy-tabs" aria-label="Dynasty pages">${tabs.map(([id, view, label]) => `<button class="seg${view === at ? ' on' : ''}" id="${id}"${view === at ? ' aria-current="page"' : ''}>${label}</button>`).join('')}<button class="seg dy-menu" id="dyBack">${d.shared ? 'League' : 'Menu'}</button></nav>`);
+    for (const [id, view] of tabs) {
+      this.root.querySelector(`#${id}`)!.addEventListener('click', () => {
+        this.view = view as typeof this.view;
+        if (view === 'records') this.bookOf = d.user;
+        this.render();
+        this.root.scrollIntoView({ block: 'start' });
+      });
+    }
+    this.root.querySelector('#dyBack')!.addEventListener('click', () => this.host.back());
   }
 
   /** Records the coach's finished game and plays the rest of that week. */
@@ -203,16 +232,23 @@ export class DynastyScreen {
     };
     this.root.innerHTML = `<p>Pick a state and see who is hiring. Take a job and the program is yours: seven league games a season, then first plays second for the state title.</p>
       <div class="orow center"><label class="pick">State <select id="dyState">${STATES.map((s) => `<option value="${s.code}"${s.code === this.pickState ? ' selected' : ''}>${s.name}</option>`).join('')}</select></label>
+      ${this.host.quarterOptions ? `<label class="pick">Games <select id="dyQuarter" aria-label="Quarter length for every game in this dynasty">${this.host.quarterOptions()}</select></label>` : ''}
       <button class="seg" id="dyShuffle">Draw new schools</button><button class="seg" id="dyBack">Back</button></div>
+      <p class="sl-note" style="text-align:center">Quarter length is set for the whole dynasty. Longer quarters mean more plays and more realistic scores.</p>
       <h3>Head coach wanted: ${jobs.length} schools in ${esc(stateByCode(this.pickState).name)}</h3>
       <div class="dy-pick jobs">${jobs.map(posting).join('')}</div>
       <p class="sl-note" style="text-align:center">Also in the league, and not hiring: ${others.map((x) => `${esc(x.s.name)} ${esc(x.s.mascot)}`).join(', ')}.</p>`;
     const q = (id: string): HTMLElement => this.root.querySelector(`#${id}`) as HTMLElement;
     (q('dyState') as HTMLSelectElement).addEventListener('change', (e) => { this.pickState = (e.target as HTMLSelectElement).value; this.render(); });
     q('dyShuffle').addEventListener('click', () => { this.pickSeed = this.newSeed(); this.render(); });
+    const quarter = this.root.querySelector<HTMLSelectElement>('#dyQuarter');
+    if (quarter) {
+      quarter.value = String(this.pickQuarter ?? this.host.quarterMinutes());
+      quarter.addEventListener('change', () => { this.pickQuarter = Number(quarter.value) as GameSetup['quarterMinutes']; });
+    }
     q('dyBack').addEventListener('click', () => this.host.back());
     this.root.querySelectorAll<HTMLElement>('[data-school]').forEach((el) => el.addEventListener('click', () => {
-      this.d = createDynasty(this.pickState, this.pickSeed, Number(el.dataset.school), { quarterMinutes: this.host.quarterMinutes() });
+      this.d = createDynasty(this.pickState, this.pickSeed, Number(el.dataset.school), { quarterMinutes: this.pickQuarter ?? this.host.quarterMinutes() });
       this.host.save(this.d);
       this.render();
     }));
@@ -236,9 +272,8 @@ export class DynastyScreen {
   private renderAwards(d: Dynasty): void {
     this.title.textContent = `${stateByCode(d.league.state).name} awards`;
     const all = [...(d.awards ?? [])].reverse();
-    this.root.innerHTML = `<div class="orow center"><button class="seg on" id="pgBack">Back to the season</button><button class="seg" id="awRecords">Record book</button></div>
+    this.root.innerHTML = `<div class="orow center"><button class="seg" id="awRecords">Record book</button></div>
       ${all.length ? all.map((a) => `<h3>${seasonYear(a.year)} season</h3>${this.awardsHtml(d, a, true)}`).join('') : '<p>The awards are voted when the title game has been played. Finish a season and they will be here.</p>'}`;
-    (this.root.querySelector('#pgBack') as HTMLElement).addEventListener('click', () => { this.view = 'season'; this.render(); });
     (this.root.querySelector('#awRecords') as HTMLElement).addEventListener('click', () => { this.view = 'records'; this.bookOf = d.user; this.render(); });
   }
 
@@ -324,14 +359,12 @@ export class DynastyScreen {
     const p = this.paperFor?.paper;
     this.title.textContent = p?.name ?? 'The paper';
     const story = (s: { headline: string; body: string[] }, lead: boolean): string => `<article class="${lead ? 'np-lead' : 'np-story'}"><h3>${esc(s.headline)}</h3>${s.body.map((b) => `<p>${esc(b)}</p>`).join('')}</article>`;
-    this.root.innerHTML = `<div class="orow center"><button class="seg on" id="npBack">Back to the season</button></div>
-      ${p ? `<div class="paper"><div class="np-mast"><b>${esc(p.name)}</b><span>${esc(p.edition)}</span></div>
+    this.root.innerHTML = `${p ? `<div class="paper"><div class="np-mast"><b>${esc(p.name)}</b><span>${esc(p.edition)}</span></div>
         ${story(p.lead, true)}
         <div class="np-cols"><div>${p.stories.map((s) => story(s, false)).join('')}</div>
         <div><h4>Standings</h4>${p.table.map((t) => `<div class="np-row">${esc(t)}</div>`).join('')}
         ${p.notes.length ? `<h4>Notebook</h4>${p.notes.map((n) => `<p class="np-note">${esc(n)}</p>`).join('')}` : ''}
         ${p.next ? `<h4>Coming up</h4><p class="np-note">${esc(p.next)}</p>` : ''}</div></div></div>` : '<p style="text-align:center">No paper yet: the season has not started.</p>'}`;
-    this.root.querySelector('#npBack')!.addEventListener('click', () => { this.view = 'season'; this.render(); });
   }
 
   /** The coach's own game, played again from the calls kept on this device. Null when they are not here or do not give the recorded score. */
@@ -399,7 +432,7 @@ export class DynastyScreen {
     const defense = (x: (typeof all)[number]): (string | number)[] => [x.l.tackles, x.l.sacks, x.l.ints];
     const kicking = (x: (typeof all)[number]): (string | number)[] => [`${x.l.fgMade}/${x.l.fgAtt}`, x.l.xpMade, x.l.fgMade * 3 + x.l.xpMade];
     const empty = !all.length;
-    this.root.innerHTML = `<div class="orow center"><button class="seg on" id="pgBack">Back to the season</button><button class="seg" id="stRecords">Record book</button></div>
+    this.root.innerHTML = `<div class="orow center"><button class="seg" id="stRecords">Record book</button></div>
       ${empty ? '<p>No games have been played yet this season. The numbers start with week 1.</p>' : ''}
       <div class="dy-cols prog"><div><h2 class="colhead">${esc(me.name)} ${esc(me.mascot)}</h2>
         ${table('Passing', ['C/A', 'Yds', 'TD', 'Int'], top(mine, 'passAtt', 3), passing)}
@@ -414,7 +447,6 @@ export class DynastyScreen {
         ${table('Tackles', ['Tkl', 'Sacks', 'Int'], top(all, 'tackles', 5), defense, true)}
         ${table('Sacks', ['Tkl', 'Sacks', 'Int'], top(all, 'sacks', 5), defense, true)}
         ${table('Interceptions', ['Tkl', 'Sacks', 'Int'], top(all, 'ints', 5), defense, true)}</div></div>`;
-    (this.root.querySelector('#pgBack') as HTMLElement).addEventListener('click', () => { this.view = 'season'; this.render(); });
     (this.root.querySelector('#stRecords') as HTMLElement).addEventListener('click', () => { this.view = 'records'; this.bookOf = d.user; this.render(); });
   }
 
@@ -435,7 +467,7 @@ export class DynastyScreen {
     const pts = book['game:teamPoints'];
     const fallen = stats.news.filter((n) => n.school === at).slice(0, 12);
     this.root.innerHTML = `<p>Every mark in the book belongs to somebody. Beat it and your player's name goes in. Records set since you took the job in ${mineEra} are shown in gold.</p>
-      <div class="orow center"><button class="seg on" id="pgBack">Back to the season</button><button class="seg" id="rcStats">Statistics</button>
+      <div class="orow center"><button class="seg" id="rcStats">Statistics</button>
         <label class="pick">School <select id="rcSchool">${schools.map((x, i) => `<option value="${i}"${i === at ? ' selected' : ''}>${esc(x.name)} ${esc(x.mascot)}${i === d.user ? ' (yours)' : ''}</option>`).join('')}</select></label></div>
       <div class="prog recbook"><table><tr><th>Record</th><th>Game</th><th>Season</th><th>Career</th></tr>${rows}
         <tr><td>Points by the team</td><td class="${pts.year >= mineEra ? 'fresh' : ''}"><b>${pts.value}</b> ${pts.name ? `against ${esc(pts.name)} ` : ''}<small>${pts.year}</small></td><td></td><td></td></tr></table></div>
@@ -453,7 +485,6 @@ export class DynastyScreen {
         return lines.length ? `<h3>Honors at ${esc(s.name)}</h3>${lines.slice(0, 16).join('')}` : '';
       })()}
       ${fallen.length ? `<h3>Records broken at ${esc(s.name)}</h3>${fallen.map((n) => `<div class="dy-game me"><span>${esc(newsText(n, s.name))}</span><span>${n.year}</span></div>`).join('')}` : `<p class="sl-note" style="text-align:center">Nobody has broken a ${esc(s.name)} record since ${mineEra - 1}.</p>`}`;
-    (this.root.querySelector('#pgBack') as HTMLElement).addEventListener('click', () => { this.view = 'season'; this.render(); });
     (this.root.querySelector('#rcStats') as HTMLElement).addEventListener('click', () => { this.view = 'stats'; this.render(); });
     (this.root.querySelector('#rcSchool') as HTMLSelectElement).addEventListener('change', (e) => { this.bookOf = Number((e.target as HTMLSelectElement).value); this.render(); });
   }
@@ -489,7 +520,7 @@ export class DynastyScreen {
     this.root.innerHTML = `<p>You coach the varsity on Friday night. Everyone else plays junior varsity on Thursday. Players move up a class every year and seniors graduate.
       Call a junior varsity player up and the weakest varsity player at his position goes down in his place. A call-up has a price: a player who still needs your call at the end of the season spent it on the sideline instead of playing every Thursday, and comes back a rating point short of where he would have been.</p>
       ${turnover}
-      <div class="orow center"><button class="seg on" id="pgBack">Back to the season</button></div>
+      <div class="orow center"></div>
       ${gradeKey()}
       <div class="dy-cols prog"><div><h3>Varsity <small>${varsity.length} players · ${count(varsity)}</small></h3>
         <table>${head}${[...varsity].sort(order).map((p) => row(p, p.calledUp ? `<button class="seg mini" data-down="${p.id}">Send down</button>` : '')).join('')}</table></div>
@@ -497,7 +528,6 @@ export class DynastyScreen {
         <p class="sl-note">JV record ${jvRec[0]}-${jvRec[1]}${jvRec[2] ? `-${jvRec[2]}` : ''}.${jvLine} Call-ups used: ${ups.length} of ${MAX_CALL_UPS}.</p>
         <table>${head}${[...jv].sort(order).map((p) => row(p, p.out ? '' : `<button class="seg mini" data-up="${p.id}"${full ? ' disabled' : ''}>Call up</button>`)).join('')}</table></div></div>
       <div id="dyMsg" class="sl-note" role="status" aria-live="polite" style="text-align:center"></div>`;
-    (this.root.querySelector('#pgBack') as HTMLElement).addEventListener('click', () => { this.view = 'season'; this.render(); });
     const say = (e: unknown): void => { (this.root.querySelector('#dyMsg') as HTMLElement).textContent = e instanceof Error ? e.message : String(e); };
     const move = (id: string, up: boolean): void => {
       if (this.host.callUp) {
@@ -584,25 +614,21 @@ export class DynastyScreen {
       ${over && d.awards?.length && d.awards[d.awards.length - 1].year === d.year ? `<h3>${seasonYear(d.year)} awards</h3>${this.awardsHtml(d, d.awards[d.awards.length - 1], false)}` : ''}
       <div class="dy-cols"><div><h3>Standings</h3><table><tr><th>#</th><th>School</th><th>Record</th><th>PF</th><th>PA</th></tr>${rows}</table></div>
       <div>${upcoming}${last.length ? `<h3>${weekName(lastWeek)} results</h3>${last.map(line).join('')}` : ''}${past}</div></div>
-      ${this.editing >= 0 ? schoolFormHtml(schools[this.editing]) : `<div class="orow center dy-rename" style="margin-top:12px"><label class="pick">Rename a school <select id="dyEdit"><option value="">Choose\u2026</option>${schools.map((s, i) => `<option value="${i}">${esc(s.name)} ${esc(s.mascot)}</option>`).join('')}</select></label></div>`}
+      ${this.editing >= 0 ? schoolFormHtml(schools[this.editing]) : ''}
       <p class="dy-rivalline">Your rival: ${dot(rival)}${esc(schools[rival].name)} ${esc(schools[rival].mascot)}. You play for ${esc(myRivalry.trophy)} in week ${RIVALRY_WEEK + 1}; ${myRivalry.holder === d.user ? 'you hold it' : 'they hold it'} and ${seriesText}.</p>
       ${bracketHtml}
       ${this.programNewsHtml(d)}
       ${this.newsHtml(d)}
-      <div class="orow center" style="margin-top:14px">${d.week > 0 ? '<button class="seg on" id="dyPaper">Read the paper</button>' : ''}<button class="seg on" id="dyProgram">Your program: varsity and JV</button><button class="seg on" id="dyStats">Statistics</button><button class="seg on" id="dyRecords">Record book</button><button class="seg on" id="dyAwards">Awards</button><button class="seg" id="dyBack">${d.shared ? 'Back to the league' : 'Main menu'}</button><button class="seg" id="dyQuit">Abandon this dynasty</button></div>
+      <details class="dy-manage"><summary>Manage this dynasty</summary>
+        ${this.editing >= 0 ? '' : `<div class="orow center dy-rename"><label class="pick">Rename a school <select id="dyEdit"><option value="">Choose\u2026</option>${schools.map((s, i) => `<option value="${i}">${esc(s.name)} ${esc(s.mascot)}</option>`).join('')}</select></label></div>`}
+        <div class="orow center"><button class="seg" id="dyQuit">Abandon this dynasty</button></div></details>
       <div id="dyMsg" class="sl-note" role="status" aria-live="polite" style="text-align:center"></div>`;
     const q = (id: string): HTMLElement | null => this.root.querySelector(`#${id}`);
-    q('dyBack')!.addEventListener('click', () => this.host.back());
-    q('dyProgram')!.addEventListener('click', () => { this.view = 'program'; this.render(); });
-    q('dyPaper')?.addEventListener('click', () => { this.view = 'paper'; this.render(); });
     this.root.querySelectorAll<HTMLElement>('[data-book]').forEach((el) => el.addEventListener('click', () => {
       const [h, a] = el.dataset.book!.split('-').map(Number);
       this.bookGame = last.find((g) => g.home === h && g.away === a) ?? null;
       if (this.bookGame) { this.view = 'book'; this.render(); }
     }));
-    q('dyStats')!.addEventListener('click', () => { this.view = 'stats'; this.render(); });
-    q('dyRecords')!.addEventListener('click', () => { this.view = 'records'; this.bookOf = d.user; this.render(); });
-    q('dyAwards')!.addEventListener('click', () => { this.view = 'awards'; this.render(); });
     q('dyEdit')?.addEventListener('change', (e) => {
       const i = (e.target as HTMLSelectElement).value;
       if (i === '') return;

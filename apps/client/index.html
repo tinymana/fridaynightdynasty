@@ -333,7 +333,7 @@
   .sl-spring { margin: 10px 0; text-align: left; }
   .sl-spring .orow { margin-top: 6px; }
   /* A friends' league read as a dynasty: everything that would change it is put away. */
-  #dynasty.ro #dyPlay, #dynasty.ro #dySim, #dynasty.ro #dyEdit, #dynasty.ro #dyQuit, #dynasty.ro .dy-rename, #dynasty.ro .dy-rivalline + .dy-ro { display: none; }
+  #dynasty.ro .dy-manage, #dynasty.ro #dyPlay, #dynasty.ro #dySim, #dynasty.ro #dyEdit, #dynasty.ro #dyQuit, #dynasty.ro .dy-rename, #dynasty.ro .dy-rivalline + .dy-ro { display: none; }
   /* The line under fourth place: above it, the playoffs. */
   #dyBody tr.cut td { border-bottom: 2px dashed var(--accent); }
   .dy-rival { color: var(--accent); }
@@ -603,6 +603,18 @@
   #coachTip .seg { min-height: 44px; }
   .sl-job { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-top: 8px; text-align: left; }
   .sl-job .seg { min-height: 44px; }
+
+  /* Dynasty tabs */
+  .dy-tabs { position: sticky; top: 0; z-index: 5; display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; padding: 6px 0 8px; margin-bottom: 8px; background: var(--bg, #0a0e24); border-bottom: 2px solid var(--line); }
+  .dy-tabs .seg { min-height: 40px; }
+  .dy-tabs .dy-menu { margin-left: 8px; }
+  .dy-manage { margin-top: 16px; border-top: 2px solid var(--line); padding-top: 8px; }
+  .dy-manage summary { cursor: pointer; color: var(--dim); text-align: center; min-height: 32px; }
+  @media (max-width: 600px) {
+    .dy-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+    .dy-tabs .seg { min-height: 40px; padding: 6px 2px; }
+    .dy-tabs .dy-menu { margin-left: 0; }
+  }
 </style>
 </head>
 <body>

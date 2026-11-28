@@ -37,12 +37,12 @@ const job = await page.$eval('#dyBody .job [data-school]', (e) => e.dataset.scho
 await page.click(`#dyBody [data-school="${job}"]`); await look('dynasty-season');
 await page.click('#dySim'); for (let t = 0; t < 600 && (await st()).dynasty.week !== 1; t++) await sleep(100);
 await look('dynasty-week2');
-await page.click('#dyPaper'); await sleep(1200); await look('paper'); await page.click('#npBack');
+await page.click('#dyPaper'); await sleep(1200); await look('paper'); await page.click('#dyHome');
 await page.click('#dyBody [data-book]'); await sleep(300); await look('book-summary');
 for (const tab of ['box', 'drives', 'plays']) { await page.click(`#dyBook [data-gb="${tab}"]`); await look(`book-${tab}`); }
 await page.click('#bkBack');
-await page.click('#dyProgram'); await look('program'); await page.click('#pgBack');
-await page.click('#dyStats'); await look('stats'); await page.click('#pgBack').catch(() => {});
+await page.click('#dyProgram'); await look('program'); await page.click('#dyHome');
+await page.click('#dyStats'); await look('stats'); await page.click('#dyHome').catch(() => {});
 await page.evaluate(() => document.querySelector('#dyPlay')?.click()); await sleep(4500); await look('game-kick');
 for (let i = 0; i < 400; i++) { const s = await st(); if (s.mode === 'choose') { const acts = await page.$$eval('#panel [data-act]', (els) => els.map((e) => e.dataset.act)); if (acts.some((a) => a.startsWith('p:') || a.startsWith('d:'))) break; const k = acts.find((a) => a.startsWith('k:')); if (k) await page.click(`#panel [data-act="${k}"]`); } await sleep(60); }
 await look('game-call');

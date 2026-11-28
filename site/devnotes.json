@@ -2,6 +2,33 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.35.0",
+      "date": "2026-11-28",
+      "title": "Dynasty tabs, quarter length explained, and game books that follow you",
+      "items": [
+        {
+          "tag": "improved",
+          "text": "Dynasty pages have tabs. Season, Team, Paper, Stats, Records and Awards sit in a row at the top of every dynasty page and stay there as you scroll, so any page is one tap from any other. The old buttons at the very bottom of the season page, and every Back to the season button, are gone."
+        },
+        {
+          "tag": "improved",
+          "text": "Renaming a school and abandoning the dynasty moved under Manage this dynasty at the foot of the season page, away from the buttons you use every week."
+        },
+        {
+          "tag": "new",
+          "text": "Quarter length is chosen when you start a dynasty, on the page where you pick your job. Before, it silently took whatever the exhibition page was set to."
+        },
+        {
+          "tag": "improved",
+          "text": "Every quarter-length choice now says how long a game takes: 4 minutes is about 8 minutes of play and low scoring, 8 is about 16, and a full 12 is about 25."
+        },
+        {
+          "tag": "new",
+          "text": "The game books of your own dynasty games are now part of your save, so they follow you to another device and into a downloaded save file."
+        }
+      ]
+    },
+    {
       "version": "0.34.0",
       "date": "2026-11-27",
       "title": "The coaching carousel comes to friends' leagues",

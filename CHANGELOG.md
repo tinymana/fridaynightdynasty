@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.35.0 — 2026-11-28
+
+Dynasty navigation, quarter length, kept games in the save. Client only: no function redeploy.
+
+### Added
+- `DynastyScreen.renderTabs` (`.dy-tabs`: `#dyHome`, `#dyProgram`, `#dyPaper`, `#dyStats`, `#dyRecords`, `#dyAwards`, `#dyBack`). `#pgBack` and `#npBack` are gone.
+- `details.dy-manage` holds `#dyEdit` and `#dyQuit`. `#dyQuarter` on the new-dynasty page; `DynastyHost.quarterOptions`.
+- `SaveFile.games`, `KeptGame`, `cleanGames`, `MAX_KEPT_GAMES`; `fnd.mybooks.v1` is a saved key. One new test in `tests/saves.test.ts`.
+- `tools/length.ts` (points and plays by quarter length), `tools/pace.mjs` (how fast plays run on screen).
+
 ## 0.34.0 — 2026-11-27
 
 League job offers. Online change: redeploy the `fnd` function with the merge.
