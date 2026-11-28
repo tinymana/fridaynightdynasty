@@ -2,6 +2,33 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.32.0",
+      "date": "2026-11-27",
+      "title": "Kickers with two legs to stand on, first-game tips, and hold a play to read it",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Kickers and punters are graded on leg power, leg accuracy and speed. The two are real and separate: power is how far he kicks (kickoffs, punts, field goal range), accuracy is whether it goes through (field goals, extra points) and how bad a punter's bad punts are. A big leg can be wild; a short leg can be automatic."
+        },
+        {
+          "tag": "new",
+          "text": "First-game tips. The first time you face each kind of decision (the kickoff, calling a play, the line of scrimmage, calling a defense, fourth down) a short note explains it. The play clock waits while you read. Tap Got it, or No more tips to turn them off."
+        },
+        {
+          "tag": "new",
+          "text": "Hold a play to read it. On a phone the play cards only have room for a picture and a name; press and hold one and its formation and description pop up. Letting go does not call the play."
+        },
+        {
+          "tag": "new",
+          "text": "Online coin toss. The coach who wins the toss in a game against a friend, or in a league game, now gets twenty seconds to choose: receive, or kick off and take the ball after halftime."
+        },
+        {
+          "tag": "new",
+          "text": "The game book for your own dynasty games. After a game you coached, the season page now has a Game book button for it, like every other game that week: scoring summary, team totals, drive chart. Kept on this device for your last twelve games."
+        }
+      ]
+    },
+    {
       "version": "0.31.0",
       "date": "2026-11-27",
       "title": "Report cards: letter grades for every player",

@@ -25,8 +25,18 @@ const NUMBERS: Record<Group, [number, number]> = { QB: [1, 19], RB: [20, 39], WR
 /** Players per group on a Milestone 2 game-day roster (39 in all). */
 export const ROSTER_SIZE: Record<Group, number> = { QB: 2, RB: 3, WR: 5, TE: 2, OL: 7, DL: 6, LB: 5, CB: 4, S: 3, K: 1, P: 1 };
 
+/**
+ * How straight a kicker or punter kicks, on the same scale as his leg power (`ratings.kicking`). It is his own
+ * rating, rolled apart from his power, so a big leg can be wild and a short leg can be automatic.
+ */
+export function kickAccuracy(p: Player): number {
+  return clamp(p.ratings.awareness + 28, 15, 99);
+}
+
 /** A single number for sorting a depth chart: the average of the ratings that matter at the position. */
 export function overall(p: Player): number {
+  // A kicker is his leg: how far, and how straight.
+  if (p.pos === 'K' || p.pos === 'P') return Math.round((p.ratings.kicking + kickAccuracy(p)) / 2);
   const keys = Object.keys(PROFILES[p.pos]).filter((k) => (PROFILES[p.pos][k as RatingKey] ?? 0) > 0) as RatingKey[];
   let sum = 0;
   for (const k of keys) sum += p.ratings[k];

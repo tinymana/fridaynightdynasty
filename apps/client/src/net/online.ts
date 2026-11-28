@@ -76,5 +76,7 @@ export const online = {
   call: (token: string, pin: string, turn: number, call: OffDecision | DefDecision, have: number) => post<{ room: RoomView }>({ action: 'call', token, pin, turn, call, have }),
   manage: (token: string, pin: string, change: Record<string, unknown>, have: number) => post<{ room: RoomView }>({ action: 'manage', token, pin, change, have }),
   voice: (token: string, pin: string, on: boolean, send: VoiceSignal[]) => post<{ peers: string[]; signals: { from: string; data: Record<string, unknown> }[] }>({ action: 'voice', token, pin, on, send }),
+  /** The toss winner's choice: kick off and take the ball after halftime, or receive. */
+  toss: (token: string, pin: string, kick: boolean, have: number) => post<{ room: RoomView }>({ action: 'toss', token, pin, kick, have }),
   plan: (token: string, pin: string, plan: GamePlan, have: number) => post<{ room: RoomView }>({ action: 'plan', token, pin, plan, have }),
 };

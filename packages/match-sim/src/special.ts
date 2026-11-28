@@ -1,4 +1,4 @@
-import { RULES, clamp, type KickStyle, type Player, type Rng } from '@fnd/core';
+import { RULES, clamp, kickAccuracy, type KickStyle, type Player, type Rng } from '@fnd/core';
 import { fieldGoalDistance, fieldGoalRange } from '@fnd/football-ai';
 
 /** Kicking plays are resolved from ratings, distance and a seeded roll (design: no kick meter). */
@@ -67,7 +67,10 @@ export interface PuntResult {
 }
 
 export function resolvePunt(rng: Rng, punter: Player, los: number, distance = 1): PuntResult {
-  const grossYards = Math.round((26 + punter.ratings.kicking * 0.16 + rng.range(-9, 9)) * distance);
+  // Power is the distance. Accuracy is how bad the bad ones are: a wild punter shanks it, a steady one rarely does.
+  const roll = rng.range(-9, 9);
+  const shank = clamp((130 - kickAccuracy(punter)) / 60, 0.5, 1.5);
+  const grossYards = Math.round((26 + punter.ratings.kicking * 0.16 + (roll < 0 ? roll * shank : roll)) * distance);
   const fairCatch = rng.chance(0.45);
   const returnRoll = rng.range(-1, 12);
   const land = 100 - (los + grossYards);
@@ -79,7 +82,7 @@ export function resolvePunt(rng: Rng, punter: Player, los: number, distance = 1)
 export function fieldGoalChance(kicker: Player, los: number): number {
   const d = fieldGoalDistance(los);
   if (d > fieldGoalRange(kicker.ratings.kicking)) return 0.02;
-  return clamp(0.95 - (d - 18) * 0.03 - (70 - kicker.ratings.kicking) * 0.004, 0.05, 0.95);
+  return clamp(0.95 - (d - 18) * 0.03 - (70 - kickAccuracy(kicker)) * 0.004, 0.05, 0.95);
 }
 
-export const patChance = (kicker: Player): number => clamp(0.68 + kicker.ratings.kicking * 0.0025, 0.5, 0.98);
+export const patChance = (kicker: Player): number => clamp(0.68 + kickAccuracy(kicker) * 0.0025, 0.5, 0.98);

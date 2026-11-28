@@ -3,7 +3,7 @@ import {
   type DefDecision, type DefPlay, type GamePlan, type GameSetup, type KickStyle, type ManageAction, type OffDecision, type OffPlay,
 } from '@fnd/core';
 import { DEFAULT_PLAN } from '@fnd/football-ai';
-import { AutoCoach, Game, gameHash, replayGame, type LoggedDecision } from '@fnd/match-sim';
+import { AutoCoach, Game, gameHash, replayGame, tossWinner, type LoggedDecision } from '@fnd/match-sim';
 import { boxScore, cleanPick, matchupTeams, type BoxScore, type TeamPick } from '@fnd/league';
 import { leagueTeams, type RoomLeague } from './shared';
 
@@ -49,6 +49,9 @@ export interface Room {
   plans: [GamePlan, GamePlan];
   /** Every resolved decision, in order. Public: both browsers replay it to draw the game. */
   log: LoggedDecision[];
+  /** When the toss winner's time to choose runs out, and who takes the opening kickoff once he has chosen. */
+  tossUntil?: number;
+  receiver?: 0 | 1;
   /** Number of resolved plays (log entries that are not depth-chart changes). A call names the turn it is for. */
   turn: number;
   /** Calls made for the current turn. Never sent to the other coach before the snap. */
@@ -205,6 +208,7 @@ export function createLeagueRoom(pin: string, host: Coach, team: 0 | 1, bring: B
     room.seen = [now, now];
     room.seen[other(team)] = 0;
     settle(room, buildGame(room), now);
+    openToss(room, now);
   }
   return room;
 }
@@ -222,6 +226,7 @@ function startWhenBothHere(room: Room, now: number): void {
   room.state = 'playing';
   room.log = [];
   settle(room, buildGame(room), now);
+  openToss(room, now);
 }
 
 export function joinRoom(room: Room, guest: Coach, bring: Bringing, now: number): void {
@@ -250,7 +255,7 @@ export function touch(room: Room, coachId: string, now: number): void {
 }
 
 function buildGame(room: Room): Game {
-  return replayGame(room.seed, room.league ? leagueTeams(room.league) : matchupTeams(room.seed, room.picks), room.log, { books: room.books, plays: room.designs?.plays, defenses: room.designs?.defenses, setup: room.setup });
+  return replayGame(room.seed, room.league ? leagueTeams(room.league) : matchupTeams(room.seed, room.picks), room.log, { books: room.books, plays: room.designs?.plays, defenses: room.designs?.defenses, setup: room.setup, receiver: room.receiver });
 }
 
 /** Records what the next decision is. */
@@ -280,6 +285,33 @@ export function startRoom(room: Room, coachId: string, now: number): void {
   room.state = 'playing';
   room.log = [];
   room.seen = [now, now];
+  settle(room, buildGame(room), now);
+  openToss(room, now);
+}
+
+/** How long the coach who won the toss has to choose. After that he receives. */
+export const TOSS_MS = 20_000;
+
+/** The coach who won the coin toss, when he is a person, gets a moment to choose before the opening kickoff. */
+function openToss(room: Room, now: number): void {
+  const winner = tossWinner(room.seed);
+  const coach = winner === room.hostTeam ? room.host : room.guest;
+  if (coach && coach.id !== AI_COACH.id) room.tossUntil = now + TOSS_MS;
+}
+
+const tossOpen = (room: Room, now: number): boolean => room.state === 'playing' && room.turn === 0 && room.receiver === undefined && room.tossUntil !== undefined && now < room.tossUntil;
+
+/**
+ * The toss winner's choice: take the ball, or kick off and take it to open the second half. It only counts before
+ * the opening kickoff and inside the time allowed; a kickoff called first ends the toss with the winner receiving.
+ */
+export function tossRoom(room: Room, coachId: string, kick: boolean, now: number): void {
+  const team = teamOf(room, coachId);
+  if (!tossOpen(room, now)) throw new RoomError('toss_over', 'The toss has been settled.');
+  const winner = tossWinner(room.seed);
+  if (team !== winner) throw new RoomError('not_yours', 'The other coach won the toss.', 403);
+  room.receiver = kick ? other(winner) : winner;
+  room.seen[team] = now;
   settle(room, buildGame(room), now);
 }
 
@@ -476,6 +508,9 @@ export interface RoomView {
   seed: number;
   /** The school each side picked for a one-off game, by team index; null plays as the stock school. */
   picks: [TeamPick | null, TeamPick | null];
+  /** The coin toss while the winner is still choosing, and the team that receives once he has chosen to change it. */
+  toss: { winner: 0 | 1; msLeft: number } | null;
+  receiver: 0 | 1 | null;
   books: [string[], string[]];
   /** Both coaches' designs. Each browser needs them to redraw the game. */
   designs: Designs;
@@ -513,6 +548,7 @@ export function viewRoom(room: Room, coachId: string, have: number, now: number)
   const iAmOffense = you === room.need.offense;
   return {
     pin: room.pin, state: room.state, you, isHost: room.host.id === coachId, coaches, seed: room.seed, books: room.books, designs: room.designs ?? { plays: [[], []], defenses: [[], []] }, setup: cleanSetup(room.setup), league: room.league ?? null, picks: room.picks ?? [null, null],
+    toss: tossOpen(room, now) ? { winner: tossWinner(room.seed), msLeft: room.tossUntil! - now } : null, receiver: room.receiver ?? null,
     turn: room.turn, logSize: room.log.length, log: room.log.slice(clamp(Math.trunc(have) || 0, 0, room.log.length)),
     need: room.need, submitted: { off: !!room.pending.off, def: !!room.pending.def },
     mine: (iAmOffense ? room.pending.off : room.pending.def) ?? null,

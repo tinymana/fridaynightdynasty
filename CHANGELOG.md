@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.32.0 — 2026-11-27
+
+Kicker accuracy, tips, hold to read, online toss choice, own game books. Simulation and online change: redeploy the `fnd` function with the merge.
+
+### Added
+- `kickAccuracy(p)` (core): awareness + 28, so no roster roll changes. `overall` of a K or P averages power and accuracy.
+  Field goal and extra point chance use accuracy; range and distance use `ratings.kicking`; a punter's short rolls scale with accuracy.
+- Online `toss` action, `Room.tossUntil`, `Room.receiver`, `RoomView.toss`, `RoomView.receiver`, `TOSS_MS`. A kickoff called first ends the toss.
+- Client: first-game tips (`fnd.tips.v1`, `fnd.tipson.v1`; off in automated browsers unless `__fnd.tips(true)`), press and hold on play cards (`#cardTip`),
+  `DynastyHost.keepBook/keptBook` and `KeptBook` (`fnd.mybooks.v1`, twelve games, not in the cloud save).
+- Tests: kickers (grades.test.ts), online toss (picks.test.ts). `tools/tips-shot.mjs`.
+
 ## 0.31.0 — 2026-11-27
 
 Letter grades. Display only: no simulation or online change, no function redeploy needed.

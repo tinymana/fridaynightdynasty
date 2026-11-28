@@ -31,3 +31,22 @@ describe('letter grades', () => {
     }
   });
 });
+
+describe('kickers', () => {
+  it('are graded on leg power, leg accuracy and speed, and accuracy is its own rating', async () => {
+    const { kickAccuracy } = await import('@fnd/core');
+    const { fieldGoalChance, patChance } = await import('../packages/match-sim/src/special');
+    const k = exhibitionTeams(3)[0].roster.find((p) => p.pos === 'K')!;
+    expect(reportCard(k).attrs.map((a) => a.label)).toEqual(['Leg power', 'Leg accuracy', 'Speed']);
+    const wild = { ...k, ratings: { ...k.ratings, awareness: 20 } };
+    const sure = { ...k, ratings: { ...k.ratings, awareness: 65 } };
+    expect(kickAccuracy(sure)).toBeGreaterThan(kickAccuracy(wild));
+    expect(fieldGoalChance(sure, 80)).toBeGreaterThan(fieldGoalChance(wild, 80));
+    expect(patChance(sure)).toBeGreaterThan(patChance(wild));
+    // The same leg reaches the same distance however straight it is.
+    expect(fieldGoalChance(sure, 40)).toBe(fieldGoalChance(wild, 40));
+    let power = 0, acc = 0, n = 0;
+    for (let seed = 1; seed <= 60; seed++) for (const t of exhibitionTeams(seed)) { const p = t.roster.find((x) => x.pos === 'K')!; power += p.ratings.kicking; acc += kickAccuracy(p); n++; }
+    expect(Math.abs(power / n - acc / n)).toBeLessThan(3);
+  });
+});

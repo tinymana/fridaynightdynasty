@@ -1,16 +1,20 @@
 import { gradeChip, gradeKey, gradeLine } from './grades';
-import { GROUPS, WEATHER, overall, type GameSetup, type Team } from '@fnd/core';
+import { GROUPS, WEATHER, overall, type GameSetup, type PlayEvent, type Team } from '@fnd/core';
 import {
   CLASS_NAMES, CLASS_SHORT, MAX_CALL_UPS, RECORD_DEFS, FINAL_WEEK, FOCUSES, OUT_FOR_SEASON, seasonOver, lastWeek as finalWeekOf, REGULAR_WEEKS, RIVALRY_WEEK, STATES, campNews, jobOffers, signings, takeJob, teamHonors, isRivalryGame, rivalries, weeklyPaper, replayResult, leagueNews, career, emptyLine, incomingOf, newsText, occasionFor, openings, programOf, schoolOfPlayer, seasonYear, statsOf, recordOf, setCallUp, createDynasty, createLeague, editSchool, gameSeed, gameSetup, loadDynasty, nextSeason, playWeek, standings, stateByCode, matchTeams, userGame, weekGames, winnerOf,
   type BoxScore, type FocusId, type Paper, type Incident, type LeagueNews, type Dynasty, type GameResult, type Honoree, type ProgramPlayer, type RecordNews, type SeasonAwards, type StatLine,
 } from '@fnd/league';
 import { bindSchoolForm, schoolFormHtml } from './school-form';
 import { renderGamebook } from './gamebook';
+import { replayGame, type GameOptions, type LoggedDecision } from '@fnd/match-sim';
 
 /**
  * The solo dynasty screen: pick a state and a school, then play a season a week at a time.
  * The save is small (seed, results, prestige): rosters and AI games are rebuilt from it.
  */
+
+/** Where a kept game book is filed: one league, one season, one game. */
+const bookKey = (d: Dynasty, g: { week: number; home: number; away: number }): string => `${d.league.state}:${d.league.seed}:${d.year}:${g.week}:${g.home}-${g.away}`;
 
 export interface DynastyGame {
   seed: number;
@@ -35,6 +39,16 @@ export interface DynastyHost {
   back(): void;
   /** A league with friends: call-ups are made on the server. Resolves when the book has been refreshed; rejects with the reason if refused. */
   callUp?(playerId: string, up: boolean): Promise<void>;
+  /** Keeps and finds the calls of the coach's own games on this device, so their game books can be shown later. */
+  keepBook?(key: string, book: KeptBook): void;
+  keptBook?(key: string): KeptBook | null;
+}
+
+/** A game the coach called himself: its seed, every decision, and what both sidelines brought. Replaying it gives the game book. */
+export interface KeptBook {
+  seed: number;
+  log: LoggedDecision[];
+  opts: GameOptions;
 }
 
 const css = (n: number): string => `#${n.toString(16).padStart(6, '0')}`;
@@ -111,8 +125,9 @@ export class DynastyScreen {
   }
 
   /** Records the coach's finished game and plays the rest of that week. */
-  finishGame(g: DynastyGame, score: readonly [number, number], box?: BoxScore): { won: boolean | null; text: string; records: string[] } {
+  finishGame(g: DynastyGame, score: readonly [number, number], box?: BoxScore, kept?: KeptBook): { won: boolean | null; text: string; records: string[] } {
     const d = this.d!;
+    if (kept) this.host.keepBook?.(bookKey(d, g), kept);
     const mine: GameResult = { week: g.week, home: g.home, away: g.away, score: [score[0], score[1]] };
     this.d = playWeek(d, mine, box);
     this.host.save(this.d);
@@ -316,11 +331,25 @@ export class DynastyScreen {
     this.root.querySelector('#npBack')!.addEventListener('click', () => { this.view = 'season'; this.render(); });
   }
 
-  /** The game book of a finished game between two other schools, played again from its seed. */
+  /** The coach's own game, played again from the calls kept on this device. Null when they are not here or do not give the recorded score. */
+  private ownBook(d: Dynasty, g: GameResult): { events: PlayEvent[]; teams: [Team, Team] } | null {
+    const kept = this.host.keptBook?.(bookKey(d, g));
+    if (!kept) return null;
+    try {
+      const teams = matchTeams(d, g.home, g.away, g.week);
+      const game = replayGame(kept.seed, teams, kept.log, kept.opts);
+      if (game.state.phase !== 'final' || game.state.score[0] !== g.score[0] || game.state.score[1] !== g.score[1]) return null;
+      return { events: [...game.events], teams };
+    } catch {
+      return null;
+    }
+  }
+
+  /** The game book of a finished game, played again from its seed. */
   private renderBook(d: Dynasty, g: GameResult): void {
     const schools = d.league.schools;
     this.title.textContent = `${weekName(g.week)} · ${schools[g.away].name} at ${schools[g.home].name}`;
-    const replay = replayResult(d, g);
+    const replay = replayResult(d, g) ?? this.ownBook(d, g);
     this.root.innerHTML = `<div class="orow center"><button class="seg on" id="bkBack">Back to the season</button></div>
       <div class="result" style="text-align:center">${esc(schools[g.home].abbr)} ${g.score[0]}  –  ${g.score[1]} ${esc(schools[g.away].abbr)}</div>
       ${replay ? '<div id="dyBook" class="gamebook"></div>' : '<p style="text-align:center">The book for this game was not kept.</p>'}`;
@@ -508,7 +537,7 @@ export class DynastyScreen {
     }
     const rows = table.map((r, i) => `<tr class="${r.school === d.user ? 'me' : ''}${d.bracket && i === 3 ? ' cut' : ''}"><td>${i + 1}</td><td>${dot(r.school)}${esc(schools[r.school].name)} ${esc(schools[r.school].mascot)}</td><td><b>${r.wins}-${r.losses}${r.ties ? `-${r.ties}` : ''}</b></td><td>${r.pointsFor}</td><td>${r.pointsAgainst}</td></tr>`).join('');
     const mineGame = (g: GameResult): boolean => g.home === d.user || g.away === d.user;
-    const line = (g: GameResult): string => `<div class="dy-game${mineGame(g) ? ' me' : ''}"><span>${esc(schools[g.away].name)} at ${esc(schools[g.home].name)}</span><span>${mineGame(g) ? '' : `<button class="seg mini" data-book="${g.home}-${g.away}">Game book</button> `}<b>${g.score[1]}–${g.score[0]}</b></span></div>`;
+    const line = (g: GameResult): string => `<div class="dy-game${mineGame(g) ? ' me' : ''}"><span>${esc(schools[g.away].name)} at ${esc(schools[g.home].name)}</span><span>${mineGame(g) && !this.host.keptBook?.(bookKey(d, g)) ? '' : `<button class="seg mini" data-book="${g.home}-${g.away}">Game book</button> `}<b>${g.score[1]}–${g.score[0]}</b></span></div>`;
     const lastWeek = d.week - 1;
     const last = lastWeek >= 0 ? d.results.filter((g) => g.week === lastWeek) : [];
     const own = over ? null : userGame(d);
