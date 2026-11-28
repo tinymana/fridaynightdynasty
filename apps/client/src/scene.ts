@@ -82,6 +82,14 @@ export class FieldScene extends Phaser.Scene {
   private fx!: Phaser.GameObjects.Graphics;
   private field!: Phaser.GameObjects.Graphics;
   private camX = 240;
+  /** The top edge of the view, and the row the camera wants to be centred on. Only the close view moves up and down. */
+  private camY = 0;
+  private focusY = VIEW_H / 2;
+  /** The close view: one and a half times nearer, following the ball up and down the field as well as along it. */
+  private close = 1;
+  /** How much of the world the view shows. */
+  private get vw(): number { return VIEW_W / (this.bandOn ? 1 : this.close); }
+  private get vh(): number { return VIEW_H / (this.bandOn ? 1 : this.close); }
   private ready = false;
   private crew: Phaser.GameObjects.Image[] = [];
   private bench: Phaser.GameObjects.Image[] = [];
@@ -354,7 +362,10 @@ export class FieldScene extends Phaser.Scene {
       // A lineman's sprite is long: he is drawn back from his spot so his hands, not his middle, are at the line.
       const back = frame === 'line' || frame === 'drive' ? (p.team === 1 ? 4 : -4) : 0;
       s.setVisible(true).setTexture(`p${p.team}_${frame}`).setFlipX(((p.team === 1) !== turned) !== !!p.back).setDepth(y).setPosition(x + back, y + 2);
-      if (p.hasBall) this.carrier = { x: (x - this.camX) / VIEW_W, y: y / VIEW_H };
+      if (p.hasBall) {
+        this.carrier = { x: (x - this.camX) / this.vw, y: (y - this.camY) / this.vh };
+        this.focusY = y - 8;
+      }
       if (p.hasBall) g.fillStyle(0xf2c14e).fillTriangle(x - 3, y - 26, x + 3, y - 26, x, y - 22);
     });
 
@@ -397,12 +408,18 @@ export class FieldScene extends Phaser.Scene {
       const by = Math.round(wy(b.y));
       if (b.z > 0) g.fillStyle(0x000000, 0.3).fillEllipse(bx, by, 5, 2);
       this.ball.setPosition(bx, by - 7 - b.z);
+      this.focusY = by - 8;
     }
 
-    const target = Phaser.Math.Clamp(wx(this.bandOn ? 50 : view.focusX) - VIEW_W / 2, 0, WORLD_W - VIEW_W);
+    const zoom = ZOOM * (this.bandOn ? 1 : this.close);
+    const target = Phaser.Math.Clamp(wx(this.bandOn ? 50 : view.focusX) - this.vw / 2, 0, WORLD_W - this.vw);
     this.camX += (target - this.camX) * Math.min(1, delta / 180);
+    const targetY = Phaser.Math.Clamp(this.focusY - this.vh / 2, 0, VIEW_H - this.vh);
+    this.camY += (targetY - this.camY) * Math.min(1, delta / 260);
     // With the camera zoomed, scroll is measured from the centre of the view.
-    this.cameras.main.scrollX = Math.round(this.camX * ZOOM) / ZOOM - (VIEW_W * ZOOM - VIEW_W) / 2;
+    this.cameras.main.setZoom(zoom);
+    this.cameras.main.scrollX = Math.round(this.camX * zoom) / zoom + this.vw / 2 - (VIEW_W * ZOOM) / 2;
+    this.cameras.main.scrollY = Math.round(this.camY * zoom) / zoom + this.vh / 2 - (VIEW_H * ZOOM) / 2;
   }
 
   /** A fresh field for a new game: clean grass, or lying snow, or a morning frost. */
@@ -449,7 +466,12 @@ export class FieldScene extends Phaser.Scene {
   }
 
   snapCamera(focusX: number): void {
-    this.camX = Phaser.Math.Clamp(wx(focusX) - VIEW_W / 2, 0, WORLD_W - VIEW_W);
+    this.camX = Phaser.Math.Clamp(wx(focusX) - this.vw / 2, 0, WORLD_W - this.vw);
+  }
+
+  /** Switches the close view on or off. */
+  setClose(on: boolean): void {
+    this.close = on ? 1.5 : 1;
   }
 }
 

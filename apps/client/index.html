@@ -333,7 +333,7 @@
   .sl-spring { margin: 10px 0; text-align: left; }
   .sl-spring .orow { margin-top: 6px; }
   /* A friends' league read as a dynasty: everything that would change it is put away. */
-  #dynasty.ro #dyPlay, #dynasty.ro #dySim, #dynasty.ro #dyOff, #dynasty.ro #dyEdit, #dynasty.ro #dyQuit, #dynasty.ro .dy-rename, #dynasty.ro .dy-rivalline + .dy-ro { display: none; }
+  #dynasty.ro #dyPlay, #dynasty.ro #dySim, #dynasty.ro #dyEdit, #dynasty.ro #dyQuit, #dynasty.ro .dy-rename, #dynasty.ro .dy-rivalline + .dy-ro { display: none; }
   /* The line under fourth place: above it, the playoffs. */
   #dyBody tr.cut td { border-bottom: 2px dashed var(--accent); }
   .dy-rival { color: var(--accent); }
@@ -593,6 +593,8 @@
   #cardTip small { color: var(--dim); }
   .card { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
 
+  #bar .sm { display: none; }
+  @media (max-width: 600px) { #bar .lg { display: none; } #bar .sm { display: inline; } #bar .seg { padding: 9px 5px; } }
   /* First-game tips */
   #coachTip { background: #05071a; border: 2px solid var(--accent); border-radius: 4px; padding: 10px 12px; margin: 6px 0; font-size: 16px; line-height: 1.35; text-align: left; }
   #coachTip b { color: var(--accent); font-size: 18px; }
@@ -628,7 +630,7 @@
       <div class="teams" id="teams"></div>
       <div class="ex-picks"><div class="o-field"><span class="o-lbl">Home school</span><div class="sp" id="exPick0"></div></div><div class="o-field"><span class="o-lbl">Visiting school</span><div class="sp" id="exPick1"></div></div></div>
       <div class="opts-slot"></div>
-      <div class="setup-opts"><label class="chk"><input type="checkbox" id="clockToggle"> 20-second play clock</label></div>
+      <div class="setup-opts"><label class="chk"><input type="checkbox" id="clockToggle"> 20-second play clock</label><label class="chk"><input type="checkbox" id="tipsToggle"> Coaching tips</label></div>
     </div>
     <div id="gameOpts" class="setup-opts">
       <label class="pick">Quarters <select id="quarterPick" aria-label="Quarter length"></select></label>
@@ -759,6 +761,7 @@
       <button class="seg" data-speed="0">Skip</button>
       <button class="seg" id="mute">Sound on</button>
       <button class="seg" id="pa" title="The public address announcer calls scores and first downs in your browser's voice">Announcer on</button>
+      <button class="seg" id="zoomBtn" title="Switch between the whole view and a closer one that follows the ball">Wide view</button>
       <button class="seg" id="sidelineBtn">Sideline <kbd>[S]</kbd></button>
       <button class="seg hidden" id="voiceBtn">Voice chat</button>
       <button class="seg hidden" id="micBtn">Mute mic</button>

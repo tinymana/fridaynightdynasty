@@ -1433,6 +1433,16 @@ const TIPS = {
 type TipId = keyof typeof TIPS;
 const tipsSeen = new Set<string>(store.get<string[]>('fnd.tips.v1', []));
 let tipsOn = store.get<boolean>('fnd.tipson.v1', true);
+/** Turns the first-game tips on or off. Turning them on starts them over. */
+function setTips(on: boolean): void {
+  tipsOn = on;
+  store.set('fnd.tipson.v1', on);
+  if (on) {
+    tipsSeen.clear();
+    store.set('fnd.tips.v1', []);
+  } else closeTip();
+  ($('tipsToggle') as HTMLInputElement).checked = on;
+}
 /** Automated browsers skip the tips unless a check asks for them. */
 let tipsInChecks = false;
 let tipOpen = false;
@@ -1449,7 +1459,7 @@ function coachTip(id: TipId): void {
   $('coachTip').classList.remove('hidden');
   tipOpen = true;
   $('tipOk').addEventListener('click', closeTip);
-  $('tipOff').addEventListener('click', () => { tipsOn = false; store.set('fnd.tipson.v1', false); closeTip(); });
+  $('tipOff').addEventListener('click', () => setTips(false));
 }
 
 /** The card whose description is showing because it was pressed and held. */
@@ -1511,10 +1521,13 @@ function renderSideline(): void {
       + `<div class="sl-field"><div class="t">Run or pass</div>${seg('bias', plan.passBias, [[-2, 'Run heavy'], [-1, 'Lean run'], [0, 'Balanced'], [1, 'Lean pass'], [2, 'Pass heavy']])}</div>`
       + `<div class="sl-field"><div class="t">Fourth downs and tries</div>${seg('agg', plan.aggression, [[0, 'Conservative'], [1, 'Normal'], [2, 'Aggressive']])}</div>`
       + `<div class="sl-field"><div class="t">Rest starters below ${game.subThreshold[user]}% energy</div>${seg('thr', game.subThreshold[user], [[0, 'Never'], [35, '35%'], [55, '55%'], [70, '70%']])}</div>`
-      + `<p class="sl-note">A tired player is slower. A resting starter returns once he has recovered 20 points above the line.</p>`;
+      + `<p class="sl-note">A tired player is slower. A resting starter returns once he has recovered 20 points above the line.</p>`
+      + `<div class="sl-field"><div class="t">Coaching tips</div>${seg('tips', tipsOn ? 1 : 0, [[1, 'On'], [0, 'Off']])}</div>`
+      + `<p class="sl-note">A short note the first time each kind of call comes up. Turning them on starts them over.</p>`;
     const savePlan = (): void => { if (net) void netRequest(() => online.plan(net!.token, net!.pin, plan, net!.received)); renderSideline(); };
     body.querySelectorAll<HTMLElement>('[data-bias]').forEach((el) => el.addEventListener('click', () => { plan.passBias = Number(el.dataset.bias); savePlan(); }));
     body.querySelectorAll<HTMLElement>('[data-agg]').forEach((el) => el.addEventListener('click', () => { plan.aggression = Number(el.dataset.agg); savePlan(); }));
+    body.querySelectorAll<HTMLElement>('[data-tips]').forEach((el) => el.addEventListener('click', () => { setTips(el.dataset.tips === '1'); renderSideline(); }));
     body.querySelectorAll<HTMLElement>('[data-thr]').forEach((el) => el.addEventListener('click', () => manage({ kind: 'threshold', team: user, value: Number(el.dataset.thr) })));
     return;
   }
@@ -1799,6 +1812,7 @@ function showSetup(fresh = true, page: SetupPage = setupPage): void {
     }, false);
   }
   ($('clockToggle') as HTMLInputElement).checked = useClock;
+  ($('tipsToggle') as HTMLInputElement).checked = tipsOn;
   bookSummary();
   // Back at the menu with something not yet matched to the server: settle it now.
   if (session && !cloudBusy && !cloudOther && !synced()) void syncSaves();
@@ -2741,11 +2755,25 @@ $('mute').addEventListener('click', () => {
   refreshAtmosphere();
   $('mute').textContent = muted ? 'Sound off' : 'Sound on';
 });
+/** The close view of the field. On by default on a phone, where the whole view is too small to follow. */
+let closeView = store.get<boolean | null>('fnd.close.v1', null) ?? (typeof matchMedia === 'function' && matchMedia('(max-width: 600px)').matches);
+function showCloseView(): void {
+  scene.setClose(closeView);
+  $('zoomBtn').innerHTML = closeView ? 'Close<span class="lg"> view</span>' : 'Wide<span class="lg"> view</span>';
+  $('zoomBtn').setAttribute('aria-pressed', String(closeView));
+}
+$('zoomBtn').addEventListener('click', () => {
+  closeView = !closeView;
+  store.set('fnd.close.v1', closeView);
+  showCloseView();
+});
+showCloseView();
+$('tipsToggle').addEventListener('change', (ev) => setTips((ev.target as HTMLInputElement).checked));
 let paOn = true;
 try { paOn = localStorage.getItem('fnd.pa') !== 'off'; } catch { /* private mode */ }
 const showPa = (): void => {
   setPa(paOn);
-  $('pa').textContent = paOn ? 'Announcer on' : 'Announcer off';
+  $('pa').innerHTML = `<span class="lg">Announcer</span><span class="sm">PA</span> ${paOn ? 'on' : 'off'}`;
   $('pa').classList.toggle('on', paOn);
 };
 showPa();

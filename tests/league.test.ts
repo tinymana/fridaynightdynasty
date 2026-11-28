@@ -153,9 +153,9 @@ describe('30 seasons of one league', () => {
     expect(c.seasons).toBe(30);
     expect(c.wins + c.losses + c.ties).toBeGreaterThanOrEqual(30 * REGULAR_WEEKS);
     expect(c.championships).toBe(titles[0]);
-    // With schools as far apart as real ones, the best program in a league can win about half the titles over 30
-    // years, the way real high school dynasties do. It must not win more than that, and five schools must win one.
-    expect(Math.max(...titles)).toBeLessThanOrEqual(16);
+    // With a four-team bracket deciding it, the best program wins well under half the titles over 30 years and most
+    // schools win at least one. (tools/parity.ts prints the spread for any league.)
+    expect(Math.max(...titles)).toBeLessThanOrEqual(12);
     expect(titles.filter((t) => t > 0).length).toBeGreaterThanOrEqual(5);
     // Every school wins at least a quarter of its games over 30 years and none wins three quarters.
     for (const w of wins) {
