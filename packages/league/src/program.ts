@@ -137,8 +137,8 @@ const pad = (n: number, len: number): string => String(n).padStart(len, '0');
 const slotId = (schoolId: string, enrolled: number, slot: number): string => `${schoolId}_c${enrolled}_${pad(slot, 2)}`;
 
 /**
- * A school's incidents in one season: injuries week by week (most cost a game or two, a few end a season, and once in
- * a great while one ends a career), ineligibility when report cards come out, the odd suspension, a family moving away.
+ * A school's incidents in one season: about two injuries (most cost a game or two, about one in seventeen ends a
+ * season, and one in four hundred ends a career), ineligibility when report cards come out, the odd suspension, a family moving away.
  */
 export function incidentsOf(leagueSeed: number, schoolId: string, season: number): readonly Incident[] {
   return memo(`i:${leagueSeed}:${schoolId}:${season}`, () => {
@@ -152,14 +152,15 @@ export function incidentsOf(leagueSeed: number, schoolId: string, season: number
       return slotId(schoolId, season - year + 1, rng.int(1, CLASS_SIZE));
     };
     for (let week = -1; week < SEASON_WEEKS; week++) {
-      const hurt = (rng.chance(0.42) ? 1 : 0) + (rng.chance(0.12) ? 1 : 0);
+      // About two injuries a program a season.
+      const hurt = (rng.chance(0.2) ? 1 : 0) + (rng.chance(0.05) ? 1 : 0);
       for (let k = 0; k < hurt; k++) {
         const id = someone();
         const u = rng.range(0, 1);
-        if (u < 0.45) out.push({ id, kind: 'injury', week, back: week + 2, what: pick(SHORT_INJURIES) });
-        else if (u < 0.72) out.push({ id, kind: 'injury', week, back: week + 3, what: pick(SHORT_INJURIES) });
-        else if (u < 0.86) out.push({ id, kind: 'injury', week, back: week + 4 + rng.int(0, 1), what: pick(LONGER_INJURIES) });
-        else if (u < 0.995) out.push({ id, kind: 'injury', week, back: OUT_FOR_SEASON, what: pick(SEASON_INJURIES) });
+        if (u < 0.55) out.push({ id, kind: 'injury', week, back: week + 2, what: pick(SHORT_INJURIES) });
+        else if (u < 0.82) out.push({ id, kind: 'injury', week, back: week + 3, what: pick(SHORT_INJURIES) });
+        else if (u < 0.94) out.push({ id, kind: 'injury', week, back: week + 4 + rng.int(0, 1), what: pick(LONGER_INJURIES) });
+        else if (u < 0.9975) out.push({ id, kind: 'injury', week, back: OUT_FOR_SEASON, what: pick(SEASON_INJURIES) });
         else out.push({ id, kind: 'injury', week, back: OUT_FOR_GOOD, what: pick(CAREER_INJURIES) });
       }
       // Report cards come out in the middle of the season.

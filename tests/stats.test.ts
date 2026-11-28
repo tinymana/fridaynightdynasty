@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { exhibitionTeams } from '@fnd/core';
 import { simulateGame, summarize } from '@fnd/match-sim';
 import {
-  RECORD_DEFS, REGULAR_WEEKS, boxScore, createDynasty, emptyLine, enrolledIn, historicBook, loadDynasty, newsText, nextSeason, playWeek, recordGame, schoolOfPlayer, seasonYear, statsOf,
+  RECORD_DEFS, REGULAR_WEEKS, seasonOver, boxScore, createDynasty, emptyLine, enrolledIn, historicBook, loadDynasty, newsText, nextSeason, playWeek, recordGame, schoolOfPlayer, seasonYear, statsOf,
   type BoxScore, type Dynasty, type StatLine,
 } from '@fnd/league';
 
 const sum = (lines: Record<string, StatLine>, k: keyof StatLine): number => Object.values(lines).reduce((s, l) => s + l[k], 0);
 function season(d: Dynasty): Dynasty {
   let x = d;
-  while (x.week <= REGULAR_WEEKS) x = playWeek(x);
+  while (!seasonOver(x)) x = playWeek(x);
   return x;
 }
 
@@ -140,7 +140,7 @@ describe('season awards', () => {
   it('are voted once the title game is played, from players who really played, and survive a save', async () => {
     const { programOf, standings } = await import('@fnd/league');
     let d = createDynasty('OH', 31, 2);
-    while (d.week < REGULAR_WEEKS) d = playWeek(d);
+    while (d.week < REGULAR_WEEKS + 1) d = playWeek(d);
     expect(d.awards ?? []).toEqual([]);
     d = playWeek(d);
     expect(d.awards!.length).toBe(1);
@@ -165,14 +165,14 @@ describe('season awards', () => {
     expect(loadDynasty(JSON.parse(JSON.stringify(d)))).toEqual(d);
     // A second season adds a second set and leaves the first alone.
     let e = nextSeason(d);
-    while (e.week <= REGULAR_WEEKS) e = playWeek(e);
+    while (!seasonOver(e)) e = playWeek(e);
     expect(e.awards!.map((x) => x.year)).toEqual([1, 2]);
     expect(e.awards![0]).toEqual(a);
   });
 
   it('drops anything in a save that is not a well-formed award', () => {
     let d = createDynasty('OH', 31, 2);
-    while (d.week <= REGULAR_WEEKS) d = playWeek(d);
+    while (!seasonOver(d)) d = playWeek(d);
     const bad = JSON.parse(JSON.stringify(d));
     bad.awards.push({ year: 'x' }, null, { year: 3, coach: 99 });
     bad.awards[0].player.name = '<img src=x>';

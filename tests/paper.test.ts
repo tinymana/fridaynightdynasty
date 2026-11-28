@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LEAGUE_SIZE, REGULAR_WEEKS, RIVALRY_WEEK, createDynasty, isRivalryGame, loadDynasty, nextSeason, playWeek, rivalOf, rivalries, schedule, weeklyPaper } from '@fnd/league';
+import { FINAL_WEEK, LEAGUE_SIZE, REGULAR_WEEKS, seasonOver, RIVALRY_WEEK, createDynasty, isRivalryGame, loadDynasty, nextSeason, playWeek, rivalOf, rivalries, schedule, weeklyPaper } from '@fnd/league';
 
 /** Rivalries and the weekly paper. */
 
@@ -33,7 +33,7 @@ describe('rivalries', () => {
   it('the series and the trophy follow the games, through a save and into the next season', { timeout: 240_000 }, () => {
     let d = createDynasty('PA', 404, 2, { quarterMinutes: 4 });
     const before = rivalries(d);
-    while (d.week <= REGULAR_WEEKS) d = playWeek(d);
+    while (!seasonOver(d)) d = playWeek(d);
     const after = rivalries(d);
     after.forEach((r, k) => {
       const g = d.results.find((x) => x.week === RIVALRY_WEEK && [x.home, x.away].includes(r.a) && [x.home, x.away].includes(r.b))!;
@@ -59,7 +59,7 @@ describe('the weekly paper', () => {
     let d = createDynasty('GA', 88, 5, { quarterMinutes: 4 });
     expect(weeklyPaper(d)).toBeNull();
     const s = d.league.schools;
-    for (let w = 0; w <= REGULAR_WEEKS; w++) {
+    for (let w = 0; w <= FINAL_WEEK; w++) {
       d = playWeek(d);
       const paper = weeklyPaper(d)!;
       expect(paper).not.toBeNull();
@@ -78,7 +78,8 @@ describe('the weekly paper', () => {
       }
       // The coach's own game leads the page whenever he played.
       const mine = games.find((g) => g.home === 5 || g.away === 5);
-      if (mine) expect(paper.lead.headline).toContain(s[5].name);
+      // (The championship headline names the champion, whoever that is.)
+      if (mine && w !== FINAL_WEEK) expect(paper.lead.headline).toContain(s[5].name);
       expect(paper.table.length).toBe(LEAGUE_SIZE);
       if (w === RIVALRY_WEEK) {
         const trophies = rivalries(d).map((r) => r.trophy.replace(/^the /, 'The '));
@@ -86,7 +87,12 @@ describe('the weekly paper', () => {
         for (const t of trophies) expect(text).toContain(t);
       }
       if (w === RIVALRY_WEEK - 1) expect(paper.next).toContain('rivalry week');
+      if (w === RIVALRY_WEEK) expect(paper.next).toContain('semifinals');
       if (w === REGULAR_WEEKS) {
+        expect(paper.edition).toContain('Semifinals');
+        expect(games.length).toBe(2);
+        expect(paper.next).toContain('championship');
+      } else if (w === FINAL_WEEK) {
         expect(paper.edition).toContain('Championship edition');
         expect(paper.lead.headline + paper.stories.map((x) => x.headline).join()).toContain('champions');
         expect(paper.next).toBeNull();

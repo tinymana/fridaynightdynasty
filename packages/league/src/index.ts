@@ -13,6 +13,15 @@ import { cleanAwards, voteAwards, type Candidate, type SeasonAwards } from './aw
 
 export const LEAGUE_SIZE = 8;
 export const REGULAR_WEEKS = LEAGUE_SIZE - 1;
+/** With a bracket, the week after the regular season is the semifinals and the week after that the final. */
+export const FINAL_WEEK = REGULAR_WEEKS + 1;
+/**
+ * The last week with a game in it. A season with a bracket has semifinals and a final; a season without (a dynasty
+ * saved before brackets, until its next season starts, and leagues with friends) ends with first against second.
+ */
+export const lastWeek = (d: { bracket?: boolean }): number => (d.bracket ? FINAL_WEEK : REGULAR_WEEKS);
+/** True once the champion is crowned. */
+export const seasonOver = (d: { week: number; bracket?: boolean }): boolean => d.week > lastWeek(d);
 /** School strength stays in a narrow band so a league stays a contest. 58 is an even exhibition team. */
 export const PRESTIGE_MIN = 54;
 export const PRESTIGE_MID = 58;
@@ -260,6 +269,8 @@ export interface Dynasty {
   stats?: StatBook;
   /** The awards voted at the end of each season, oldest first. */
   awards?: SeasonAwards[];
+  /** This season ends with a four-team bracket: semifinals, then a final. */
+  bracket?: boolean;
   /** What the coach's school worked on in spring practice before this season. */
   focus?: FocusId;
   /** Rating points the coach's players have lost or gained for good, by player id. */
@@ -326,7 +337,7 @@ export interface SeasonRecord {
 }
 
 export function createDynasty(stateCode: string, seed: number, user: number, setup: Partial<GameSetup> = {}): Dynasty {
-  return { v: 1, league: createLeague(stateCode, seed), user: clamp(Math.trunc(user), 0, LEAGUE_SIZE - 1), year: 1, week: 0, results: [], setup: cleanSetup({ ...DEFAULT_SETUP, ...setup }), history: [], callUps: [], jv: [] };
+  return { v: 1, bracket: true, league: createLeague(stateCode, seed), user: clamp(Math.trunc(user), 0, LEAGUE_SIZE - 1), year: 1, week: 0, results: [], setup: cleanSetup({ ...DEFAULT_SETUP, ...setup }), history: [], callUps: [], jv: [] };
 }
 
 /** `week` is the game about to be played. Without it (a league with friends, for now) nobody is sidelined in season. */
@@ -425,9 +436,17 @@ export function standings(results: readonly GameResult[]): Standing[] {
 /** The games of the week about to be played. The championship is first place at home to second. */
 export function weekGames(d: Dynasty): [number, number][] {
   if (d.week < REGULAR_WEEKS) return schedule()[d.week];
+  const t = standings(d.results);
   if (d.week === REGULAR_WEEKS) {
-    const t = standings(d.results);
-    return [[t[0].school, t[1].school]];
+    // Semifinals: first at home to fourth, second at home to third. Without a bracket, first at home to second for the title.
+    return d.bracket ? [[t[0].school, t[3].school], [t[1].school, t[2].school]] : [[t[0].school, t[1].school]];
+  }
+  if (d.bracket && d.week === FINAL_WEEK) {
+    // The final: the two semifinal winners, at the home of the one that finished higher.
+    const winners = d.results.filter((g) => g.week === REGULAR_WEEKS).map(winnerOf);
+    if (winners.length !== 2) return [];
+    const seed = (school: number): number => t.findIndex((r) => r.school === school);
+    return [seed(winners[0]) < seed(winners[1]) ? [winners[0], winners[1]] : [winners[1], winners[0]]];
   }
   return [];
 }
@@ -527,12 +546,12 @@ export const winnerOf = (g: GameResult): number => (g.score[1] > g.score[0] ? g.
 
 /** True when every game of the current week has a result. */
 export function weekComplete(d: Dynasty): boolean {
-  return d.week <= REGULAR_WEEKS && weekGames(d).every(([h, a]) => d.results.some((g) => g.week === d.week && g.home === h && g.away === a));
+  return d.week <= lastWeek(d) && weekGames(d).every(([h, a]) => d.results.some((g) => g.week === d.week && g.home === h && g.away === a));
 }
 
 /** Adds one result for the current week. The game must be on this week's schedule and not already played. */
 export function addResult(d: Dynasty, r: GameResult): Dynasty {
-  if (d.week > REGULAR_WEEKS) throw new Error('the season is over');
+  if (seasonOver(d)) throw new Error('the season is over');
   if (r.week !== d.week || !weekGames(d).some(([h, a]) => h === r.home && a === r.away)) throw new Error('that result is not for this week\'s game');
   if (d.results.some((g) => g.week === r.week && g.home === r.home && g.away === r.away)) throw new Error('that game has already been played');
   return { ...d, results: [...d.results, { week: r.week, home: r.home, away: r.away, score: [r.score[0], r.score[1]] }] };
@@ -558,7 +577,7 @@ export function closeWeek(d: Dynasty): Dynasty {
       return log;
     });
   }
-  if (next.week > REGULAR_WEEKS) {
+  if (next.week > lastWeek(d)) {
     const final = d.results[d.results.length - 1];
     const champion = winnerOf(final);
     const table = standings(d.results);
@@ -574,7 +593,7 @@ export function recordOf(results: readonly GameResult[], school: number): [numbe
     if (g.home !== school && g.away !== school) continue;
     const us = g.home === school ? g.score[0] : g.score[1];
     const them = g.home === school ? g.score[1] : g.score[0];
-    if (g.week === REGULAR_WEEKS) rec[winnerOf(g) === school ? 0 : 1]++;
+    if (g.week >= REGULAR_WEEKS) rec[winnerOf(g) === school ? 0 : 1]++;
     else rec[us > them ? 0 : us < them ? 1 : 2]++;
   }
   return rec;
@@ -586,7 +605,7 @@ export function recordOf(results: readonly GameResult[], school: number): [numbe
  * statistics and are checked against the record books. Returns a new dynasty; the input is not changed.
  */
 export function playWeek(d: Dynasty, mine?: GameResult, mineBox?: BoxScore): Dynasty {
-  if (d.week > REGULAR_WEEKS) throw new Error('the season is over');
+  if (seasonOver(d)) throw new Error('the season is over');
   const own = userGame(d);
   if (mine && (!own || mine.home !== own[0] || mine.away !== own[1] || mine.week !== d.week)) throw new Error('that result is not for this week\'s game');
   let next = d;
@@ -600,7 +619,7 @@ export function playWeek(d: Dynasty, mine?: GameResult, mineBox?: BoxScore): Dyn
     if (box) stats = recordGame(stats, box, [h, a], [d.league.schools[h].name, d.league.schools[a].name], names, d.year, d.week).stats;
   }
   // When the title game is over the season and career records are settled. The season's numbers stay on show until next year starts.
-  if (d.week === REGULAR_WEEKS) {
+  if (d.week === lastWeek(d)) {
     const settled = closeSeason(stats, (id) => schoolOfPlayer(d, id), names, (id) => returning(d, id), d.year).stats;
     stats = { ...stats, books: settled.books, news: settled.news };
     next = { ...next, awards: [...(d.awards ?? []).filter((a) => a.year !== d.year), seasonAwards(d, stats)] };
@@ -621,7 +640,7 @@ export const CALL_UP_COST_MAX = 3;
  * playing every Thursday: he comes back a rating point short of where he would have been, for good.
  */
 export function nextSeason(d: Dynasty, focus?: FocusId): Dynasty {
-  if (d.week <= REGULAR_WEEKS) throw new Error('the season is not over');
+  if (!seasonOver(d)) throw new Error('the season is not over');
   const table = standings(d.results);
   const champion = d.history[d.history.length - 1].champion;
   const rng = Rng.stream(d.league.seed, `offseason:${d.year}`);
@@ -630,12 +649,13 @@ export function nextSeason(d: Dynasty, focus?: FocusId): Dynasty {
     // Beating your rival is worth a little on its own: kids want to play for the school that holds the trophy.
     const rivalGame = d.results.find((g) => isRivalryGame(g.week, g.home, g.away) && (g.home === i || g.away === i));
     const beatRival = !!rivalGame && (rivalGame.home === i ? rivalGame.score[0] > rivalGame.score[1] : rivalGame.score[1] > rivalGame.score[0]);
-    const earned = (row.wins - row.losses) * 0.15 + (i === champion ? 0.5 : 0) + (beatRival ? 0.15 : 0);
+    const earned = (row.wins - row.losses) * 0.1 + (i === champion ? 0.2 : 0) + (beatRival ? 0.15 : 0);
     const drift = (PRESTIGE_MID - s.prestige) * 0.6;
     return { ...s, prestige: clamp(Math.round((s.prestige + earned + drift + rng.range(-2.5, 2.5)) * 10) / 10, PRESTIGE_MIN, PRESTIGE_MAX) };
   });
   // Seniors graduate, everyone moves up a class and a new freshman class arrives. Call-ups who earned a place no longer need the call.
-  const moved: Dynasty = { ...d, league: { ...d.league, schools }, year: d.year + 1, week: 0, results: [], jv: [] };
+  // A dynasty saved before brackets finishes its year the old way and gets a bracket from here on. A league that has said no keeps saying no.
+  const moved: Dynasty = { ...d, league: { ...d.league, schools }, year: d.year + 1, week: 0, results: [], jv: [], bracket: d.bracket !== false };
   // Last season's numbers go into each returning player's career line.
   if (d.stats) moved.stats = closeSeason(d.stats, (id) => schoolOfPlayer(d, id), nameBook(d), (id) => returning(d, id), d.year).stats;
   const dev: Record<string, number> = {};
@@ -686,8 +706,9 @@ function cleanRivals(raw: unknown[]): RivalryLog[] {
 export function loadDynasty(raw: unknown): Dynasty | null {
   try {
     const d = raw as Dynasty;
+    if (d && d.bracket !== undefined && typeof d.bracket !== 'boolean') return null;
     if (!d || d.v !== 1 || !d.league || !Array.isArray(d.league.schools) || d.league.schools.length !== LEAGUE_SIZE) return null;
-    if (!Number.isInteger(d.user) || d.user < 0 || d.user >= LEAGUE_SIZE || !Number.isInteger(d.year) || d.year < 1 || !Number.isInteger(d.week) || d.week < 0 || d.week > REGULAR_WEEKS + 1) return null;
+    if (!Number.isInteger(d.user) || d.user < 0 || d.user >= LEAGUE_SIZE || !Number.isInteger(d.year) || d.year < 1 || !Number.isInteger(d.week) || d.week < 0 || d.week > lastWeek(d) + 1) return null;
     if (!Array.isArray(d.results) || !Array.isArray(d.history)) return null;
     const base = createLeague(d.league.state, d.league.seed);
     // Strength is kept within its range. A name or colours the coach changed are kept only if they still pass the checks.
@@ -698,12 +719,12 @@ export function loadDynasty(raw: unknown): Dynasty | null {
     }
     const results: GameResult[] = [];
     for (const g of d.results) {
-      const ok = Number.isInteger(g.week) && g.week >= 0 && g.week <= REGULAR_WEEKS && Number.isInteger(g.home) && Number.isInteger(g.away) && g.home !== g.away
+      const ok = Number.isInteger(g.week) && g.week >= 0 && g.week <= lastWeek(d) && Number.isInteger(g.home) && Number.isInteger(g.away) && g.home !== g.away
         && g.home >= 0 && g.home < LEAGUE_SIZE && g.away >= 0 && g.away < LEAGUE_SIZE && Array.isArray(g.score) && g.score.every((x) => Number.isInteger(x) && x >= 0 && x < 200);
       if (!ok) return null;
       results.push({ week: g.week, home: g.home, away: g.away, score: [g.score[0], g.score[1]] });
     }
-    const expected = Math.min(d.week, REGULAR_WEEKS) * (LEAGUE_SIZE / 2) + (d.week > REGULAR_WEEKS ? 1 : 0);
+    const expected = Math.min(d.week, REGULAR_WEEKS) * (LEAGUE_SIZE / 2) + (d.bracket ? (d.week > REGULAR_WEEKS ? 2 : 0) + (d.week > FINAL_WEEK ? 1 : 0) : d.week > REGULAR_WEEKS ? 1 : 0);
     if (results.length !== expected) return null;
     const jv: GameResult[] = [];
     for (const g of Array.isArray(d.jv) ? d.jv : []) {
@@ -713,6 +734,7 @@ export function loadDynasty(raw: unknown): Dynasty | null {
     }
     return {
       v: 1, league: { seed: base.seed, state: base.state, schools }, user: d.user, year: d.year, week: d.week, results, setup: cleanSetup(d.setup), history: d.history.filter((h) => h && Number.isInteger(h.year) && Array.isArray(h.record)),
+      ...(typeof d.bracket === 'boolean' ? { bracket: d.bracket } : {}),
       ...(isFocus(d.focus) ? { focus: d.focus } : {}), ...(cleanDev(d.dev) ? { dev: cleanDev(d.dev) } : {}),
       callUps: cleanCallUps(base.seed, schools[d.user], d.year, d.callUps, { focus: isFocus(d.focus) ? d.focus : undefined, dev: cleanDev(d.dev) }), jv,
       ...(d.awards ? { awards: cleanAwards(d.awards, LEAGUE_SIZE) } : {}),

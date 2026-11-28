@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.26.0 — 2026-11-27
+
+A four-team bracket for solo dynasties. League change: redeploy the `fnd` function with the merge.
+
+### Added
+- `Dynasty.bracket`: true for a new dynasty and from `nextSeason` on. `FINAL_WEEK`, `lastWeek(d)`, `seasonOver(d)`.
+  With a bracket, week 8 is the semifinals (1 v 4, 2 v 3) and week 9 the final; a season has 31 games.
+- No migration: a save without the field keeps the two-team ending for the season in progress (`lastWeek` is the
+  old title week) and gets a bracket at its next season. `bracket: false` is kept by `nextSeason`; leagues with
+  friends set it, so nothing changes on the server for them.
+- `recordOf` counts every playoff game; `loadDynasty` checks the result count for whichever ending the save has.
+- Dynasty page: bracket block, playoff line in the standings, semifinal result text. Paper: semifinals edition.
+- `tests/playoffs.test.ts` (3 tests) including old saves loaded at four points of a season.
+
+### Changed
+- `incidentsOf`: about 2.0 injuries a program a season (was 4.3); season-ending 5.75% of injuries (was 13.5%),
+  career-ending 0.25% (was 0.5%).
+- `nextSeason`: a win is worth 0.1 prestige (was 0.15) and a title 0.2 (was 0.5). A four-point rating edge wins
+  about three games in four, so the old rewards let one school stay on top for most of 30 seasons.
+
 ## 0.25.1 — 2026-11-27
 
 Client only.

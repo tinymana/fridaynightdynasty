@@ -4,7 +4,7 @@
  * Usage: npx tsx tools/league-realism.ts [seasons] [gap] [homeEdge] [runoffSeconds] [homeEvery]
  */
 import { RULES } from '@fnd/core';
-import { LEAGUE_TUNING, REGULAR_WEEKS, createDynasty, playWeek } from '@fnd/league';
+import { LEAGUE_TUNING, seasonOver, createDynasty, playWeek } from '@fnd/league';
 const SEASONS = Number(process.argv[2] ?? 6);
 if (process.argv[3]) LEAGUE_TUNING.gap = Number(process.argv[3]);
 if (process.argv[4]) LEAGUE_TUNING.homeEdge = Number(process.argv[4]);
@@ -14,7 +14,7 @@ const STATES = ['OH', 'TX', 'GA', 'FL', 'CA', 'PA'];
 let games = 0, pts = 0, home = 0, away = 0, big = 0, close = 0, shut = 0, huge = 0;
 for (let s = 0; s < SEASONS; s++) {
   let d = createDynasty(STATES[s % STATES.length], 100 + s * 7, 0, { quarterMinutes: 12 });
-  for (let w = 0; w <= REGULAR_WEEKS; w++) d = playWeek(d);
+  while (!seasonOver(d)) d = playWeek(d);
   for (const g of d.results) {
     games++;
     pts += g.score[0] + g.score[1];

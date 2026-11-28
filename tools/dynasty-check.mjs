@@ -117,13 +117,14 @@ try {
   await sleep(100);
 
   // The assistant coaches the rest of the season.
-  for (let w = 1; w <= 7; w++) {
+  for (let w = 1; w <= 8; w++) {
+    if (w === 7) check('the bracket shows two semifinals before they are played', (await page.$$eval('#dyBody .dy-game', (els) => els.filter((e) => e.textContent.startsWith('Semifinal')).length)) === 2);
     await page.click('#dySim');
-    check(`${w === 7 ? 'the championship' : `week ${w + 1}`} is played`, await waitFor(async () => (await st()).dynasty.week === w + 1, 120000));
+    check(`${w === 8 ? 'the championship' : w === 7 ? 'the semifinals' : `week ${w + 1}`} ${w === 7 ? 'are' : 'is'} played`, await waitFor(async () => (await st()).dynasty.week === w + 1, 120000));
     await sleep(100);
   }
   s = await st();
-  check('the season ends with 29 games and one champion', s.dynasty.results === 29 && s.dynasty.history === 1 && /champions/.test(await text('#dyBody')));
+  check('the season ends with 31 games, a bracket on the page and one champion', s.dynasty.results === 31 && (await page.$$eval('#dyBody .dy-game', (els) => els.filter((e) => /^(Semifinal|Championship)/.test(e.textContent)).length)) === 3 && s.dynasty.history === 1 && /champions/.test(await text('#dyBody')));
   check('the season\'s awards are announced', /Player of the year/.test(await text('#dyBody')) && /Coach of the year/.test(await text('#dyBody')));
   await page.screenshot({ path: `${out}/dynasty-champion.png`, fullPage: true });
   await page.click('#dyAwards');

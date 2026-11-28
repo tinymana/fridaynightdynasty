@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { REGULAR_WEEKS, createDynasty, loadDynasty, nextSeason, playWeek } from '@fnd/league';
+import { createDynasty, seasonOver, loadDynasty, nextSeason, playWeek } from '@fnd/league';
 import { MAX_SAVE_BYTES, MemoryStore, checkSave, createApi, type SaveMeta } from '@fnd/online';
 
 /** Permanent saves: one save per coach on the server, guarded by revision so an older copy cannot overwrite a newer one. */
@@ -88,7 +88,7 @@ describe('saves on the server', () => {
   it('a twelve-season dynasty fits with room to spare and loads back the same', { timeout: 240_000 }, async () => {
     let d = createDynasty('OH', 21, 3, { quarterMinutes: 4 });
     for (let y = 0; y < 12; y++) {
-      for (let wk = 0; wk <= REGULAR_WEEKS; wk++) d = playWeek(d);
+      while (!seasonOver(d)) d = playWeek(d);
       if (y < 11) d = nextSeason(d);
     }
     const c = checkSave({ fnd: 'save', v: 1, dynasty: d }, 'long');
