@@ -49,8 +49,8 @@ export interface Signed {
 export const online = {
   enter: (name: string, pin: string) => post<Signed>({ action: 'enter', name, pin }),
   /** A coach brings his eight-play book and his own designs. The server checks every design again before seating him. */
-  host: (token: string, team: 0 | 1, book: string[], plays: OffPlay[] = [], defenses: DefPlay[] = [], setup?: GameSetup) => post<{ room: RoomView }>({ action: 'host', token, team, book, plays, defenses, setup }),
-  join: (token: string, pin: string, book: string[], plays: OffPlay[] = [], defenses: DefPlay[] = [], have = 0) => post<{ room: RoomView }>({ action: 'join', token, pin, book, plays, defenses, have }),
+  host: (token: string, team: 0 | 1, book: string[], plays: OffPlay[] = [], defenses: DefPlay[] = [], setup?: GameSetup, school: unknown = null) => post<{ room: RoomView }>({ action: 'host', token, team, book, plays, defenses, setup, school }),
+  join: (token: string, pin: string, book: string[], plays: OffPlay[] = [], defenses: DefPlay[] = [], have = 0, school: unknown = null) => post<{ room: RoomView }>({ action: 'join', token, pin, book, plays, defenses, have, school }),
   profile: (token: string) => post<{ career: Career | null }>({ action: 'profile', token }),
   hall: () => post<{ hall: Career[] }>({ action: 'hall' }),
   leagueCallUp: (token: string, code: string, player: string, up: boolean) => post<{ dynasty: unknown }>({ action: 'leagueCallUp', token, code, player, up }),

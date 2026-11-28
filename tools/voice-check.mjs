@@ -34,7 +34,7 @@ try {
   const b = await open('guest');
   await signIn(a, 'ANN', '1111');
   await signIn(b, 'BO', '2222');
-  await a.click('[data-host="0"]');
+  await a.click('#oHost');
   await a.waitForSelector('#lobby:not(.hidden)');
   const pin = await a.$eval('#lobbyPin', (e) => e.textContent);
   await b.type('#oJoinPin', pin);

@@ -148,7 +148,7 @@ export function createApi(store: Store, now: () => number = Date.now): (body: un
       for (let attempt = 0; attempt < 12; attempt++) {
         const pin = String(10000 + (randomU32() % 90000));
         // The server picks the seed. Neither coach can choose or predict it.
-        const room = createRoom(pin, me, team, { book: body['book'], plays: body['plays'], defenses: body['defenses'], setup: body['setup'] }, Rng.stream(randomU32(), pin).u32(), now());
+        const room = createRoom(pin, me, team, { book: body['book'], plays: body['plays'], defenses: body['defenses'], setup: body['setup'], school: body['school'] }, Rng.stream(randomU32(), pin).u32(), now());
         if (await store.createRoom(room)) return { room: viewRoom(room, me.id, 0, now()) };
       }
       throw new RoomError('busy', 'Could not open a game. Try again.', 503);
@@ -158,7 +158,7 @@ export function createApi(store: Store, now: () => number = Date.now): (body: un
       const me = await auth(body);
       return inRoom(pinOf(body), (room) => {
         tickRoom(room, now());
-        joinRoom(room, me, { book: body['book'], plays: body['plays'], defenses: body['defenses'] }, now());
+        joinRoom(room, me, { book: body['book'], plays: body['plays'], defenses: body['defenses'], school: body['school'] }, now());
         return { room: viewRoom(room, me.id, have(body), now()) };
       });
     },

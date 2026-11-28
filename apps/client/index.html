@@ -544,6 +544,40 @@
     .wide .act { min-width: 0; font-size: 16px; padding: 10px 8px; }
     .side .sc { font-size: 18px; }
   }
+
+  /* Play Online page and school pickers */
+  .o-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  #oWho { font-size: 18px; color: var(--ink); }
+  #oCareer { text-align: left; margin: 2px 0 0; }
+  .o-links { display: flex; gap: 6px; }
+  .o-card { border: 2px solid var(--edge, var(--line)); border-radius: 4px; padding: 12px; margin: 10px 0; background: rgba(0,0,0,.25); text-align: left; }
+  #onlineBox .o-card h3 { text-align: left; margin: 0 0 2px; color: var(--accent); }
+  #onlineBox .o-sub { margin: 0 0 10px; font-size: 14px; color: var(--dim); text-align: left; }
+  .o-links .seg, .o-opt select { min-height: 44px; }
+  .o-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+  .o-lbl, .o-opt h4 { font-size: 14px; color: var(--dim); margin: 0; font-weight: 400; }
+  .o-opt h4 { color: var(--ink); font-size: 16px; }
+  .o-two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .o-opt { display: flex; flex-direction: column; gap: 8px; border-top: 2px solid var(--line); padding-top: 8px; }
+  .o-opt .setup-opts { justify-content: flex-start; margin: 0; }
+  .o-opt input, .sp select { font-family: inherit; font-size: 16px; background: #000; color: var(--ink); border: 2px solid var(--line); border-radius: 4px; padding: 8px; min-height: 44px; width: 100%; box-sizing: border-box; text-transform: uppercase; }
+  .sp select { text-transform: none; }
+  .o-opt input:focus, .sp select:focus { outline: none; border-color: var(--accent); }
+  .o-go { min-height: 44px; width: 100%; font-size: 17px; }
+  .o-hint { font-size: 13px; color: var(--dim); }
+  .sp { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .sp select { flex: 1 1 150px; width: auto; }
+  .sp-chip { flex: 0 0 34px; height: 34px; border-radius: 3px; border: 2px solid #000; }
+  .ex-picks { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 10px 0; text-align: left; }
+  .audlbl { font-size: 14px; color: var(--dim); }
+  .audlbl b { color: var(--ink); }
+  .line { display: flex; gap: 8px; flex-wrap: wrap; }
+  .line .act { flex: 1 1 200px; }
+  .line .act.on { flex: 3 1 260px; }
+  @media (max-width: 600px) {
+    .o-two, .ex-picks { grid-template-columns: 1fr; }
+    .line .act { min-height: 52px; }
+  }
 </style>
 </head>
 <body>
@@ -569,8 +603,9 @@
     </nav>
     <div class="page" data-page="exhibition">
       <div class="crumb"><button class="seg" data-menu>Main menu <kbd>[Esc]</kbd></button><h2>Exhibition</h2></div>
-      <p>Pick the team you will coach. You call every play; your players carry it out.</p>
+      <p>Tap the team you will coach to kick off. Change either school below first if you like.</p>
       <div class="teams" id="teams"></div>
+      <div class="ex-picks"><div class="o-field"><span class="o-lbl">Home school</span><div class="sp" id="exPick0"></div></div><div class="o-field"><span class="o-lbl">Visiting school</span><div class="sp" id="exPick1"></div></div></div>
       <div class="opts-slot"></div>
       <div class="setup-opts"><label class="chk"><input type="checkbox" id="clockToggle"> 20-second play clock</label></div>
     </div>
@@ -619,24 +654,50 @@
         <button class="seg on" id="oEnter">Sign in</button>
       </div>
       <div id="oSignedIn" class="hidden">
-        <div class="orow"><span id="oWho"></span><button class="seg" id="hallBtn2">Hall of Fame</button><button class="seg" id="oOut">Sign out</button></div>
-        <div id="oCareer" aria-live="polite"></div>
-        <div class="opts-slot"></div>
-        <div class="orow" id="oHostRow"></div>
-        <div class="orow">
-          <input id="oJoinPin" maxlength="5" inputmode="numeric" placeholder="Game PIN" autocomplete="off" aria-label="Five-digit game PIN">
-          <button class="seg on" id="oJoin">Join a game</button>
+        <div class="o-head">
+          <div><div id="oWho"></div><div id="oCareer" aria-live="polite"></div></div>
+          <div class="o-links"><button class="seg" id="hallBtn2">Hall of Fame</button><button class="seg" id="oOut">Sign out</button></div>
         </div>
-        <div class="orow" id="oLeagueRow">
-          <span class="lbl">Dynasty with friends</span>
-          <button class="seg" id="lgNew">Start a league</button>
-          <input id="lgCode" maxlength="5" placeholder="League code" autocomplete="off" aria-label="Five-letter league code" style="text-transform:uppercase;width:120px">
-          <button class="seg" id="lgJoin">Open league</button>
-          <button class="seg hidden" id="lgMine"></button>
+        <div class="o-card">
+          <h3>Play a friend</h3>
+          <p class="o-sub">One game, head to head. Each coach brings his own school.</p>
+          <div class="o-field"><span class="o-lbl">Your school</span><div class="sp" id="oSchool"></div></div>
+          <div class="o-two">
+            <div class="o-opt">
+              <h4>Host a game</h4>
+              <div class="opts-slot"></div>
+              <button class="seg on o-go" id="oHost">Host a game</button>
+              <div class="o-hint">You get a PIN to give your friend.</div>
+            </div>
+            <div class="o-opt">
+              <h4>Join a game</h4>
+              <input id="oJoinPin" maxlength="5" inputmode="numeric" placeholder="Game PIN" autocomplete="off" aria-label="Five-digit game PIN">
+              <button class="seg on o-go" id="oJoin">Join a game</button>
+              <div class="o-hint">Type the PIN your friend was given.</div>
+            </div>
+          </div>
+        </div>
+        <div class="o-card" id="oLeagueRow">
+          <h3>Dynasty with friends</h3>
+          <p class="o-sub">A shared league, season after season. Everyone coaches a school in the same state.</p>
+          <button class="seg on o-go hidden" id="lgMine"></button>
+          <div class="o-two">
+            <div class="o-opt">
+              <h4>Start a league</h4>
+              <button class="seg o-go" id="lgNew">Start a league</button>
+              <div class="o-hint">You get a code to share.</div>
+            </div>
+            <div class="o-opt">
+              <h4>Open a league</h4>
+              <input id="lgCode" maxlength="5" placeholder="League code" autocomplete="off" aria-label="Five-letter league code">
+              <button class="seg o-go" id="lgJoin">Open league</button>
+              <div class="o-hint">Type a code a friend shared.</div>
+            </div>
+          </div>
         </div>
       </div>
       <div id="oMsg" role="status" aria-live="polite"></div>
-      <div class="note">Pick a coach name and a PIN you will remember. The name is yours once you use it.</div>
+      <div class="note" id="oNote">Pick a coach name and a PIN you will remember. The name is yours once you use it.</div>
     </div>
     </div>
     <div class="note">Early build. School names, colours and field art are placeholders.</div>

@@ -102,3 +102,6 @@ export function cutinFor(e: PlayEvent | null, period: CutinPeriod, n: number, ct
   if (period === 'opening') return ctx.homecoming ? { url: nHomecoming, alt: 'Homecoming' } : ctx.home ? { url: nRunthrough, alt: 'The home team runs out' } : { url: nBus, alt: 'The bus arrives' };
   return null;
 }
+
+/** The coin toss picture, for the toss before the opening kickoff. */
+export const tossCutin = nCointoss;
