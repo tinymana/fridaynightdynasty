@@ -22,7 +22,7 @@ PANELS = {
         'n-overtime': (1035, 665, 1346, 738), 'n-rivalry': (1034, 577, 1347, 650),
     },
     'sheets3/13_high_school_cutscenes_3.png': {
-        'n-cointoss': (28, 29, 460, 288), 'n-chalk': (490, 29, 906, 287),
+        'n-cointoss': (28, 29, 460, 288), 'n-chalk': (490, 29, 906, 287), 'n-injury': (489, 322, 907, 542),
     },
     'sheets3/17_action_cutscenes.png': {
         'a-burst': (34, 28, 458, 276), 'a-pile': (476, 27, 900, 276), 'a-leap': (917, 29, 1342, 274),

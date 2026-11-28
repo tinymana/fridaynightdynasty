@@ -13,7 +13,7 @@ async function look(name) {
   await sleep(150);
   const r = await page.evaluate(() => {
     const w = window.innerWidth;
-    const wide = [...document.querySelectorAll('body *')].filter((e) => { const b = e.getBoundingClientRect(); return b.width > 0 && b.height > 0 && (b.right > w + 2 || b.left < -2) && getComputedStyle(e).position !== 'fixed' && !e.closest('.gb-body') && !e.closest('#stage'); }).slice(0, 4).map((e) => `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}.${String(e.className).split(' ')[0]} ${Math.round(e.getBoundingClientRect().right)}`);
+    const wide = [...document.querySelectorAll('body *')].filter((e) => { const b = e.getBoundingClientRect(); return b.width > 0 && b.height > 0 && (b.right > w + 2 || b.left < -2) && getComputedStyle(e).position !== 'fixed' && !e.closest('.gb-body') && !e.closest('#stage') && !e.closest('.fronts'); }).slice(0, 4).map((e) => `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}.${String(e.className).split(' ')[0]} ${Math.round(e.getBoundingClientRect().right)}`);
     return { scroll: document.documentElement.scrollWidth, w, wide };
   });
   await page.screenshot({ path: `/tmp/fnd-shots/phone-${name}.png` });

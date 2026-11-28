@@ -43,6 +43,7 @@ import nHomecoming from './assets/cutins/n-homecoming.webp';
 import nLocker from './assets/cutins/n-locker.webp';
 import nOvertime from './assets/cutins/n-overtime.webp';
 import nRunthrough from './assets/cutins/n-runthrough.webp';
+import nInjury from './assets/cutins/n-injury.webp';
 import nRivalry from './assets/cutins/n-rivalry.webp';
 import nRivalryWin from './assets/cutins/n-rivalry-win.webp';
 
@@ -78,6 +79,8 @@ export function cutinFor(e: PlayEvent | null, period: CutinPeriod, n: number, ct
   if (e) {
     if (e.flags.touchdown || e.flags.defensiveTouchdown) return { url: TOUCHDOWNS[n % TOUCHDOWNS.length], alt: 'Touchdown' };
     if (e.flags.safety) return { url: safety, alt: 'Safety' };
+    // A player helped off, unless the play also put points on the board.
+    if (e.injured && e.points[0] + e.points[1] === 0) return { url: nInjury, alt: 'A player is hurt' };
     if (e.flags.interception) return { url: [mPicked, intercepted, aIntercepted][n % 3], alt: 'Intercepted' };
     if (e.flags.blocked) return { url: mBlocked, alt: 'Blocked' };
     if (e.flags.fumbleLost) return { url: [aPile, mLooseBall, aFumble][n % 3], alt: 'Fumble' };

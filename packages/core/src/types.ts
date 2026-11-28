@@ -34,6 +34,11 @@ export interface Team {
   roster: Player[];
   /** Player IDs per group, best first. */
   depth: Record<Group, string[]>;
+  /**
+   * Players who get hurt in this game: after the given play of the game (counted from 1) he is helped off and does
+   * not come back. Set by a league from its injury list; an exhibition has none.
+   */
+  hurt?: readonly { id: string; play: number }[];
 }
 
 /** A point in yards: [downfield, lateral]. Downfield is toward the opponent's goal. */
@@ -194,6 +199,8 @@ export interface PlayFlags {
 /** One record per snap or kick. Every statistic is derived from these. */
 export interface PlayEvent {
   seq: number;
+  /** A player was hurt on this play and left the game. */
+  injured?: { team: 0 | 1; id: string };
   quarter: number;
   clock: number;
   /** Team index (0 home, 1 visitors) with the ball, or kicking on a kickoff. */
