@@ -2,6 +2,25 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.31.0",
+      "date": "2026-11-27",
+      "title": "Report cards: letter grades for every player",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Every player now has a report card instead of one bare number. There is an overall grade, plus a grade for each ability that matters at his position. A quarterback shows arm power, accuracy, speed and reads; a running back shows speed, moves, power and hands; a lineman shows run block, pass block and strength."
+        },
+        {
+          "tag": "new",
+          "text": "Grades run from A+ down to F- and are coloured: green at the top, through yellow and orange, to red at the bottom. An average high school player is about a C+. An A is a star."
+        },
+        {
+          "tag": "improved",
+          "text": "The grades appear on the sideline depth chart during a game and on the program page in a dynasty, including what each underclassman should grow into as a senior. Signing day and the season summary use them too."
+        }
+      ]
+    },
+    {
       "version": "0.30.0",
       "date": "2026-11-27",
       "title": "Pick your school, a coin toss, and a Play Online page that makes sense",

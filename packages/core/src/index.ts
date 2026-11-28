@@ -5,3 +5,4 @@ export * from './rules';
 export * from './playbook';
 export * from './teamgen';
 export * from './designer';
+export * from './grades';
