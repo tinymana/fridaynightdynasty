@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DefDecision, OffDecision } from '@fnd/core';
-import { REGULAR_WEEKS } from '@fnd/league';
+import { REGULAR_WEEKS, leagueNews, loadDynasty, rivalries, weeklyPaper, type Dynasty } from '@fnd/league';
 import { gameHash, replayGame } from '@fnd/match-sim';
 import { MemoryStore, createApi, leagueTeams, type Career, type LeagueView, type RoomView } from '@fnd/online';
 
@@ -201,20 +201,43 @@ describe('a week with coaches in it', () => {
 });
 
 describe('a whole shared season', () => {
-  it('runs seven weeks and a title game, credits a coach who wins it exactly once, and starts year two', { timeout: 300_000 }, async () => {
+  it('runs seven weeks and a bracket, credits a coach who wins it exactly once, keeps a book of it all, and starts year two', { timeout: 300_000 }, async () => {
     const { w, a, b, c, code } = await league();
     await w.call({ action: 'leagueStart', token: a, code });
     let v = await poll(w, a, code);
-    // A title game between two AI schools plays itself; every other week needs the commissioner to move it on.
-    for (let n = 0; n <= REGULAR_WEEKS && !v.over; n++) {
+    expect(v.bracket).toBe(true);
+    // The book can be opened at any moment, a week half played included.
+    await w.call({ action: 'leagueForce', token: a, code });
+    await poll(w, a, code, 2);
+    const half = ((await w.call({ action: 'leagueBook', token: a, code })) as unknown as { dynasty: Dynasty }).dynasty;
+    expect(loadDynasty(JSON.parse(JSON.stringify(half)))).not.toBeNull();
+    v = await poll(w, a, code, 7);
+    // A playoff game between two AI schools plays itself; every other week needs the commissioner to move it on.
+    for (let n = 0; n <= REGULAR_WEEKS + 1 && !v.over; n++) {
       const week = v.week;
       await w.call({ action: 'leagueForce', token: a, code });
       v = await poll(w, a, code, 7);
       expect(v.week).toBeGreaterThan(week);
     }
     expect(v.over).toBe(true);
+    expect(v.week).toBe(REGULAR_WEEKS + 2);
     expect(v.history.length).toBe(1);
     expect(v.games).toEqual([]);
+    // The league's book: every game's numbers, the records, the awards, the rivalries, the news and the paper.
+    const raw = ((await w.call({ action: 'leagueBook', token: b, code })) as unknown as { dynasty: Dynasty }).dynasty;
+    const book = loadDynasty(JSON.parse(JSON.stringify(raw)))!;
+    expect(book).not.toBeNull();
+    expect(book.shared).toBe(true);
+    expect(book.results.length).toBe(REGULAR_WEEKS * 4 + 3);
+    expect(book.user).toBe(v.schools.findIndex((x) => x.coach === 'COACH B'));
+    expect(Object.keys(book.stats!.season).length).toBeGreaterThan(150);
+    expect(book.awards!.length).toBe(1);
+    expect(book.awards![0].player).not.toBeNull();
+    expect(book.rivals!.reduce((n, r) => n + r.w[0] + r.w[1] + r.w[2], 0)).toBe(4);
+    expect(rivalries(book).length).toBe(4);
+    expect(leagueNews(book).length).toBeGreaterThan(5);
+    expect(weeklyPaper(book)!.edition).toContain('Championship edition');
+    expect((await w.call({ action: 'leagueBook', token: 'nope', code })).error!.code).toBe('signed_out');
     const champ = v.history[0].champion;
     // More polling by everyone must not credit the title again.
     for (const t of [a, b, c]) await poll(w, t, code, 3);
@@ -229,6 +252,28 @@ describe('a whole shared season', () => {
     expect(y2.over).toBe(false);
     expect(y2.history.length).toBe(1);
     expect(y2.schools.map((s) => s.coach)).toEqual(v.schools.map((s) => s.coach));
+  });
+
+  it('a league that began before brackets finishes its year with first against second, then gets one', { timeout: 300_000 }, async () => {
+    const { w, a, code } = await league();
+    await w.call({ action: 'leagueStart', token: a, code });
+    // As it was stored before: no bracket, no shared flag, no statistics.
+    const stored = w.store.leagues.get(code)!;
+    delete stored.dynasty.bracket;
+    delete stored.dynasty.shared;
+    let v = await poll(w, a, code);
+    expect(v.bracket).toBe(false);
+    for (let n = 0; n <= REGULAR_WEEKS + 1 && !v.over; n++) {
+      await w.call({ action: 'leagueForce', token: a, code });
+      v = await poll(w, a, code, 7);
+    }
+    expect(v.over).toBe(true);
+    expect(v.week).toBe(REGULAR_WEEKS + 1);
+    expect(w.store.leagues.get(code)!.dynasty.results.length).toBe(REGULAR_WEEKS * 4 + 1);
+    expect(w.store.leagues.get(code)!.dynasty.awards!.length).toBe(1);
+    const y2 = (await w.call({ action: 'leagueNext', token: a, code })).league!;
+    expect(y2.bracket).toBe(true);
+    expect(y2.year).toBe(2);
   });
 });
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.27.0 — 2026-11-27
+
+Leagues with friends keep what a solo dynasty keeps. Server change: redeploy the `fnd` function with the merge.
+
+### Added
+- `recordLeagueGame`, `settleSeason` in the league package: one game at a time with its box score, and the
+  end-of-season settlement. `Dynasty.shared` so no school in a shared league is treated as the coach's.
+- `packages/online/src/shared.ts`: every game (simulated, or played in a room and replayed for its box score by
+  `takeResult`) goes through `recordLeagueGame`; `stepLeague` settles the season before closing its last week;
+  `leagueTeams` passes the week so sidelined players do not dress in a coach's game either.
+- Shared leagues use the bracket (`lastWeek`, `seasonOver`); a league stored without the field finishes its year
+  the old way. `LeagueView.bracket`.
+- API action `leagueBook`: the league as a `Dynasty` with `user` set to the caller's school and results trimmed to
+  finished weeks. Client: a second, read-only `DynastyScreen` (`#dynasty.ro`) opened from the league page.
+
 ## 0.26.0 — 2026-11-27
 
 A four-team bracket for solo dynasties. League change: redeploy the `fnd` function with the merge.

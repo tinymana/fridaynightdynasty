@@ -1599,6 +1599,7 @@ const shared = new SharedLeagueScreen($('shBody'), $('shTitle'), {
   },
   setup: () => setup,
   openRoom: (room) => openLobby(room),
+  openBook: (code) => void openLeagueBook(code),
   back: () => showSetup(false),
   errorText: (e) => (e instanceof OnlineError ? e.message : 'Something went wrong.'),
   pollMs: () => (turbo ? 150 : 2000),
@@ -1613,6 +1614,35 @@ function renderLeagueRow(): void {
   const el = $('lgMine');
   el.classList.toggle('hidden', !code);
   el.textContent = code ? `My league ${code}` : '';
+}
+/** A friends' league as a dynasty to read: the same pages as a solo dynasty, with nothing to press that would change it. */
+let leagueBookData: unknown = null;
+let leagueBookCode = '';
+const leagueBook = new DynastyScreen($('dyBody'), $('dyTitle'), {
+  load: () => leagueBookData,
+  save: () => {},
+  quarterMinutes: () => setup.quarterMinutes,
+  play: () => {},
+  back: () => {
+    $('dynasty').classList.remove('ro');
+    show('shared');
+    void shared.open(leagueBookCode);
+  },
+}, () => 1);
+async function openLeagueBook(code: string): Promise<void> {
+  if (!session) return;
+  try {
+    leagueBookData = (await online.leagueBook(session.token, code)).dynasty;
+    leagueBookCode = code;
+    leagueBook.reload();
+    $('dynasty').classList.add('ro');
+    leagueBook.render();
+    show('dynasty');
+  } catch (e) {
+    signedOutCheck(e);
+    show('shared');
+    void shared.open(code);
+  }
 }
 const dynasty = new DynastyScreen($('dyBody'), $('dyTitle'), {
   load: () => store.get<unknown>('fnd.dynasty.v1', null),
@@ -2384,11 +2414,13 @@ $('again').addEventListener('click', () => {
   if (!dynastyGame) return showSetup();
   dynastyGame = null;
   mode = 'menu';
+  $('dynasty').classList.remove('ro');
   dynasty.render();
   show('dynasty');
 });
 $('dynastyBtn').addEventListener('click', () => {
   unlockAudio();
+  $('dynasty').classList.remove('ro');
   dynasty.render();
   show('dynasty');
 });

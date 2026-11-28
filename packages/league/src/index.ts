@@ -269,6 +269,8 @@ export interface Dynasty {
   stats?: StatBook;
   /** The awards voted at the end of each season, oldest first. */
   awards?: SeasonAwards[];
+  /** A league several coaches share: no one school is "the coach's", so none gets his call-ups or his spring plans. */
+  shared?: boolean;
   /** This season ends with a four-team bracket: semifinals, then a final. */
   bracket?: boolean;
   /** What the coach's school worked on in spring practice before this season. */
@@ -341,9 +343,9 @@ export function createDynasty(stateCode: string, seed: number, user: number, set
 }
 
 /** `week` is the game about to be played. Without it (a league with friends, for now) nobody is sidelined in season. */
-type Rosters = Pick<Dynasty, 'league' | 'year'> & { user?: number; callUps?: string[]; week?: number; focus?: FocusId; dev?: Record<string, number> };
+type Rosters = Pick<Dynasty, 'league' | 'year'> & { user?: number; callUps?: string[]; week?: number; focus?: FocusId; dev?: Record<string, number>; shared?: boolean };
 /** The coach's school does what he chose in the spring and carries his players' gains and losses; every other school's spring comes from the seed. */
-const tuneOf = (d: Rosters, school: number): ProgramTune => (d.user === school ? { focus: d.focus, dev: d.dev } : { focus: seededFocus(d.league.seed, d.league.schools[school].id, d.year) });
+const tuneOf = (d: Rosters, school: number): ProgramTune => (d.user === school && !d.shared ? { focus: d.focus, dev: d.dev } : { focus: seededFocus(d.league.seed, d.league.schools[school].id, d.year) });
 const callUpsOf = (d: Rosters, school: number): readonly string[] => (d.user === school ? d.callUps ?? [] : []);
 
 /** This year's varsity. Players age a class every season and graduate; a school's prestige lifts or drags the whole program. */
@@ -515,6 +517,23 @@ export function seasonAwards(d: Dynasty, stats: StatBook): SeasonAwards {
   const wins = d.league.schools.map((_, i) => table.find((r) => r.school === i)!.wins);
   const expected = d.league.schools.map((s) => REGULAR_WEEKS / 2 + (s.prestige - PRESTIGE_MID) * 0.8);
   return voteAwards(d.year, players, wins, expected);
+}
+
+/**
+ * Adds one finished game, and its statistics if its box score is known. For a league whose games arrive one at a
+ * time (a league with friends); a solo dynasty plays a whole week at once with `playWeek`.
+ */
+export function recordLeagueGame(d: Dynasty, result: GameResult, box?: BoxScore): Dynasty {
+  let next = addResult(d, result);
+  if (box) next = { ...next, stats: recordGame(statsOf(d), box, [result.home, result.away], [d.league.schools[result.home].name, d.league.schools[result.away].name], nameBook(d), d.year, result.week).stats };
+  return next;
+}
+/** Once the season's last game is in: settles the season and career records and votes the awards. Call it before `closeWeek`. */
+export function settleSeason(d: Dynasty): Dynasty {
+  const stats = statsOf(d);
+  const settled = closeSeason(stats, (id) => schoolOfPlayer(d, id), nameBook(d), (id) => returning(d, id), d.year).stats;
+  const book = { ...stats, books: settled.books, news: settled.news };
+  return { ...d, stats: book, awards: [...(d.awards ?? []).filter((a) => a.year !== d.year), seasonAwards(d, book)] };
 }
 
 /** Plays a game between two schools and keeps its box score. */
@@ -734,7 +753,7 @@ export function loadDynasty(raw: unknown): Dynasty | null {
     }
     return {
       v: 1, league: { seed: base.seed, state: base.state, schools }, user: d.user, year: d.year, week: d.week, results, setup: cleanSetup(d.setup), history: d.history.filter((h) => h && Number.isInteger(h.year) && Array.isArray(h.record)),
-      ...(typeof d.bracket === 'boolean' ? { bracket: d.bracket } : {}),
+      ...(typeof d.bracket === 'boolean' ? { bracket: d.bracket } : {}), ...(d.shared === true ? { shared: true } : {}),
       ...(isFocus(d.focus) ? { focus: d.focus } : {}), ...(cleanDev(d.dev) ? { dev: cleanDev(d.dev) } : {}),
       callUps: cleanCallUps(base.seed, schools[d.user], d.year, d.callUps, { focus: isFocus(d.focus) ? d.focus : undefined, dev: cleanDev(d.dev) }), jv,
       ...(d.awards ? { awards: cleanAwards(d.awards, LEAGUE_SIZE) } : {}),

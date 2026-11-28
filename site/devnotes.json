@@ -2,6 +2,37 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.27.0",
+      "date": "2026-11-27",
+      "title": "Leagues with friends catch up",
+      "items": [
+        {
+          "tag": "new",
+          "text": "A league with friends now keeps everything a solo dynasty does: every player's statistics, each school's record book, the season awards, the rivalries and their trophies, injuries and team news, and the weekly paper."
+        },
+        {
+          "tag": "new",
+          "text": "League book. From the league page, open the league as a dynasty to read: your school's season page, your program, the statistics, the record books, the awards and the paper. Nothing in it can change the league."
+        },
+        {
+          "tag": "new",
+          "text": "The four-team playoff comes to leagues with friends: semifinals, then the championship."
+        },
+        {
+          "tag": "new",
+          "text": "Injuries, ineligibility and suspensions now apply in league games you coach as well as simulated ones, so the team you take the field with is the team the league page says you have."
+        },
+        {
+          "tag": "note",
+          "text": "A league that is already running finishes its current season the old way and gets the playoff from its next season. Its statistics start from the next game played; games already played are not counted."
+        },
+        {
+          "tag": "note",
+          "text": "Still solo only: call-ups, choosing your own spring practice, job offers and the off-season pages. In a league with friends each school's spring work is decided by the league."
+        }
+      ]
+    },
+    {
       "version": "0.26.0",
       "date": "2026-11-27",
       "title": "Playoffs, and fewer injuries",

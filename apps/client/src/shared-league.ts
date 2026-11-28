@@ -30,11 +30,15 @@ export interface SharedHost {
   /** How often to ask the server for news, in milliseconds. */
   pollMs(): number;
   remember(code: string | null): void;
+  /** Opens the league's book: statistics, records, awards, the paper and the news, to read. */
+  openBook(code: string): void;
 }
 
 const css = (n: number): string => `#${n.toString(16).padStart(6, '0')}`;
 const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
-const weekName = (w: number): string => (w < REGULAR_WEEKS ? `Week ${w + 1}` : 'Championship');
+/** Whether the league on screen ends its season with a bracket; set each time the page is drawn. */
+let BRACKET = false;
+const weekName = (w: number): string => (w < REGULAR_WEEKS ? `Week ${w + 1}` : BRACKET && w === REGULAR_WEEKS ? 'Semifinals' : 'Championship');
 const rec = (r: readonly [number, number, number] | { wins: number; losses: number; ties: number }): string => {
   const [w, l, t] = Array.isArray(r) ? r : [(r as { wins: number }).wins, (r as { losses: number }).losses, (r as { ties: number }).ties];
   return `${w}-${l}${t ? `-${t}` : ''}`;
@@ -150,7 +154,8 @@ export class SharedLeagueScreen {
     const editor = v.isCommissioner
       ? (this.editing >= 0 ? schoolFormHtml(v.schools[this.editing]) : `<div class="orow center" style="margin-top:12px"><label class="pick">Commissioner: rename a school <select id="shEdit"><option value="">Choose\u2026</option>${v.schools.map((s, i) => `<option value="${i}">${esc(s.name)} ${esc(s.mascot)}</option>`).join('')}</select></label></div>`)
       : '';
-    const foot = `${editor}<div class="orow center" style="margin-top:14px"><button class="seg" id="shBack">Main menu</button></div><div id="shMsg" class="sl-note" role="status" aria-live="polite" style="text-align:center">${esc(this.message)}</div>`;
+    BRACKET = v.bracket;
+    const foot = `${editor}<div class="orow center" style="margin-top:14px">${v.state === 'season' ? '<button class="seg on" id="shBook">League book: stats, records, awards, the paper</button>' : ''}<button class="seg" id="shBack">Main menu</button></div><div id="shMsg" class="sl-note" role="status" aria-live="polite" style="text-align:center">${esc(this.message)}</div>`;
 
     if (v.state === 'lobby') {
       const coaches = v.schools.filter((s) => s.coach).length;
@@ -213,6 +218,7 @@ export class SharedLeagueScreen {
       });
     }
     this.root.querySelector('#shBack')!.addEventListener('click', () => { this.close(); this.host.back(); });
+    this.root.querySelector('#shBook')?.addEventListener('click', () => { this.close(); this.host.openBook(v.code); });
     this.root.querySelector('#shEdit')?.addEventListener('change', (e) => {
       const i = (e.target as HTMLSelectElement).value;
       if (i === '') return;

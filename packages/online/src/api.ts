@@ -4,7 +4,7 @@ import {
   type Coach, type GameResult, type Room,
 } from './room';
 import {
-  LEAGUE_CODE, claimSchool, createShared, editLeagueSchool, forceWeek, gameOf, nextSharedSeason, recordGame, roomKey, roomLeague, startSeason, stepLeague, viewLeague,
+  LEAGUE_CODE, claimSchool, createShared, editLeagueSchool, forceWeek, gameOf, leagueBook, nextSharedSeason, recordGame, roomKey, roomLeague, startSeason, stepLeague, viewLeague,
   type SharedLeague,
 } from './shared';
 import { checkSave, type SaveMeta, type StoredSave } from './save';
@@ -113,7 +113,7 @@ export function createApi(store: Store, now: () => number = Date.now): (body: un
       if (!result.coaches.includes(AI_COACH.id)) await store.recordResult(result);
       if (result.league) {
         const lg = result.league;
-        await store.withLeague(lg.code, (l) => recordGame(l, lg, result.score, now())).catch(() => false);
+        await store.withLeague(lg.code, (l) => recordGame(l, lg, result.score, now(), result.box)).catch(() => false);
       }
     }
     return out;
@@ -222,6 +222,13 @@ export function createApi(store: Store, now: () => number = Date.now): (body: un
         if (await store.createLeague(league)) return { league: viewLeague(league, me.id) };
       }
       throw new RoomError('busy', 'Could not start a league. Try again.', 503);
+    },
+
+    /** The league's whole book (statistics, records, awards, results) for a coach to read. Asked for when he opens it, not on every poll. */
+    async leagueBook(body) {
+      const me = await auth(body);
+      const dynasty = await store.withLeague(codeOf(body), (l) => leagueBook(l, me.id));
+      return { dynasty };
     },
 
     /** Polled by every coach in the league. Each call also moves the league one small step along. */
