@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.31.0 — 2026-11-27
+
+Letter grades. Display only: no simulation or online change, no function redeploy needed.
+
+### Added
+- `GRADES`, `gradeOf`, `gradeStep`, `GRADE_ATTRS`, `reportCard` (core/grades.ts). A+ at 80 and up, four rating points a step.
+- Client `grades.ts` (`gradeChip`, `gradeLine`, `gradeKey`); used by the sideline depth chart and the dynasty program,
+  signing-day and job pages. `tests/grades.test.ts` (2 tests). `tools/grades-shot.mjs`.
+
 ## 0.30.0 — 2026-11-27
 
 School choice, coin toss, Play Online page, the line of scrimmage. Online change: redeploy the `fnd` function with the merge.

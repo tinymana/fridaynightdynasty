@@ -1,3 +1,4 @@
+import { gradeChip, gradeKey, gradeLine } from './grades';
 import { GROUPS, WEATHER, overall, type GameSetup, type Team } from '@fnd/core';
 import {
   CLASS_NAMES, CLASS_SHORT, MAX_CALL_UPS, RECORD_DEFS, FINAL_WEEK, FOCUSES, OUT_FOR_SEASON, seasonOver, lastWeek as finalWeekOf, REGULAR_WEEKS, RIVALRY_WEEK, STATES, campNews, jobOffers, signings, takeJob, teamHonors, isRivalryGame, rivalries, weeklyPaper, replayResult, leagueNews, career, emptyLine, incomingOf, newsText, occasionFor, openings, programOf, schoolOfPlayer, seasonYear, statsOf, recordOf, setCallUp, createDynasty, createLeague, editSchool, gameSeed, gameSetup, loadDynasty, nextSeason, playWeek, standings, stateByCode, matchTeams, userGame, weekGames, winnerOf,
@@ -181,7 +182,7 @@ export class DynastyScreen {
       return `<div class="job"><div class="swatch" style="background:linear-gradient(90deg, ${css(s.colors.jersey)} 0 60%, ${css(s.colors.trim)} 60% 80%, ${css(s.colors.helmet)} 80%)"></div>
         <div class="job-body"><div class="nm">${esc(s.name)} ${esc(s.mascot)} <span class="tier">${tier}</span></div>
         <div class="why">${j.reason}</div>
-        <div class="facts">Last season ${j.lastRecord[0]}-${j.lastRecord[1]}. ${seniors} seniors on the varsity. Best player: ${CLASS_NAMES[star.year - 1].toLowerCase()} ${star.pos} ${esc(star.name)}, rated ${overall(star)}.</div>
+        <div class="facts">Last season ${j.lastRecord[0]}-${j.lastRecord[1]}. ${seniors} seniors on the varsity. Best player: ${CLASS_NAMES[star.year - 1].toLowerCase()} ${star.pos} ${esc(star.name)}, ${gradeChip(overall(star))}.</div>
         <div class="facts">${j.expects}</div></div>
         <button class="seg on" data-school="${j.school}">Take the job</button></div>`;
     };
@@ -247,7 +248,7 @@ export class DynastyScreen {
     } else if (step === 1) {
       const list = signings(d);
       body = `<p>Most high school players have played their last game. ${list.length ? `${list.length === 1 ? 'One senior is' : `${list.length} seniors are`} going on to play in college.` : 'Nobody from this class is going on to play in college.'}</p>
-        ${list.map((x) => row(`${esc(x.name)} <small>${x.pos}, ${x.overall}</small>`, `<b>${esc(x.college)}</b> <small>${x.level}</small>`)).join('')}`;
+        ${list.map((x) => row(`${esc(x.name)} <small>${x.pos}</small> ${gradeChip(x.overall)}`, `<b>${esc(x.college)}</b> <small>${x.level}</small>`)).join('')}`;
     } else if (step === 2) {
       const offers = jobOffers(d);
       body = offers.length
@@ -438,8 +439,8 @@ export class DynastyScreen {
     const order = (a: ProgramPlayer, b: ProgramPlayer): number => GROUPS.indexOf(a.pos) - GROUPS.indexOf(b.pos) || overall(b) - overall(a);
     const cls = (p: ProgramPlayer): string => `<span class="cls c${p.year}" title="${CLASS_NAMES[p.year - 1]}">${CLASS_SHORT[p.year - 1]}</span>`;
     const tags = (p: ProgramPlayer): string => `${p.calledUp ? ' <span class="tag-up">called up</span>' : ''}${p.phenom ? ' <span class="tag-star" title="The rare freshman who is ready now">phenom</span>' : ''}${p.origin === 'walkon' ? ` <span class="tag-new" title="Walked on from ${esc(p.from ?? '')}">walk-on</span>` : p.origin === 'transfer' ? ` <span class="tag-new" title="Transferred in from ${esc(p.from ?? '')}">transfer</span>` : ''}${p.out ? ` <span class="tag-out">${esc(outText(p.out))}</span>` : ''}`;
-    const row = (p: ProgramPlayer, action: string): string => `<tr class="${p.out ? 'is-out' : ''}"><td>${p.pos}</td><td>${esc(p.name)}${tags(p)}</td><td>${cls(p)}</td><td><b>${overall(p)}</b></td><td>${p.year < 4 ? p.ceiling : ''}</td><td>${action}</td></tr>`;
-    const head = '<tr><th>Pos</th><th>Player</th><th>Class</th><th>Now</th><th title="His rating as a senior if he keeps developing">Senior</th><th></th></tr>';
+    const row = (p: ProgramPlayer, action: string): string => `<tr class="${p.out ? 'is-out' : ''}"><td>${p.pos}</td><td>${esc(p.name)}${tags(p)}${gradeLine(p)}</td><td>${cls(p)}</td><td>${gradeChip(overall(p))}</td><td>${p.year < 4 ? gradeChip(p.ceiling) : ''}</td><td>${action}</td></tr>`;
+    const head = '<tr><th>Pos</th><th>Player</th><th>Class</th><th>Now</th><th title="His grade as a senior if he keeps developing">Senior</th><th></th></tr>';
     const full = ups.length >= MAX_CALL_UPS;
     const count = (list: ProgramPlayer[]): string => [4, 3, 2, 1].map((y) => `${list.filter((p) => p.year === y).length} ${CLASS_SHORT[y - 1]}`).join(' · ');
     const jvRec = recordOf((d.jv ?? []).map((g) => ({ ...g, week: Math.min(g.week, REGULAR_WEEKS - 1) })), d.user);
@@ -449,7 +450,7 @@ export class DynastyScreen {
     if (over) {
       const seniors = all.filter((p) => p.year === 4).sort((a, b) => overall(b) - overall(a));
       const frosh = incomingOf(d, d.user).sort((a, b) => b.ceiling - a.ceiling);
-      const names = (list: ProgramPlayer[], f: (p: ProgramPlayer) => number): string => list.slice(0, 5).map((p) => `${esc(p.name)} (${p.pos}, ${f(p)})`).join(', ');
+      const names = (list: ProgramPlayer[], f: (p: ProgramPlayer) => number): string => list.slice(0, 5).map((p) => `${esc(p.name)} (${p.pos}) ${gradeChip(f(p))}`).join(', ');
       turnover = `<div class="dy-next"><div class="big">${seniors.length} seniors graduate. ${frosh.length} freshmen arrive.</div>
         <div><b>Leaving:</b> ${names(seniors, overall)}.</div><div><b>Freshmen to watch:</b> ${names(frosh, (p) => p.ceiling)} as seniors.</div></div>`;
     }
@@ -457,6 +458,7 @@ export class DynastyScreen {
       Call a junior varsity player up and the weakest varsity player at his position goes down in his place. A call-up has a price: a player who still needs your call at the end of the season spent it on the sideline instead of playing every Thursday, and comes back a rating point short of where he would have been.</p>
       ${turnover}
       <div class="orow center"><button class="seg on" id="pgBack">Back to the season</button></div>
+      ${gradeKey()}
       <div class="dy-cols prog"><div><h3>Varsity <small>${varsity.length} players · ${count(varsity)}</small></h3>
         <table>${head}${[...varsity].sort(order).map((p) => row(p, p.calledUp ? `<button class="seg mini" data-down="${p.id}">Send down</button>` : '')).join('')}</table></div>
       <div><h3>Junior varsity <small>${jv.length} players · ${count(jv)}</small></h3>

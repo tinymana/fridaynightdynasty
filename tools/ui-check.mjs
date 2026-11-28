@@ -55,10 +55,10 @@ while ((!seenOff || !seenDef) && n++ < 80 && s.mode !== 'final') {
     await page.click('#sidelineBtn');
     await sleep(80);
     check('sideline opens and pauses the game', (await st()).sidelineOpen);
-    const before = await page.$$eval('.sl-row.start span:nth-child(2)', (els) => els.map((e) => e.textContent));
+    const before = await page.$$eval('.sl-row.start > span:nth-child(2)', (els) => els.map((e) => e.textContent));
     await page.click('[data-mv="1:-1"]');
     await sleep(50);
-    const after = await page.$$eval('.sl-row.start span:nth-child(2)', (els) => els.map((e) => e.textContent));
+    const after = await page.$$eval('.sl-row.start > span:nth-child(2)', (els) => els.map((e) => e.textContent));
     check('depth chart reorder swaps the top two backs', before[0] === after[1] && before[1] === after[0]);
     await page.screenshot({ path: `${out}/m2-sideline.png` });
     await page.click('[data-tab="plan"]');

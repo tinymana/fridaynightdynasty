@@ -578,6 +578,14 @@
     .o-two, .ex-picks { grid-template-columns: 1fr; }
     .line .act { min-height: 52px; }
   }
+
+  /* Letter grades */
+  .gr { display: inline-block; min-width: 2.1em; padding: 1px 4px; border-radius: 3px; color: #0b0b0b; font-weight: 700; text-align: center; font-size: .92em; line-height: 1.25; }
+  .gr-line { display: flex; flex-wrap: wrap; gap: 3px 10px; margin-top: 3px; font-size: .82em; color: var(--dim); }
+  .gr-a { white-space: nowrap; }
+  @media (max-width: 600px) { .sl-row { grid-template-columns: 18px minmax(0, 1fr) 40px 50px 58px; gap: 6px; } }
+  .sl-row .gr-line { grid-column: 2 / -1; margin-top: -2px; }
+  .gr-key { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; margin: 8px 0; font-size: 13px; }
 </style>
 </head>
 <body>

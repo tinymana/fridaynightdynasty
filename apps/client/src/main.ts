@@ -11,6 +11,7 @@ import { STATES, boxScore, cleanPick, matchupTeams, occasionFor, pickableSchools
 import { FIGHT_SONG_BEAT, chantFor, fightSong, halftimeShow, type CrowdInput, type Note } from './atmosphere';
 import { OnlineError, online } from './net/online';
 import { cutinFor, tossCutin } from './cutins';
+import { gradeChip, gradeLine } from './grades';
 import { renderGamebook } from './gamebook';
 import { makeSave, readSave, saveFileName, saveLabel, type SaveContents } from './saves';
 import wxRainUrl from './assets/wx-rain.png';
@@ -1450,12 +1451,12 @@ function renderSideline(): void {
   const rows = ids.map((id, i) => {
     const p = game.player(id);
     const e = Math.round(game.energy[id]);
-    return `<div class="sl-row${i < STARTERS[sidelineGroup] ? ' start' : ''}"><span class="rk">${i + 1}</span><span>#${p.number} ${p.name}${p.year ? ` <span class="cls c${p.year}">${['Fr', 'So', 'Jr', 'Sr'][p.year - 1]}</span>` : ''}</span><span>${overall(p)}</span>`
+    return `<div class="sl-row${i < STARTERS[sidelineGroup] ? ' start' : ''}"><span class="rk">${i + 1}</span><span>#${p.number} ${p.name}${p.year ? ` <span class="cls c${p.year}">${['Fr', 'So', 'Jr', 'Sr'][p.year - 1]}</span>` : ''}</span><span>${gradeChip(overall(p))}</span>`
       + `<span class="bar${e < 40 ? ' low' : e < 65 ? ' mid' : ''}" title="${e}% energy"><i style="width:${e}%"></i></span>`
-      + `<span class="mv"><button data-mv="${i}:-1" ${i === 0 ? 'disabled' : ''} aria-label="Move up">▲</button><button data-mv="${i}:1" ${i === ids.length - 1 ? 'disabled' : ''} aria-label="Move down">▼</button></span></div>`;
+      + `<span class="mv"><button data-mv="${i}:-1" ${i === 0 ? 'disabled' : ''} aria-label="Move up">▲</button><button data-mv="${i}:1" ${i === ids.length - 1 ? 'disabled' : ''} aria-label="Move down">▼</button></span>${gradeLine(p)}</div>`;
   }).join('');
   body.innerHTML = `<div class="sl-groups">${DEPTH_GROUPS.map((g) => `<button class="seg${g === sidelineGroup ? ' on' : ''}" data-grp="${g}">${g}</button>`).join('')}</div>`
-    + `<div class="sl-row" style="color:var(--dim)"><span></span><span>${GROUP_NAMES[sidelineGroup]}</span><span>Rating</span><span>Energy</span><span></span></div>${rows}`
+    + `<div class="sl-row" style="color:var(--dim)"><span></span><span>${GROUP_NAMES[sidelineGroup]}</span><span>Grade</span><span>Energy</span><span></span></div>${rows}`
     + `<p class="sl-note">The top ${STARTERS[sidelineGroup]} can start, depending on the formation. Changes take effect on the next snap.</p>`;
   body.querySelectorAll<HTMLElement>('[data-grp]').forEach((el) => el.addEventListener('click', () => { sidelineGroup = el.dataset.grp as Group; renderSideline(); }));
   body.querySelectorAll<HTMLElement>('[data-mv]').forEach((el) => el.addEventListener('click', () => {
