@@ -47,7 +47,7 @@ await shot('#dynasty', 'shot_dynasty');
 await page.click('#dyRecords');
 await sleep(150);
 await shot('#dynasty', 'shot_records');
-await page.click('#pgBack');
+await page.click('#dyHome');
 await page.click('#dyProgram');
 await sleep(150);
 await page.setViewport({ width: 960, height: 760, deviceScaleFactor: 1.5 });

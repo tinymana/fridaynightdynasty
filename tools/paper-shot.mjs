@@ -24,7 +24,7 @@ await page.click('#dyPaper'); await sleep(1500);
 check('the paper has a masthead, a lead story about my school and three more stories', (await text('#dyBody .np-mast')).includes('Prep Ledger') && (await page.$$('#dyBody .np-story')).length === 3 && (await page.$$('#dyBody .np-lead')).length === 1);
 check('it looks ahead to rivalry week', (await text('#dyBody .paper')).includes('rivalry week'));
 await page.screenshot({ path: '/tmp/fnd-shots/paper.png', fullPage: true });
-await page.click('#npBack'); await sleep(100);
+await page.click('#dyHome'); await sleep(100);
 check('back returns to the season', !!(await page.$('#dySim')));
 console.log(errors.length ? `errors: ${errors.join('; ')}` : 'errors: none');
 await browser.close();

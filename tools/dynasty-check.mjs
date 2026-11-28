@@ -67,7 +67,7 @@ try {
   await sleep(100);
   check('a called-up player moves to the varsity and can be sent down', (await page.$$(`#dyBody [data-down="${kid}"]`)).length === 1 && (await page.$$('#dyBody [data-up]')).length === jvCount && (await text('#dyBody')).includes('Call-ups used: 1 of 6'));
   await page.screenshot({ path: `${out}/dynasty-program.png`, fullPage: true });
-  await page.click('#pgBack');
+  await page.click('#dyHome');
   await sleep(100);
 
   // Coach week 1.
@@ -113,7 +113,7 @@ try {
   await page.select('#rcSchool', other);
   await sleep(80);
   check('another school has its own book', (await text('#dyBody .recbook')) !== mineBook);
-  await page.click('#pgBack');
+  await page.click('#dyHome');
   await sleep(100);
 
   // The assistant coaches the rest of the season.
@@ -131,7 +131,7 @@ try {
   await sleep(100);
   check('the awards page names the all-league team', (await page.$$('#dyBody .allteam span')).length === 16 && /2026 season/.test(await text('#dyBody')));
   await page.screenshot({ path: `${out}/dynasty-awards.png`, fullPage: true });
-  await page.click('#pgBack');
+  await page.click('#dyHome');
   await sleep(100);
   // The off-season: banquet, signing day, the carousel, spring practice, fall camp.
   await page.click('#dyOff');

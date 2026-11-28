@@ -15,6 +15,14 @@ export interface SaveFile {
   plays: OffPlay[];
   defs: DefPlay[];
   book: string[];
+  /** The calls of the coach's own recent dynasty games, so their game books follow him to another device. */
+  games?: KeptGame[];
+}
+
+/** One kept game: where it is filed, and what is needed to play it again. */
+export interface KeptGame {
+  key: string;
+  book: { seed: number; log: unknown[]; opts: Record<string, unknown> };
 }
 
 export interface SaveContents {
@@ -22,6 +30,7 @@ export interface SaveContents {
   plays: OffPlay[];
   defs: DefPlay[];
   book: string[];
+  games: KeptGame[];
 }
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
@@ -37,7 +46,31 @@ export function saveLabel(c: SaveContents): string {
 }
 
 export function makeSave(c: SaveContents, at: number): SaveFile {
-  return { fnd: 'save', v: 1, at, label: saveLabel(c), dynasty: c.dynasty, plays: c.plays, defs: c.defs, book: c.book };
+  return { fnd: 'save', v: 1, at, label: saveLabel(c), dynasty: c.dynasty, plays: c.plays, defs: c.defs, book: c.book, games: cleanGames(c.games) };
+}
+
+/** How many of the coach's own games are kept, and how much room they may take in a save. */
+export const MAX_KEPT_GAMES = 12;
+const MAX_KEPT_BYTES = 600_000;
+
+/**
+ * Keeps only kept games that have the right shape, the newest twelve, within the room allowed. What is inside a
+ * game is not trusted either: it is only ever replayed, and a replay that fails or gives another score is thrown away.
+ */
+export function cleanGames(raw: unknown): KeptGame[] {
+  if (!Array.isArray(raw)) return [];
+  const out: KeptGame[] = [];
+  let room = MAX_KEPT_BYTES;
+  for (const g of raw.slice(-MAX_KEPT_GAMES).reverse()) {
+    const k = g as Partial<KeptGame> | null;
+    const b = k?.book;
+    if (!k || typeof k.key !== 'string' || k.key.length > 80 || !b || typeof b !== 'object' || !Number.isFinite(b.seed) || !Array.isArray(b.log) || b.log.length > 2000 || !b.opts || typeof b.opts !== 'object') continue;
+    const size = JSON.stringify(b).length;
+    if (size > room) break;
+    room -= size;
+    out.unshift({ key: k.key, book: { seed: b.seed, log: b.log, opts: b.opts } });
+  }
+  return out;
 }
 
 function checked<T>(raw: unknown, max: number, check: (x: unknown) => { ok: true; value: T } | { ok: false }): T[] {
@@ -57,7 +90,7 @@ export function readSave(raw: unknown): SaveContents | null {
   const plays = checked(s.plays, MAX_CUSTOM_PLAYS, validateOffPlay);
   const defs = checked(s.defs, MAX_CUSTOM_DEFENSES, validateDefPlay);
   const book = Array.isArray(s.book) && s.book.every((x) => typeof x === 'string') && validateBook(s.book, plays) === null ? [...s.book] : [...DEFAULT_BOOK];
-  return { dynasty: s.dynasty ? loadDynasty(s.dynasty) : null, plays, defs, book };
+  return { dynasty: s.dynasty ? loadDynasty(s.dynasty) : null, plays, defs, book, games: cleanGames(s.games) };
 }
 
 /** A file name for the download: lower case, no spaces. */

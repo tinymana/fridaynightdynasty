@@ -13,7 +13,7 @@ import { OnlineError, online } from './net/online';
 import { cutinFor, tossCutin } from './cutins';
 import { gradeChip, gradeLine } from './grades';
 import { renderGamebook } from './gamebook';
-import { makeSave, readSave, saveFileName, saveLabel, type SaveContents } from './saves';
+import { MAX_KEPT_GAMES, cleanGames, makeSave, readSave, saveFileName, saveLabel, type SaveContents } from './saves';
 import wxRainUrl from './assets/wx-rain.png';
 import wxSnowUrl from './assets/wx-snow.png';
 import wxFogUrl from './assets/wx-fog.png';
@@ -71,7 +71,7 @@ interface KickAnim {
 }
 
 /** What a save holds. A change to any of these is a change to the save. */
-const SAVED_KEYS = ['fnd.dynasty.v1', 'fnd.plays.v1', 'fnd.defs.v1', 'fnd.book.v2'];
+const SAVED_KEYS = ['fnd.dynasty.v1', 'fnd.plays.v1', 'fnd.defs.v1', 'fnd.book.v2', 'fnd.mybooks.v1'];
 /** Set while a loaded save is being written into this browser, so that writing it does not count as a new change. */
 let applyingSave = false;
 let savedChanged: () => void = () => {};
@@ -170,6 +170,9 @@ let dynastyGame: DynastyGame | null = null;
 let showCutins = true;
 /** Quarter length and weather for the next game this coach starts or hosts. */
 let setup: GameSetup = cleanSetup(store.get<unknown>('fnd.setup.v1', null));
+/** What each quarter length means for an evening: how long a game takes at normal speed, and how much scoring to expect. */
+const QUARTER_NOTES: Record<number, string> = { 4: 'about 8 minutes, low scoring', 6: 'about 12 minutes', 8: 'about 16 minutes', 10: 'about 20 minutes', 12: 'full game, about 25 minutes' };
+const quarterOptions = (): string => QUARTER_MINUTES.map((m) => `<option value="${m}">${m}-minute quarters (${QUARTER_NOTES[m] ?? ''})</option>`).join('');
 const setupLine = (s: GameSetup): string => `${s.quarterMinutes}-minute quarters \u00b7 ${WEATHER[s.weather].name}`;
 /** The formation tab open on the offense panel. */
 let offTab = FORMATIONS[0].id;
@@ -1758,6 +1761,7 @@ const dynasty = new DynastyScreen($('dyBody'), $('dyTitle'), {
   load: () => store.get<unknown>('fnd.dynasty.v1', null),
   save: (d) => store.set('fnd.dynasty.v1', d),
   quarterMinutes: () => setup.quarterMinutes,
+  quarterOptions,
   play: (g) => {
     stopOnline();
     seed = g.seed;
@@ -1767,10 +1771,10 @@ const dynasty = new DynastyScreen($('dyBody'), $('dyTitle'), {
     startGame(g.user, g.setup);
   },
   back: () => showSetup(),
-  // The last twelve games the coach called, on this device only.
+  // The last twelve games the coach called. They are part of the save, so they follow him to another device.
   keepBook: (key, book) => {
     const all = store.get<{ key: string; book: KeptBook }[]>('fnd.mybooks.v1', []).filter((b) => b && b.key !== key);
-    store.set('fnd.mybooks.v1', [...all, { key, book }].slice(-12));
+    store.set('fnd.mybooks.v1', [...all, { key, book }].slice(-MAX_KEPT_GAMES));
   },
   keptBook: (key) => store.get<{ key: string; book: KeptBook }[]>('fnd.mybooks.v1', []).find((b) => b && b.key === key)?.book ?? null,
 }, () => (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0);
@@ -2119,7 +2123,7 @@ let askYes: (() => void) | null = null;
 /** Counts changes, so one made while a save is on its way up is not mistaken for saved. */
 let changeSeq = 0;
 
-const contents = (): SaveContents => ({ dynasty: dynasty.active, plays: myPlays, defs: myDefs, book });
+const contents = (): SaveContents => ({ dynasty: dynasty.active, plays: myPlays, defs: myDefs, book, games: cleanGames(store.get<unknown>('fnd.mybooks.v1', [])) });
 const hasLocal = (): boolean => !!dynasty.active || myPlays.length + myDefs.length > 0;
 const whenText = (at: number): string => new Date(at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const synced = (): boolean => !!session && !!cloud && cloud.name === session.name && !unsaved && !cloudOther;
@@ -2183,6 +2187,7 @@ function applySave(c: SaveContents): void {
   store.set('fnd.plays.v1', c.plays);
   store.set('fnd.defs.v1', c.defs);
   store.set('fnd.book.v2', c.book);
+  store.set('fnd.mybooks.v1', c.games);
   applyingSave = false;
   myPlays = c.plays;
   myDefs = c.defs;
@@ -2698,7 +2703,7 @@ if (session) void syncSaves();
 $('oPin').addEventListener('keydown', (ev) => { if ((ev as KeyboardEvent).key === 'Enter') void signIn(); });
 const quarterPick = $('quarterPick') as HTMLSelectElement;
 const weatherPick = $('weatherPick') as HTMLSelectElement;
-quarterPick.innerHTML = QUARTER_MINUTES.map((m) => `<option value="${m}">${m} minutes${m === 12 ? ' (standard)' : ''}</option>`).join('');
+quarterPick.innerHTML = quarterOptions();
 weatherPick.innerHTML = WEATHERS.map((w) => `<option value="${w}">${WEATHER[w].name}</option>`).join('');
 const showSetupPicks = (): void => {
   quarterPick.value = String(setup.quarterMinutes);
