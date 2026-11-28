@@ -1,7 +1,7 @@
 import { cleanSetup, type GameSetup, type Team, type TeamColors } from '@fnd/core';
 import {
-  LEAGUE_SIZE, STATES, closeWeek, createDynasty, createLeague, editSchool, gameSeed, gameSetup, lastWeek, nextSeason, recordLeagueGame, recordOf, seasonOver, settleSeason, simulateWithBox, standings, matchTeams, weekComplete, weekGames,
-  type BoxScore, type Dynasty, type SchoolIdentity, type SeasonRecord, type Standing,
+  LEAGUE_SIZE, STATES, isFocus, setPlanCallUp, closeWeek, createDynasty, createLeague, editSchool, gameSeed, gameSetup, lastWeek, nextSeason, recordLeagueGame, recordOf, seasonOver, settleSeason, simulateWithBox, standings, matchTeams, weekComplete, weekGames,
+  type BoxScore, type Dynasty, type FocusId, type SchoolPlan, type SchoolIdentity, type SeasonRecord, type Standing,
 } from '@fnd/league';
 import { RoomError, type Coach } from './room';
 
@@ -27,7 +27,7 @@ export function leagueBook(l: SharedLeague, coachId: string): Dynasty {
   normal(l);
   const you = l.coaches.findIndex((c) => c?.id === coachId);
   // A book is of finished weeks: this week's games that are already in wait for the rest (their numbers are already counted).
-  return { ...l.dynasty, results: l.dynasty.results.filter((g) => g.week < l.dynasty.week), user: you >= 0 ? you : 0, callUps: [] };
+  return { ...l.dynasty, results: l.dynasty.results.filter((g) => g.week < l.dynasty.week), user: you >= 0 ? you : 0, callUps: [...(l.dynasty.plans?.[you]?.callUps ?? [])] };
 }
 
 export interface SharedLeague {
@@ -41,6 +41,8 @@ export interface SharedLeague {
   rooms: Record<string, string>;
   /** Set by the commissioner: the AI finishes this week's unplayed games. */
   forced?: boolean;
+  /** What each coach has chosen for next spring's practice, by school index, until the next season starts. */
+  nextFocus?: Record<number, FocusId>;
   /** Coach ids already credited with a championship, as "year:coach", so a title counts once. */
   credited?: string[];
   createdAt: number;
@@ -59,6 +61,8 @@ export interface RoomLeague {
   prestige: [number, number];
   /** Names and colours of the two schools, when the commissioner has changed them. */
   identity?: [SchoolIdentity, SchoolIdentity];
+  /** Each school's call-ups, spring focus and player gains and losses as they stood when the game was opened. */
+  plans?: [SchoolPlan | null, SchoolPlan | null];
 }
 
 export function leagueTeams(l: RoomLeague): [Team, Team] {
@@ -66,7 +70,10 @@ export function leagueTeams(l: RoomLeague): [Team, Team] {
   league.schools[l.home] = { ...league.schools[l.home], ...l.identity?.[0], prestige: l.prestige[0] };
   league.schools[l.away] = { ...league.schools[l.away], ...l.identity?.[1], prestige: l.prestige[1] };
   // The week is part of it: a player who is hurt or ineligible that week does not dress, for a coach's game as for a simulated one.
-  const d = { league, year: l.year, week: l.week };
+  const plans: (SchoolPlan | null | undefined)[] = [];
+  plans[l.home] = l.plans?.[0];
+  plans[l.away] = l.plans?.[1];
+  const d = { league, year: l.year, week: l.week, shared: true, plans };
   return matchTeams(d, l.home, l.away);
 }
 
@@ -130,6 +137,7 @@ export function roomLeague(l: SharedLeague, home: number, away: number): { leagu
     league: {
       code: l.code, state: d.league.state, seed: d.league.seed, year: d.year, week: d.week, home, away, prestige: [d.league.schools[home].prestige, d.league.schools[away].prestige],
       identity: [identityOf(d.league.schools[home]), identityOf(d.league.schools[away])],
+      plans: [d.plans?.[home] ?? null, d.plans?.[away] ?? null],
     },
     seed: gameSeed(d, d.week, home, away), setup: gameSetup(d, d.week, home, away),
   };
@@ -192,9 +200,37 @@ export function nextSharedSeason(l: SharedLeague, coachId: string, now: number):
   if (l.state !== 'season' || !seasonOver(l.dynasty)) throw new RoomError('bad_request', 'The season is not over.');
   // A league that began before brackets finishes its year with first against second and gets a bracket from here on.
   const { bracket: _was, ...rest } = l.dynasty;
-  l.dynasty = nextSeason(rest);
+  // Each coach's spring choice goes in; a school whose coach chose nothing works on what the league decides.
+  l.dynasty = nextSeason(rest, undefined, l.nextFocus ?? {});
+  l.nextFocus = {};
   l.rooms = {};
   l.forced = false;
+  l.updatedAt = now;
+}
+
+/** A coach calls a junior varsity player up, or sends one back down. It counts from the next game that is opened. */
+export function setLeagueCallUp(l: SharedLeague, coachId: string, playerId: unknown, up: unknown, now: number): void {
+  normal(l);
+  const school = schoolOf(l, coachId);
+  if (school < 0) throw new RoomError('bad_request', 'You do not coach a school in this league.', 403);
+  if (l.state !== 'season' || seasonOver(l.dynasty)) throw new RoomError('bad_request', 'Call-ups are made during the season.');
+  if (typeof playerId !== 'string' || playerId.length > 60) throw new RoomError('bad_request', 'Choose a player.');
+  try {
+    l.dynasty = setPlanCallUp(l.dynasty, school, playerId, up === true);
+  } catch (e) {
+    throw new RoomError('bad_request', e instanceof Error ? `${e.message[0]!.toUpperCase()}${e.message.slice(1)}.` : 'That call-up is not allowed.');
+  }
+  l.updatedAt = now;
+}
+
+/** A coach chooses what his school works on in spring practice. Chosen once the season is over, used when the next one starts. */
+export function setLeagueFocus(l: SharedLeague, coachId: string, focus: unknown, now: number): void {
+  normal(l);
+  const school = schoolOf(l, coachId);
+  if (school < 0) throw new RoomError('bad_request', 'You do not coach a school in this league.', 403);
+  if (l.state !== 'season' || !seasonOver(l.dynasty)) throw new RoomError('bad_request', 'Spring practice is chosen once the season is over.');
+  if (!isFocus(focus)) throw new RoomError('bad_request', 'Choose what to work on.');
+  l.nextFocus = { ...(l.nextFocus ?? {}), [school]: focus };
   l.updatedAt = now;
 }
 
@@ -231,6 +267,8 @@ export interface LeagueView {
   history: SeasonRecord[];
   /** Your own record this season. */
   record: [number, number, number];
+  /** Your own plan: what you worked on this spring (null if the league decided), what you have chosen for next spring, and how many call-ups you have made. */
+  plan: { focus: FocusId | null; next: FocusId | null; callUps: number };
   forced: boolean;
 }
 
@@ -250,6 +288,7 @@ export function viewLeague(l: SharedLeague, coachId: string): LeagueView {
     standings: standings(d.results), games,
     lastWeek: d.week > 0 ? d.results.filter((g) => g.week === d.week - 1).map((g) => ({ home: g.home, away: g.away, score: [g.score[0], g.score[1]] })) : [],
     history: d.history, record: you >= 0 ? recordOf(d.results, you) : [0, 0, 0], forced: !!l.forced,
+    plan: { focus: d.plans?.[you]?.focus ?? null, next: l.nextFocus?.[you] ?? null, callUps: d.plans?.[you]?.callUps?.length ?? 0 },
   };
 }
 

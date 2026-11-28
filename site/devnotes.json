@@ -2,6 +2,25 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.28.0",
+      "date": "2026-11-27",
+      "title": "Your own program in a league with friends",
+      "items": [
+        {
+          "tag": "new",
+          "text": "Call-ups in a league with friends. Open the league book, go to your program and call a junior varsity player up, six at most. It counts from the next game you open, and it has the same price as in a solo dynasty."
+        },
+        {
+          "tag": "new",
+          "text": "Your own spring practice. When the season ends, each coach picks what his school works on before the commissioner starts the next year. A coach who picks nothing gets what the league decides."
+        },
+        {
+          "tag": "note",
+          "text": "Job offers and the banquet and signing-day pages are still solo only."
+        }
+      ]
+    },
+    {
       "version": "0.27.0",
       "date": "2026-11-27",
       "title": "Leagues with friends catch up",

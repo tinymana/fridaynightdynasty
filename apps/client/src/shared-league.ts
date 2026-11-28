@@ -1,5 +1,5 @@
 import { WEATHER, type GameSetup, type Weather } from '@fnd/core';
-import { REGULAR_WEEKS, STATES, stateByCode } from '@fnd/league';
+import { FOCUSES, REGULAR_WEEKS, STATES, stateByCode } from '@fnd/league';
 import type { SchoolIdentity } from '@fnd/league';
 import type { LeagueView, RoomView } from '@fnd/online';
 import { bindSchoolForm, schoolFormHtml } from './school-form';
@@ -18,6 +18,8 @@ export interface SharedApi {
   next(code: string): Promise<LeagueView>;
   play(code: string): Promise<RoomView>;
   edit(code: string, school: number, identity: SchoolIdentity): Promise<LeagueView>;
+  /** Chooses what my school works on in spring practice. */
+  focus(code: string, focus: string): Promise<LeagueView>;
 }
 
 export interface SharedHost {
@@ -171,7 +173,10 @@ export class SharedLeagueScreen {
       if (v.over) {
         const h = v.history[v.history.length - 1];
         next = `<div class="dy-next"><div class="big">${h.champion === v.you ? 'State champions! You win it all.' : `${esc(v.schools[h.champion].name)} ${esc(v.schools[h.champion].mascot)} are ${state.name} champions${v.schools[h.champion].coach ? `, coached by ${esc(v.schools[h.champion].coach!)}` : ''}.`}</div>
-          <div>${v.you >= 0 ? `You finished ${rec(v.record)}.` : ''}</div><div class="orow">${v.isCommissioner ? `<button class="seg on" id="shNext">Start year ${v.year + 1}</button>` : '<span class="sl-note">The commissioner starts the next year.</span>'}</div></div>`;
+          <div>${v.you >= 0 ? `You finished ${rec(v.record)}.` : ''}</div>
+          ${v.you >= 0 ? `<div class="sl-spring"><b>Spring practice.</b> Pick what your team works on before next season. Every returning player comes back a point better in it.${v.plan.next ? '' : ' If you pick nothing, the league decides for you.'}
+            <div class="orow">${FOCUSES.map((f) => `<button class="seg${v.plan.next === f.id ? ' on' : ''}" data-focus="${f.id}" title="${f.desc}">${f.name}</button>`).join('')}</div></div>` : ''}
+          <div class="orow">${v.isCommissioner ? `<button class="seg on" id="shNext">Start year ${v.year + 1}</button>` : '<span class="sl-note">The commissioner starts the next year.</span>'}</div></div>`;
       } else if (mine && !mine.score) {
         const opp = mine.home === v.you ? mine.away : mine.home;
         const oppCoach = v.schools[opp].coach;
@@ -190,6 +195,7 @@ export class SharedLeagueScreen {
         ? `<div class="orow center" style="margin-top:10px"><button class="seg" id="shForce">${v.forced ? 'Moving the week on…' : this.forceArmed ? 'Really? Coaches who have not played get an AI result' : 'Commissioner: let the AI finish this week'}</button></div>` : '';
       this.root.innerHTML = `${head}${next}<div class="dy-cols"><div><h3>Standings</h3><table><tr><th>#</th><th>School</th><th>Record</th><th>PF</th><th>PA</th></tr>${rows}</table></div><div>${games}${last}${past}</div></div>${force}${foot}`;
       this.root.querySelector('#shNext')?.addEventListener('click', () => void this.act(() => this.host.api.next(v.code)));
+      this.root.querySelectorAll<HTMLElement>('[data-focus]').forEach((el) => el.addEventListener('click', () => void this.act(() => this.host.api.focus(v.code, el.dataset.focus!))));
       this.root.querySelector('#shForce')?.addEventListener('click', (e) => {
         const el = e.currentTarget as HTMLElement;
         if (v.forced) return;
