@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.29.0 — 2026-11-27
+
+Phone play calling; injuries during games. Simulation change: redeploy the `fnd` function with the merge.
+
+### Added
+- `Team.hurt` and `PlayEvent.injured` (core). `Game.helpOff`: on the first run or pass at or after his play the
+  player comes off the game's depth chart for good, unless the position would fall below `MIN_ON_CHART`.
+- `matchTeams` sets `hurt` from `incidentsOf` for that week (play 30 to 109 by hash), so solo sims, the coach's
+  own game, replays and league rooms all get it without each caller passing anything.
+- Cut-in `n-injury`. `tests/hurt.test.ts` (3 tests).
+
+### Changed
+- Phone layout (600 px and under): `#panel` three columns of compact cards; `.fronts` and the control bar one row;
+  prompt and play clock first. `tools/phone-play.mjs` plays by tapping and reports what is on screen: every call
+  screen now shows all its buttons within one 844 px screen, none under 40 px.
+- The 30-season test allows one school up to 16 titles (was 12). The result swings between about 10 and 15 with
+  any change to rosters; the bound now says what the wider strength gap actually produces.
+
 ## 0.28.0 — 2026-11-27
 
 Each coach's own program in a shared league. Server change: redeploy the `fnd` function with the merge.

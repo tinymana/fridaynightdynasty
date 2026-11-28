@@ -2,6 +2,29 @@
   "_howto": "Newest first. Add an entry at the top each time you push an update; the website and the game's title screen both read this file. tag: new | improved | fixed. roadmap status: done | testing | next | planned.",
   "notes": [
     {
+      "version": "0.29.0",
+      "date": "2026-11-27",
+      "title": "Play calling on a phone, and injuries during games",
+      "items": [
+        {
+          "tag": "improved",
+          "text": "On a phone, every play call now fits on one screen with no scrolling: offense, defense, the kickoff and the snap at the line. Plays are three small cards across with their pictures and names, and the formations slide sideways in one row."
+        },
+        {
+          "tag": "improved",
+          "text": "On a phone the prompt and the play clock sit on a line of their own above the controls, and every button is big enough to hit with a thumb."
+        },
+        {
+          "tag": "new",
+          "text": "Injuries happen during games. In a dynasty or a league with friends, a player who is hurt that week now goes down on a play, is helped off, and takes no further part; the next man on the depth chart plays the rest of the game. The team news afterwards says how long he is out."
+        },
+        {
+          "tag": "note",
+          "text": "If taking a player off would leave a position short (a lone kicker, the second tight end), he finishes the game and the injury is found afterwards."
+        }
+      ]
+    },
+    {
       "version": "0.28.0",
       "date": "2026-11-27",
       "title": "Your own program in a league with friends",

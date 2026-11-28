@@ -1,6 +1,6 @@
 import { DEFAULT_SETUP, Rng, clamp, cleanSetup, hashString, type GameSetup, type PlayEvent, type Ratings, type Team, type TeamColors, type Weather } from '@fnd/core';
 import { simulateGame } from '@fnd/match-sim';
-import { LEAGUE_TUNING, MAX_CALL_UPS, isFocus, seededFocus, cleanCallUps, enrolledIn, incomingClass, jvTeam, programFor, programNames, programNews, varsityTeam, type FocusId, type ProgramNews, type ProgramPlayer, type ProgramTune } from './program';
+import { LEAGUE_TUNING, MAX_CALL_UPS, incidentsOf, isFocus, seededFocus, cleanCallUps, enrolledIn, incomingClass, jvTeam, programFor, programNames, programNews, varsityTeam, type FocusId, type ProgramNews, type ProgramPlayer, type ProgramTune } from './program';
 import { cleanStatBook, closeSeason, historicBook, recordGame, type RecordNews, type StatBook } from './records';
 import { boxScore, type BoxScore } from './stats';
 import { cleanAwards, voteAwards, type Candidate, type SeasonAwards } from './awards';
@@ -378,7 +378,16 @@ function atHome(t: Team): Team {
 }
 /** The two varsities for a game, home side first, as they play on the night. */
 export function matchTeams(d: Rosters, home: number, away: number, week: number | undefined = d.week): [Team, Team] {
-  return [atHome(teamFor(d, home, week)), teamFor(d, away, week)];
+  // An injury the league has down for after this week's game happens in it: the player goes down on a play in the
+  // second half or late in the first, and is out from then on.
+  const withHurt = (t: Team, school: number): Team => {
+    if (week === undefined) return t;
+    const hurt = incidentsOf(d.league.seed, d.league.schools[school].id, d.year)
+      .filter((i) => i.kind === 'injury' && i.week === week && t.roster.some((p) => p.id === i.id))
+      .map((i) => ({ id: i.id, play: 30 + (hashString(`${d.league.seed}:${i.id}:${d.year}:${week}`) % 80) }));
+    return hurt.length ? { ...t, hurt } : t;
+  };
+  return [withHurt(atHome(teamFor(d, home, week)), home), withHurt(teamFor(d, away, week), away)];
 }
 /** This year's junior varsity: everyone in the program who is not on the varsity. */
 export function jvTeamFor(d: Rosters, school: number, week: number | undefined = d.week): Team {

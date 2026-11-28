@@ -519,6 +519,31 @@
   @media (max-width: 620px) { .award { grid-template-columns: 1fr; gap: 2px; } }
   #hall, #final { font-size: 17px; }
   .sl-row, #sideline { font-size: 16px; }
+
+  /* ---- A phone: calling a play without scrolling. The controls and the formations each take one row that slides
+     sideways, and the plays are three small cards across with their pictures and names. ---- */
+  @media (max-width: 600px) {
+    /* What to do and the play clock come first, on a line of their own; the six controls fit on the next. */
+    #bar { gap: 4px; margin: 4px 0; justify-content: center; }
+    #bar .lbl { display: none; }
+    #bar .seg { flex: 0 0 auto; padding: 9px 6px; font-size: 14px; white-space: nowrap; }
+    #bar kbd, .act kbd, .card kbd { display: none; }
+    #prompt { order: -2; flex: 1 1 auto; margin: 0; text-align: center; }
+    #pclock { order: -1; }
+    #bar::after { content: ''; order: -1; flex-basis: 100%; height: 0; }
+    #panel { grid-template-columns: repeat(3, 1fr); gap: 5px; }
+    .fronts { flex-wrap: nowrap; overflow-x: auto; gap: 5px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+    .fronts::-webkit-scrollbar { display: none; }
+    .fronts .lbl { display: none; }
+    .fronts .act { flex: 0 0 auto; min-width: 0; min-height: 44px; padding: 8px 12px; font-size: 16px; white-space: nowrap; }
+    .fronts .act small { display: none; }
+    .card { padding: 4px 4px 6px; gap: 2px; min-height: 44px; }
+    .card .nm { font-size: 15px; flex-direction: column; align-items: flex-start; gap: 1px; line-height: 1.05; }
+    .card .kind { font-size: 11px; padding: 0 3px; }
+    .card .ds, .card .form { display: none; }
+    .wide .act { min-width: 0; font-size: 16px; padding: 10px 8px; }
+    .side .sc { font-size: 18px; }
+  }
 </style>
 </head>
 <body>

@@ -35,6 +35,9 @@ export type LoggedDecision =
   | { off: OffDecision | null; def: DefDecision | null }
   | { manage: ManageAction };
 
+/** The fewest players a depth chart can be left with at each position: the most any formation or front asks for. */
+const MIN_ON_CHART: Record<Group, number> = { QB: 1, RB: 2, WR: 4, TE: 2, OL: 5, DL: 5, LB: 4, CB: 3, S: 2, K: 1, P: 1 };
+
 export interface GameOptions {
   /** The eight offensive plays each team carries. Defaults to the starter book. */
   books?: readonly [readonly string[], readonly string[]];
@@ -87,6 +90,8 @@ export class Game {
 
   private readonly byId = new Map<string, Player>();
   private readonly resting = new Set<string>();
+  /** Players who will be hurt during this game and have not been yet. */
+  private toBeHurt: { team: 0 | 1; id: string; play: number }[] = [];
   private instant = false;
   private twoPoint = false;
   /** The log position of the snap being played: the officials' random stream is keyed to it. */
@@ -140,6 +145,7 @@ export class Game {
       return out;
     };
     this.depth = [copy(teams[0]), copy(teams[1])];
+    this.toBeHurt = teams.flatMap((t, i) => (t.hurt ?? []).map((h) => ({ team: i as 0 | 1, id: h.id, play: h.play }))).sort((a, b) => a.play - b.play || (a.id < b.id ? -1 : 1));
     for (const t of teams) for (const p of t.roster) {
       this.byId.set(p.id, p);
       this.energy[p.id] = 100;
@@ -397,6 +403,28 @@ export class Game {
     };
     this.events.push(e);
     this.lastEvent = e;
+    if (type === 'run' || type === 'pass') this.helpOff(e);
+  }
+
+  /**
+   * A player due to be hurt goes down on the first run or pass at or after his play. He comes off the depth chart for
+   * the rest of the game, unless that would leave his position short of what a formation needs: then he plays on and
+   * the injury is found after the game.
+   */
+  private helpOff(e: PlayEvent): void {
+    if (e.injured) return;
+    const due = this.toBeHurt.findIndex((h) => h.play <= e.seq);
+    if (due < 0) return;
+    const [h] = this.toBeHurt.splice(due, 1) as [{ team: 0 | 1; id: string; play: number }];
+    const p = this.byId.get(h.id);
+    if (!p) return;
+    const chart = this.depth[h.team][p.pos];
+    const at = chart.indexOf(p.id);
+    if (at < 0 || chart.length - 1 < MIN_ON_CHART[p.pos]) return;
+    chart.splice(at, 1);
+    this.resting.delete(p.id);
+    e.injured = { team: h.team, id: p.id };
+    e.text = `${e.text} ${p.name} of ${this.teams[h.team].name} is hurt on the play and is helped off.`;
   }
 
   private snapshot() {
