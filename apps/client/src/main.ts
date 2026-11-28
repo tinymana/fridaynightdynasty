@@ -22,7 +22,7 @@ import menuArtUrl from './assets/menu-stadium.webp';
 import menuWideUrl from './assets/menu-wide.webp';
 import pressStartUrl from '@fontsource/press-start-2p/files/press-start-2p-latin-400-normal.woff2';
 import jerseyUrl from '@fontsource/jersey-15/files/jersey-15-latin-400-normal.woff2';
-import { DynastyScreen, type DynastyGame } from './dynasty';
+import { DynastyScreen, type DynastyGame, type KeptBook } from './dynasty';
 import { SharedLeagueScreen } from './shared-league';
 import { openDefenseDesigner, openOffenseDesigner, practiceTeams, type DesignerHost } from './designer';
 import { voice } from './net/voice';
@@ -482,7 +482,7 @@ function step(dt: number): FieldView | null {
         // Online, the server's clock is the one that counts; this is only its display.
         clockLeft = Math.max(0, clockLeft - dt);
         showPlayClock();
-      } else if (clockOn && !sidelineOpen) {
+      } else if (clockOn && !sidelineOpen && !tipOpen) {
         clockLeft -= dt;
         showPlayClock();
         if (clockLeft <= 0) playClockExpired();
@@ -677,6 +677,7 @@ function runKickoff(off: OffDecision | null): void {
 /** The kicking coach's three choices. */
 function showKickPanel(): void {
   mode = 'choose';
+  coachTip('kick');
   const late = game.onsideExpected();
   $('prompt').textContent = 'Call the kickoff';
   const opt = (style: KickStyle, key: string, name: string, text: string): string => `<button class="act" data-act="k:${style}">${name} <kbd>[${key}]</kbd><small>${text}</small></button>`;
@@ -1207,6 +1208,8 @@ const playCard = (p: OffPlay, act: string, hint: string, extra = ''): string =>
 // -------------------------------------------------------------------- panels
 
 function setPanelWaiting(text: string): void {
+  hideCardTip();
+  closeTip();
   $('panel').innerHTML = `<div class="waiting">${text}</div>`;
   $('prompt').textContent = '';
   keyHandler = null;
@@ -1222,6 +1225,7 @@ function showOffensePanel(twoPointPick = false): void {
   const s = game.state;
   const panel = $('panel');
   mode = 'choose';
+  coachTip(s.down === 4 && s.phase !== 'conversion' ? 'fourth' : 'offense');
   showPlayClock();
   if (s.phase === 'conversion' && !twoPointPick) {
     $('prompt').textContent = 'Touchdown! Choose the try';
@@ -1281,6 +1285,7 @@ function showOffensePanel(twoPointPick = false): void {
 
 function showDefensePanel(): void {
   mode = 'choose';
+  coachTip('defense');
   showPlayClock();
   $('prompt').textContent = game.state.phase === 'conversion' ? 'Defend the two-point try' : 'Pick a front, then call it';
   const mine = game.defenses[user];
@@ -1374,6 +1379,7 @@ function showLinePanel(playId: string, frontName: string, frontDesc: string, fro
   }
   showPlayClock();
   $('prompt').textContent = `At the line: they show ${frontName}`;
+  coachTip('line');
   // One job on this screen: snap the play that was called. The audibles stay folded away until the coach asks for
   // them, so the sheet never reads as "pick another play".
   const draw = (open: boolean): void => {
@@ -1402,8 +1408,73 @@ function bind(acts: Record<string, () => void>, keys: (k: string) => string | nu
     sfx.select();
     acts[a]();
   };
-  $('panel').querySelectorAll<HTMLElement>('[data-act]').forEach((el) => el.addEventListener('click', () => run(el.dataset.act ?? null)));
+  hideCardTip();
+  $('panel').querySelectorAll<HTMLElement>('[data-act]').forEach((el) => {
+    el.addEventListener('click', () => {
+      // The tap that ends a press-and-hold only closes the description.
+      if (heldCard === el) { heldCard = null; return; }
+      run(el.dataset.act ?? null);
+    });
+    if (el.classList.contains('card')) holdToRead(el);
+  });
   keyHandler = (k) => run(keys(k));
+}
+
+// ------------------------------------------------------------------ first-game tips
+
+/** One short explanation the first time each kind of decision comes up. A coach reads each once, or turns them off. */
+const TIPS = {
+  kick: ['The kickoff', 'Kick it deep most of the time. A squib is short and safe from a long return. An onside kick is a gamble to get the ball straight back.'],
+  offense: ['Calling a play', 'Pick a formation along the top, then tap a play. RUN plays hand the ball off; PASS plays throw it. You have four downs to gain ten yards. Hold a play to read what it does.'],
+  line: ['At the line', 'Your team is lined up and the defense has shown its front. Tap Snap it to run your play. Change the play only if you do not like what you see.'],
+  defense: ['Calling a defense', 'Pick a front along the top: more linemen stop the run, more backs stop the pass. Then tap a call. Blitz sends extra rushers at the quarterback; zone and man cover the receivers.'],
+  fourth: ['Fourth down', 'Last chance to make the line to gain. Punt to push them back, kick a field goal if you are close, or go for it. Miss and they take over right here.'],
+} as const;
+type TipId = keyof typeof TIPS;
+const tipsSeen = new Set<string>(store.get<string[]>('fnd.tips.v1', []));
+let tipsOn = store.get<boolean>('fnd.tipson.v1', true);
+/** Automated browsers skip the tips unless a check asks for them. */
+let tipsInChecks = false;
+let tipOpen = false;
+function closeTip(): void {
+  tipOpen = false;
+  $('coachTip').classList.add('hidden');
+}
+function coachTip(id: TipId): void {
+  if (!tipsOn || tipsSeen.has(id) || tipOpen || speed === 0 || (navigator.webdriver && !tipsInChecks)) return;
+  tipsSeen.add(id);
+  store.set('fnd.tips.v1', [...tipsSeen]);
+  const [head, body] = TIPS[id];
+  $('coachTip').innerHTML = `<b>${head}</b><p>${body}</p><div class="orow"><button class="seg on" id="tipOk">Got it</button><button class="seg" id="tipOff">No more tips</button></div>`;
+  $('coachTip').classList.remove('hidden');
+  tipOpen = true;
+  $('tipOk').addEventListener('click', closeTip);
+  $('tipOff').addEventListener('click', () => { tipsOn = false; store.set('fnd.tipson.v1', false); closeTip(); });
+}
+
+/** The card whose description is showing because it was pressed and held. */
+let heldCard: HTMLElement | null = null;
+function hideCardTip(): void {
+  $('cardTip').classList.add('hidden');
+}
+/** Press and hold a play card to read what it does. On a phone the cards are too small to carry the words. */
+function holdToRead(el: HTMLElement): void {
+  let t = 0;
+  const cancel = (): void => { window.clearTimeout(t); };
+  el.addEventListener('pointerdown', () => {
+    cancel();
+    heldCard = null;
+    t = window.setTimeout(() => {
+      const text = (sel: string): string => el.querySelector(sel)?.textContent?.replace(/\[[^\]]*\]/g, '').trim() ?? '';
+      const name = el.querySelector('.nm')?.childNodes[0]?.textContent?.trim() ?? '';
+      $('cardTip').innerHTML = `<b>${name}</b> <span class="kind">${text('.kind')}</span><div>${text('.form')}</div><div>${text('.ds')}</div><small>Tap the play to call it.</small>`;
+      $('cardTip').classList.remove('hidden');
+      heldCard = el;
+    }, 420);
+  });
+  for (const ev of ['pointerleave', 'pointercancel', 'pointermove'] as const) el.addEventListener(ev, (e) => { if (ev !== 'pointermove' || Math.abs((e as PointerEvent).movementX) + Math.abs((e as PointerEvent).movementY) > 6) cancel(); });
+  el.addEventListener('pointerup', cancel);
+  el.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
 // ------------------------------------------------------------------ sideline
@@ -1682,6 +1753,12 @@ const dynasty = new DynastyScreen($('dyBody'), $('dyTitle'), {
     startGame(g.user, g.setup);
   },
   back: () => showSetup(),
+  // The last twelve games the coach called, on this device only.
+  keepBook: (key, book) => {
+    const all = store.get<{ key: string; book: KeptBook }[]>('fnd.mybooks.v1', []).filter((b) => b && b.key !== key);
+    store.set('fnd.mybooks.v1', [...all, { key, book }].slice(-12));
+  },
+  keptBook: (key) => store.get<{ key: string; book: KeptBook }[]>('fnd.mybooks.v1', []).find((b) => b && b.key === key)?.book ?? null,
 }, () => (Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0);
 
 type SetupPage = 'menu' | 'exhibition' | 'online' | 'saves';
@@ -1741,6 +1818,7 @@ function startGame(team: 0 | 1, conditions: GameSetup = setup): void {
   plays[user] = myPlays;
   defenses[user] = myDefs;
   const opts: GameOptions = { books, plays, defenses, setup: conditions };
+  gameOpts = opts;
   game = new Game(seed, teams, opts);
   coach = new AutoCoach(seed);
   showWeather();
@@ -1756,6 +1834,9 @@ function startGame(team: 0 | 1, conditions: GameSetup = setup): void {
   updateBug();
   openingToss(opts);
 }
+
+/** What the current offline game was built with, kept so a dynasty game can be replayed for its game book. */
+let gameOpts: GameOptions = {};
 
 /** Set by the check scripts to walk through the coin toss; they skip it otherwise. */
 let tossInChecks = false;
@@ -1802,7 +1883,8 @@ function openingToss(opts: GameOptions): void {
     bind({
       'toss:receive': () => kickoff(''),
       'toss:kick': () => {
-        game = new Game(seed, teams, { ...opts, receiver: other(user) });
+        gameOpts = { ...opts, receiver: other(user) };
+        game = new Game(seed, teams, gameOpts);
         setStatic();
         updateBug();
         kickoff('');
@@ -1883,7 +1965,7 @@ function showFinal(): void {
     ($('again') as HTMLButtonElement).disabled = true;
     // Let the final score paint before the other games are worked out.
     window.setTimeout(() => {
-      const done = dynasty.finishGame(g, score, boxScore(game.events));
+      const done = dynasty.finishGame(g, score, boxScore(game.events), { seed, log: game.log.map((d) => JSON.parse(JSON.stringify(d)) as LoggedDecision), opts: gameOpts });
       $('finalCareer').textContent = done.text;
       $('finalRecords').innerHTML = done.records.map((r) => `<div>${r}</div>`).join('');
       if (done.records.length && !quiet()) announce(`A new school record. ${done.records[0]}`);
@@ -2341,7 +2423,7 @@ function enterOnlineGame(): void {
   user = v.you;
   coach = new AutoCoach(seed, [v.plan, v.plan]);
   const catchUp = net.queue.length > 1 ? net.queue.splice(0, net.queue.length) : [];
-  game = replayGame(seed, teams, catchUp, { books: v.books, plays: v.designs.plays, defenses: v.designs.defenses, setup: cleanSetup(v.setup) });
+  game = replayGame(seed, teams, catchUp, { books: v.books, plays: v.designs.plays, defenses: v.designs.defenses, setup: cleanSetup(v.setup), receiver: v.receiver ?? undefined });
   showWeather();
   startAtmosphere();
   lastQuarter = game.state.quarter;
@@ -2354,7 +2436,7 @@ function enterOnlineGame(): void {
   scene.snapCamera(spot.x);
   updateBug();
   $('banner').className = '';
-  $('banner').innerHTML = `${v.coaches[0] ?? ''} (${teams[0].abbr}) against ${v.coaches[1] ?? ''} (${teams[1].abbr})<small>${catchUp.length ? '' : `${teams[tossWinner(seed)].name} won the coin toss and will receive. `}You are coaching the ${teams[user].name} ${teams[user].mascot}. Game PIN ${v.pin}.</small>`;
+  $('banner').innerHTML = `${v.coaches[0] ?? ''} (${teams[0].abbr}) against ${v.coaches[1] ?? ''} (${teams[1].abbr})<small>${catchUp.length ? '' : `${teams[tossWinner(seed)].name} won the coin toss. `}You are coaching the ${teams[user].name} ${teams[user].mascot}. Game PIN ${v.pin}.</small>`;
   $('banner').classList.remove('hidden');
   setPanelWaiting(catchUp.length ? 'Rejoining the game' : 'Kickoff');
   timer = catchUp.length ? 1800 : 3000;
@@ -2380,6 +2462,28 @@ function showOnlinePanel(): void {
   const v = net.view;
   if (v.turn !== localTurn()) {
     setPanelWaiting('Waiting for the server');
+    return;
+  }
+  // The toss winner chose to kick: the opening kickoff goes the other way.
+  if (v.receiver !== null && v.turn === 0 && game.state.openingReceiver !== v.receiver) {
+    game = replayGame(seed, teams, game.log, { books: v.books, plays: v.designs.plays, defenses: v.designs.defenses, setup: cleanSetup(v.setup), receiver: v.receiver });
+    setStatic();
+    updateBug();
+  }
+  if (v.toss && v.toss.msLeft > 0) {
+    clockOn = true;
+    clockLeft = v.toss.msLeft;
+    if (v.toss.winner !== user) {
+      mode = 'wait';
+      setPanelWaiting(`${teams[v.toss.winner].name} won the toss and is choosing`);
+      return;
+    }
+    mode = 'choose';
+    showPlayClock();
+    $('prompt').textContent = 'You won the toss';
+    $('panel').innerHTML = '<div class="wide"><button class="act" data-act="toss:receive">Receive <kbd>[1]</kbd><small>Your offense starts the game.</small></button><button class="act" data-act="toss:kick">Kick off <kbd>[2]</kbd><small>Defense first. You get the ball after halftime.</small></button></div>';
+    const choose = (kick: boolean): void => { mode = 'wait'; setPanelWaiting('Kickoff'); if (net) void netRequest(() => online.toss(net!.token, net!.pin, kick, net!.received)); };
+    bind({ 'toss:receive': () => choose(false), 'toss:kick': () => choose(true) }, (k) => (k === '1' ? 'toss:receive' : k === '2' ? 'toss:kick' : null));
     return;
   }
   clockOn = true;
@@ -2447,13 +2551,15 @@ function pump(): void {
     return;
   }
   if (mode === 'wait' && game.state.phase !== 'final' && $('panel').querySelector('[data-act]') === null) showOnlinePanel();
+  // The time to choose after the toss ran out, or the other coach kicked: move on.
+  if (mode === 'choose' && !net.view.toss && $('panel').querySelector('[data-act^="toss:"]') !== null) showOnlinePanel();
 }
 
 /** Once this browser has everything the server has resolved, the two must agree exactly. */
 function checkSync(): void {
   if (!net || net.queue.length || game.log.length !== net.view.logSize) return;
   // The play just begun is still being drawn here, so compare a finished copy built from the same log.
-  const probe = replayGame(seed, teams, game.log, { books: net.view.books, plays: net.view.designs.plays, defenses: net.view.designs.defenses, setup: cleanSetup(net.view.setup) });
+  const probe = replayGame(seed, teams, game.log, { books: net.view.books, plays: net.view.designs.plays, defenses: net.view.designs.defenses, setup: cleanSetup(net.view.setup), receiver: net.view.receiver ?? undefined });
   if (gameHash(probe) !== net.view.hash) {
     net.sync = 'bad';
     console.error('out of sync with the server', gameHash(probe), net.view.hash);
@@ -2671,9 +2777,12 @@ window.addEventListener('keydown', (ev) => {
 });
 
 /** Debug hooks used by the browser checks. */
+window.addEventListener('pointerdown', () => hideCardTip(), true);
 (window as unknown as Record<string, unknown>).__fnd = {
   /** Sends the band out or brings it off. For the automated checks. */
   band: (on: boolean, court = false) => scene.showBand(on, court),
+  /** Shows the first-game tips in an automated browser, which skips them otherwise. */
+  tips: (on = true) => { tipsInChecks = on; },
   /** Walks through the coin toss in an automated browser, which skips it otherwise. */
   toss: (on = true) => { tossInChecks = on; },
   /** Throws the penalty flags. For the automated checks. */

@@ -85,7 +85,7 @@ try {
       const p = pages[k];
       const prompt = await p.$eval('#prompt', (e) => e.textContent);
       const acts = await p.$$eval('#panel [data-act]', (els) => els.map((e) => e.dataset.act));
-      let pick = acts.filter((x) => x === 'snap' || x.startsWith('a:') || x.startsWith('p:') || x.startsWith('d:') || x.startsWith('m:') || x.startsWith('k:') || x === 'pat');
+      let pick = acts.filter((x) => x === 'snap' || x.startsWith('toss:') || x.startsWith('a:') || x.startsWith('p:') || x.startsWith('d:') || x.startsWith('m:') || x.startsWith('k:') || x === 'pat');
       if (acts.includes('aud') && !acts.some((x) => x.startsWith('a:')) && i % 2 === 0) { await p.click('#panel [data-act="aud"]').catch(() => {}); continue; }
       if (acts.includes('block') && i % 4 === 0) { await p.click('#panel [data-act="block"]').catch(() => {}); blocks++; continue; }
       if (acts.includes('f:@custom') && i % 3 === 0) { await p.click('#panel [data-act="f:@custom"]').catch(() => {}); continue; }

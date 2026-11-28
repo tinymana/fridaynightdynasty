@@ -1,6 +1,6 @@
 import { Rng } from '@fnd/core';
 import {
-  AI_COACH, RoomError, createLeagueRoom, createRoom, joinLeagueRoom, joinRoom, leaveRoom, manageRoom, setPlan, startRoom, submitCall, takeResult, tickRoom, touch, viewRoom, voiceExchange,
+  AI_COACH, RoomError, createLeagueRoom, createRoom, joinLeagueRoom, joinRoom, leaveRoom, manageRoom, setPlan, startRoom, submitCall, takeResult, tickRoom, tossRoom, touch, viewRoom, voiceExchange,
   type Coach, type GameResult, type Room,
 } from './room';
 import {
@@ -383,6 +383,14 @@ export function createApi(store: Store, now: () => number = Date.now): (body: un
       const me = await auth(body);
       return inRoom(pinOf(body), (room) => {
         setPlan(room, me.id, body['plan']);
+        return { room: viewRoom(room, me.id, have(body), now()) };
+      });
+    },
+    toss: async (body) => {
+      const me = await auth(body);
+      return inRoom(pinOf(body), (room) => {
+        tickRoom(room, now());
+        tossRoom(room, me.id, body['kick'] === true, now());
         return { room: viewRoom(room, me.id, have(body), now()) };
       });
     },

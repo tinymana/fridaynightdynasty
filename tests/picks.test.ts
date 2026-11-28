@@ -79,3 +79,48 @@ describe('the coin toss', () => {
     expect(zero).toBeLessThan(130);
   });
 });
+
+describe('the coin toss online', () => {
+  async function room() {
+    let clock = 1_000_000;
+    const api = createApi(new MemoryStore(), () => clock);
+    const call = async (body: Record<string, unknown>) => (await api(body)).data as { ok: boolean; error?: { code: string }; room?: RoomView; token?: string };
+    const a = (await call({ action: 'enter', name: 'COACH A', pin: '1234' })).token as string;
+    const b = (await call({ action: 'enter', name: 'COACH B', pin: '1234' })).token as string;
+    const pin = (await call({ action: 'host', token: a, team: 0 })).room!.pin;
+    await call({ action: 'join', token: b, pin });
+    const r = (await call({ action: 'start', token: a, pin })).room!;
+    const winner = r.toss!.winner;
+    return { call, pin, r, winner, tokens: [a, b] as const, advance: (ms: number) => { clock += ms; } };
+  }
+
+  it('lets the winner kick off instead, and only the winner', async () => {
+    const g = await room();
+    expect(g.r.toss).not.toBeNull();
+    expect(g.r.need).toEqual({ phase: 'kickoff', offense: g.winner === 0 ? 1 : 0 });
+    const loser = g.tokens[g.winner === 0 ? 1 : 0];
+    expect((await g.call({ action: 'toss', token: loser, pin: g.pin, kick: true })).error?.code).toBe('not_yours');
+    const done = await g.call({ action: 'toss', token: g.tokens[g.winner], pin: g.pin, kick: true });
+    expect(done.ok).toBe(true);
+    expect(done.room!.toss).toBeNull();
+    expect(done.room!.receiver).toBe(g.winner === 0 ? 1 : 0);
+    expect(done.room!.need).toEqual({ phase: 'kickoff', offense: g.winner });
+    expect((await g.call({ action: 'toss', token: g.tokens[g.winner], pin: g.pin, kick: false })).error?.code).toBe('toss_over');
+    // The game the server plays matches a replay that knows who received.
+    const kicked = await g.call({ action: 'call', token: g.tokens[g.winner], pin: g.pin, turn: 0, call: { kind: 'kickoff', style: 'deep' } });
+    expect(kicked.ok).toBe(true);
+    const { replayGame, gameHash: hash } = await import('@fnd/match-sim');
+    const v = kicked.room!;
+    expect(hash(replayGame(v.seed, matchupTeams(v.seed, v.picks), v.log, { books: v.books, setup: v.setup, receiver: v.receiver ?? undefined }))).toBe(v.hash);
+  });
+
+  it('settles with the winner receiving when time runs out or the kick comes first', async () => {
+    const g = await room();
+    g.advance(21_000);
+    expect((await g.call({ action: 'toss', token: g.tokens[g.winner], pin: g.pin, kick: true })).error?.code).toBe('toss_over');
+    const h = await room();
+    const kicker = h.tokens[h.winner === 0 ? 1 : 0];
+    expect((await h.call({ action: 'call', token: kicker, pin: h.pin, turn: 0, call: { kind: 'kickoff', style: 'deep' } })).ok).toBe(true);
+    expect((await h.call({ action: 'toss', token: h.tokens[h.winner], pin: h.pin, kick: true })).error?.code).toBe('toss_over');
+  });
+});

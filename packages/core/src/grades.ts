@@ -1,4 +1,4 @@
-import { overall } from './teamgen';
+import { kickAccuracy, overall } from './teamgen';
 import type { Group, Player, RatingKey } from './types';
 
 /** Letter grades, best first: fifteen steps from A+ down to F-. */
@@ -20,7 +20,9 @@ export function gradeOf(rating: number): Grade {
 }
 
 /** The few abilities worth showing at each position, most important first. */
-export const GRADE_ATTRS: Record<Group, readonly (readonly [label: string, key: RatingKey])[]> = {
+type Ability = readonly [label: string, rating: RatingKey | ((p: Player) => number)];
+const LEG: readonly Ability[] = [['Leg power', 'kicking'], ['Leg accuracy', kickAccuracy], ['Speed', 'speed']];
+export const GRADE_ATTRS: Record<Group, readonly Ability[]> = {
   QB: [['Arm power', 'throwPower'], ['Accuracy', 'throwAccuracy'], ['Speed', 'speed'], ['Reads', 'awareness']],
   RB: [['Speed', 'speed'], ['Moves', 'agility'], ['Power', 'power'], ['Hands', 'hands']],
   WR: [['Speed', 'speed'], ['Hands', 'hands'], ['Moves', 'agility']],
@@ -30,8 +32,8 @@ export const GRADE_ATTRS: Record<Group, readonly (readonly [label: string, key: 
   LB: [['Tackling', 'tackling'], ['Strength', 'power'], ['Speed', 'speed'], ['Coverage', 'coverage']],
   CB: [['Coverage', 'coverage'], ['Speed', 'speed'], ['Tackling', 'tackling']],
   S: [['Coverage', 'coverage'], ['Speed', 'speed'], ['Tackling', 'tackling']],
-  K: [['Leg', 'kicking']],
-  P: [['Leg', 'kicking']],
+  K: LEG,
+  P: LEG,
 };
 
 export interface ReportCard {
@@ -41,5 +43,5 @@ export interface ReportCard {
 
 /** A player's report card: one overall grade and a grade for each ability that matters at his position. */
 export function reportCard(p: Player): ReportCard {
-  return { overall: gradeOf(overall(p)), attrs: GRADE_ATTRS[p.pos].map(([label, key]) => ({ label, grade: gradeOf(p.ratings[key]), rating: p.ratings[key] })) };
+  return { overall: gradeOf(overall(p)), attrs: GRADE_ATTRS[p.pos].map(([label, key]) => { const rating = typeof key === 'function' ? key(p) : p.ratings[key]; return { label, grade: gradeOf(rating), rating }; }) };
 }

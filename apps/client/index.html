@@ -586,6 +586,19 @@
   @media (max-width: 600px) { .sl-row { grid-template-columns: 18px minmax(0, 1fr) 40px 50px 58px; gap: 6px; } }
   .sl-row .gr-line { grid-column: 2 / -1; margin-top: -2px; }
   .gr-key { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; margin: 8px 0; font-size: 13px; }
+
+  /* Press and hold a play card */
+  #cardTip { position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 30; background: #05071a; border: 2px solid var(--accent); border-radius: 4px; padding: 10px 12px; font-size: 16px; line-height: 1.3; box-shadow: 0 6px 24px #000; pointer-events: none; max-width: 560px; margin: 0 auto; }
+  #cardTip b { color: var(--accent); font-size: 18px; }
+  #cardTip small { color: var(--dim); }
+  .card { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+
+  /* First-game tips */
+  #coachTip { background: #05071a; border: 2px solid var(--accent); border-radius: 4px; padding: 10px 12px; margin: 6px 0; font-size: 16px; line-height: 1.35; text-align: left; }
+  #coachTip b { color: var(--accent); font-size: 18px; }
+  #coachTip p { margin: 4px 0 8px; }
+  #coachTip .orow { justify-content: flex-start; margin: 0; }
+  #coachTip .seg { min-height: 44px; }
 </style>
 </head>
 <body>
@@ -753,6 +766,8 @@
       <span id="pclock" class="hidden" aria-label="Play clock"></span>
     </div>
     <div id="voiceState" class="voice-state" role="status" aria-live="polite"></div>
+    <div id="cardTip" class="hidden" role="status" aria-live="polite"></div>
+    <div id="coachTip" class="hidden" role="dialog" aria-label="Coaching tip"></div>
     <div id="panel"></div>
     <div id="sideline" class="hidden" role="dialog" aria-label="Sideline">
       <div class="sl-box">
